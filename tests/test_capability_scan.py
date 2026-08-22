@@ -84,9 +84,19 @@ class ScannerTests(unittest.TestCase):
         self.assertIn("https://api.binance.com/api/v3/ticker", self._findings())
 
     def test_an_allowed_host_with_an_undeclared_path_is_refused(self) -> None:
-        """Host alone is not the unit of reach: the path prefix is declared too."""
+        """Host alone is not the unit of reach: the exact path is declared too."""
         self._write('URL = "https://api.bybit.com/v5/account/wallet-balance"\n')
         self.assertIn("https://api.bybit.com/v5/account/wallet-balance", self._findings())
+
+    def test_declared_path_prefix_collision_is_refused(self) -> None:
+        url = "https://api.bybit.com/v5/market/tickers-private"
+        self._write(f'URL = "{url}"\n')
+        self.assertIn(url, self._findings())
+
+    def test_non_https_scheme_is_refused_even_for_declared_host_and_path(self) -> None:
+        url = "http://api.bybit.com/v5/market/tickers"
+        self._write(f'URL = "{url}"\n')
+        self.assertIn(url, self._findings())
 
     def test_powershell_tooling_is_scanned_as_well(self) -> None:
         (self.tmp / "tools").mkdir()

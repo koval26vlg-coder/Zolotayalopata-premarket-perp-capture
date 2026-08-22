@@ -16,35 +16,42 @@ Capture ещё не запускался.
 |---|---|
 | `src/project_config.py` | пути, общий контроль, `ALLOWED_ENDPOINTS`, `RISK_CONTRACT` |
 | `src/capability_scan.py` | статический запрет ордеров, подписи, ключей, смены плеча и URL вне allow-list |
-| `src/risk_gate.py` | preflight: план, capability scan, общий gate и claim, свой run, одноразовый токен |
+| `src/risk_gate.py` | write-class preflight: план, capability scan, canonical paths, общий gate; claim/token только для capture |
 | `src/plan_builder.py` | генератор immutable PlanOnly |
 | `src/frozen_plan_bindings.py` | внешний trust-root вне цикла «план пинит runtime → runtime проверяет план» |
 | `docs/risk/forbidden-capabilities.txt` | словарь запрещённых возможностей, связан планом |
-| `src/public_http.py` | один HTTP-слой; проверяет allow-list **до** открытия соединения |
-| `src/event_registry.py` | реестр листингов: класс источника t0, ревизии, append-only |
+| `src/public_http.py` | exact HTTPS allow-list, query policy, DNS-validated IP binding, redirects disabled |
+| `src/event_registry.py` | v2 event registry: отдельные timestamp streams, hash-chain, O_EXCL lock |
 
 Коллектора рыночных данных и replay пока нет — это следующий этап.
 
 ## Реестр событий
 
-`t0` — главный датум проекта: гипотеза про секунды вокруг него. Поэтому с каждым
-событием едет `t0_source_class`, и события разных классов **никогда не смешиваются**.
-Сегодня заполняется только `VENUE_INSTRUMENT_METADATA`; `OFFICIAL_ANNOUNCEMENT`
-объявлен, но ничем не заполняется.
+В v2 generic `t0` отсутствует. Один lifecycle episode хранит независимо:
+`premarket_contract_launch_ts`, `official_spot_t0`, `first_trade_ts`,
+`transition_ts` и отдельный `contract_created_ts` для Gate. Источник является частью
+идентичности stream; один source class не может переписать другой.
+
+Только `official_spot_t0` из `OFFICIAL_ANNOUNCEMENT` может быть capture anchor.
+Metadata/observed timestamps — `DESCRIPTIVE_ONLY`. Официальный resolver ещё не
+реализован, поэтому acceptance-grade capture сейчас структурно не выбирается.
 
 Gate отдаёт `create_time` — создание контракта, не обязательно начало торгов, — и
 несёт caveat `CONTRACT_CREATION_NOT_TRADING_START`.
 
 ```powershell
 $env:PYTHONPATH="src"
-& $py src\event_registry.py --refresh      # читает метаданные площадок, дописывает изменения
+& $py src\event_registry.py --refresh --run-id metadata_20260822T120000Z
 & $py src\event_registry.py --verify       # хеши строк и последовательность ревизий
-& $py src\event_registry.py --upcoming --horizon-hours 48
+& $py src\event_registry.py --upcoming --horizon-hours 48 --source-class OFFICIAL_ANNOUNCEMENT
 ```
 
-Реестр append-only: перенос `t0` дописывается ревизией с прежним значением в
-`supersedes`, а не затирает его. Refresh отчитывается о полноте — если курсор площадки
-остался живым на потолке страниц, это видно в `truncated_venues`, а не пропадает.
+Реестр append-only: глобальная `record_hash` chain и независимые
+`stream_revision/supersedes_record_hash` chains обнаруживают подмену, fork и orphan.
+Summary receipt обязателен для непустого production registry и закрепляет tail;
+capture selector повторно проверяет тот же snapshot. Refresh сначала stage-ит все три venue; missing,
+malformed, cursor-loop/cap дают `INCOMPLETE_NO_REGISTRY_WRITE`. Запись защищена
+отдельным atomic registry lock.
 
 ## Проверки
 
@@ -64,17 +71,22 @@ $env:PYTHONPATH="src"; & $py src\risk_gate.py --plan-check
 ## Preflight
 
 ```powershell
-$env:PYTHONPATH="src"; & $py src\risk_gate.py --preflight
+$env:PYTHONPATH="src"
+& $py src\risk_gate.py --preflight --write-class metadata_registry --run-id metadata_1
+& $py src\risk_gate.py --preflight --write-class market_data_capture --run-id capture_1
 ```
 
-Читает общий active-run gate и общий writer claim, ничего не пишет кроме токена, и
-возвращает ненулевой код при любой блокировке. Каждый блокер перечисляется отдельно —
-не только первый.
+Оба класса проверяют PlanOnly, capability scan, exact resolved paths и общий active-run
+gate. Metadata refresh не занимает market-data claim и не получает токен. Текущий
+PlanOnly v3 имеет статус `...NO_CAPTURE`, поэтому второй вызов обязан вернуть `BLOCK`
+и не создать токен. Будущий capture сможет получить одноразовый токен только после
+отдельного capture-enabled PlanOnly.
 
 ## Перевыпуск плана
 
-План неизменяем. Замена — осознанное действие: удалить файл, сгенерировать заново,
-перепинить trust-root, записать решение в `docs/decisions/`.
+План неизменяем. Замена всегда получает новый versioned path и `plan_id`, ссылается на
+предыдущий артефакт через `supersedes_*`, затем отдельно перепинивается trust-root.
+Старый файл не удаляется и не перезаписывается.
 
 ```powershell
 & $py src\plan_builder.py --write-plan

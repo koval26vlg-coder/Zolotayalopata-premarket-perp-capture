@@ -29,19 +29,23 @@
 
 ## Risk gate
 
-Запуск чего-либо, что пишет данные, проходит только через
-`python src/risk_gate.py --preflight`. Он блокирует, если хоть что-то из этого не так:
+Запуск чего-либо, что пишет данные, проходит только через явный write class:
+`python src/risk_gate.py --preflight --write-class <class> --run-id <id>`.
+Он блокирует, если хоть что-то из этого не так:
 
 - runtime не совпадает с immutable PlanOnly, или план не тот, что одобрен внешним
   trust-root `src/frozen_plan_bindings.py`;
 - capability scan нашёл в `src/` или `tools/` запрещённую возможность или URL вне
   allow-list;
 - общий active-run gate закрыт или недоступен;
-- общий market-data writer claim занят;
-- собственный предыдущий capture не завершён.
+- canonical shared-gate/writer-claim/capture-root paths отличаются от PlanOnly;
+- для `market_data_capture`: общий writer claim занят или собственный capture активен.
 
-Только после этого выдаётся одноразовый capture-токен. Capture без токена невозможен —
-флага «я подтверждаю» здесь нет по замыслу.
+`metadata_registry` не занимает market-data claim и не получает токен, но остаётся
+PlanOnly/gate/allow-list bound и использует отдельный atomic registry lock.
+В текущем capture-disabled PlanOnly v3 `market_data_capture` получает `BLOCK` и токен
+не создаётся. Будущий capture-enabled план обязан требовать одноразовый токен; capture
+без него невозможен.
 
 ## Общий writer
 
@@ -54,7 +58,9 @@ Workspace общий с `ZolotyayLopata`. Этот проект — второй
 ## Объём
 
 - Только публичные market-data endpoints Bybit/OKX/Gate из `ALLOWED_ENDPOINTS`.
-- Хост сам по себе не единица доступа: путь объявляется отдельно.
+- Хост сам по себе не единица доступа: HTTPS host/path совпадают точно, query keys
+  перечислены отдельно, redirects и non-public DNS запрещены. TCP-соединение идёт к
+  уже проверенному IP, сохраняя исходное имя venue для TLS SNI, сертификата и Host.
 - Расширение доступа = правка `ALLOWED_ENDPOINTS` + перевыпуск PlanOnly + ревью.
   Строка URL, добавленная в коллектор, гейт не пройдёт.
 
@@ -68,13 +74,19 @@ Workspace общий с `ZolotyayLopata`. Этот проект — второй
 ## Provenance
 
 - Plan hash, file SHA-256 каждого связанного файла и внешний trust-root обязательны.
-- Изменение runtime требует тестов и **перевыпуска** PlanOnly: план не переписывается
-  на месте, он заменяется новым с явным `supersedes`.
+- Изменение runtime требует тестов и нового versioned PlanOnly identity. Старый план
+  остаётся byte-for-byte и связывается с новым через `supersedes_*`.
+- `official_spot_t0` отделён от contract launch, first trade и transition. Proxy
+  timestamps всегда descriptive-only и не могут поддерживать capture acceptance.
+- Непустой production registry без валидного summary receipt считается recovery-state;
+  selector принимает только повторно проверенный production snapshot.
 - Исключения capability scan объявляются построчно (`# risk-scan: allow <pattern>`),
   считаются и видны в выводе. Молчаливое исключение файла запрещено.
 
 ## Статус
 
 Capture ещё **не запускался**. PlanOnly в статусе
-`AWAIT_RISK_GATE_GREEN_NO_CAPTURE_YET`. Первый capture — только с отдельного
-разрешения пользователя.
+`AWAIT_CAPTURE_IMPLEMENTATION_AUDIT_NO_CAPTURE`. Metadata refresh разрешён только
+после metadata preflight. Сам статус механически блокирует capture preflight и mint
+токена. Первый capture потребует нового immutable PlanOnly и отдельного разрешения
+пользователя.

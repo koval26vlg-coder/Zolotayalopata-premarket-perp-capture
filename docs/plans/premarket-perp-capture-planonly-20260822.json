@@ -5,7 +5,7 @@
   "strategy_branch": "premarket_perpetual_listing_impulse",
   "mode": "PlanOnly",
   "status": "AWAIT_RISK_GATE_GREEN_NO_CAPTURE_YET",
-  "generated_at_utc": "2026-08-22T19:21:09.948Z",
+  "generated_at_utc": "2026-08-22T15:53:32.720Z",
   "generated_at_project_root": "C:\\Users\\koval\\Documents\\ZolotyayLopata-premarket-perp-capture",
   "objective": "Capture public pre-market and early perpetual market data around a listing event t0 on Bybit, OKX and Gate, densely enough to replay the hypothesis 'enter before the listing, exit at t0/+5/+15/+60s' offline. Capture only: this plan authorises no execution of any kind, and the replay is a simulation over data already on disk.",
   "hypothesis_under_study": "LONG before the listing, exit at t0, +5s, +15s or +60s - stated here so the capture design can be judged against it, not so it can be traded",
@@ -94,40 +94,6 @@
     "shared_single_writer": "the workspace-wide active-run gate must be open and the shared market-data writer claim unheld; a stale claim is reported, never cleared automatically",
     "capture_token": "a capture requires a one-shot token minted only by a passing --preflight; there is no honour-system flag"
   },
-  "write_classes": {
-    "metadata_registry": {
-      "what": "listing-event registry refresh from public instrument endpoints",
-      "requests": "a handful, one pass",
-      "exclusive_writer_claim": false,
-      "capture_token": false,
-      "plan_and_capability_scan": true,
-      "endpoint_allow_list": true
-    },
-    "market_data_capture": {
-      "what": "continuous capture around a listing t0",
-      "requests": "sustained, while a market is moving",
-      "exclusive_writer_claim": true,
-      "capture_token": true,
-      "plan_and_capability_scan": true,
-      "endpoint_allow_list": true
-    }
-  },
-  "event_registry": {
-    "t0_source_classes": [
-      "OFFICIAL_ANNOUNCEMENT",
-      "VENUE_INSTRUMENT_METADATA"
-    ],
-    "populated_today": [
-      "VENUE_INSTRUMENT_METADATA"
-    ],
-    "never_mixed": "a capture set is drawn from one t0 source class only; mixing an announcement-derived t0 with a metadata-derived one is the defect the spot monitor's audit found in its listed_ts column",
-    "revisions": "venues move launch times; a change is appended as a new revision carrying the previous value, never written over the old one",
-    "venue_t0_semantics": {
-      "bybit": "launchTime: venue-declared contract launch time",
-      "okx": "listTime: venue-declared instrument listing time",
-      "gate": "create_time: contract creation, not necessarily trading start"
-    }
-  },
   "capture_bounds": {
     "window_before_t0_sec": 1800,
     "window_after_t0_sec": 900,
@@ -144,7 +110,7 @@
         "role": "project_config",
         "path": "C:\\Users\\koval\\Documents\\ZolotyayLopata-premarket-perp-capture\\src\\project_config.py",
         "repo_path": "src/project_config.py",
-        "sha256": "4b599ab46ab2de10868b3d0cd0a76b4efe24ab2b4617fdba5098db76b2782a67"
+        "sha256": "a15d981f811c3155c202881397ef781d952ed5905ee68b8dea259809b47794ec"
       },
       {
         "role": "canonical_hash",
@@ -168,19 +134,7 @@
         "role": "plan_builder",
         "path": "C:\\Users\\koval\\Documents\\ZolotyayLopata-premarket-perp-capture\\src\\plan_builder.py",
         "repo_path": "src/plan_builder.py",
-        "sha256": "06023cfdffd1e4e8cc73f6863059abead10cb2d4634f36827ad94adc54ab2a54"
-      },
-      {
-        "role": "public_http",
-        "path": "C:\\Users\\koval\\Documents\\ZolotyayLopata-premarket-perp-capture\\src\\public_http.py",
-        "repo_path": "src/public_http.py",
-        "sha256": "0e0dcf519a3e8af48abbd574162c909572e0994d5661d58a7d17cd73fac800bc"
-      },
-      {
-        "role": "event_registry",
-        "path": "C:\\Users\\koval\\Documents\\ZolotyayLopata-premarket-perp-capture\\src\\event_registry.py",
-        "repo_path": "src/event_registry.py",
-        "sha256": "93c121b640171b812dcc2d9de3768f6f7f95e41f600d23e9345514eb1c2ab50c"
+        "sha256": "08f23880fa09c67d53f699d50649b5ab10728b553493e148586103dd533533e6"
       },
       {
         "role": "forbidden_capabilities",
@@ -211,5 +165,5 @@
     "note": "no metric computed from this capture supports ACCEPT or REJECT of any strategy; a separate user-checkpointed plan is required for that"
   },
   "plan_hash_method": "sha256_canonical_json_excluding_plan_hash",
-  "plan_hash": "6b4093be300c456794413486879a9302af12e86c3bf0994bfa075f7c7270592a"
+  "plan_hash": "aa174438bf457e3a57d94e8f3839ae9a61dbb42504d03f5876825f59a9b2d6c1"
 }

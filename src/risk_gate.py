@@ -1,20 +1,25 @@
-"""May a capture start right now, and is this runtime still the one that was approved?
+"""May a bounded metadata write or a capture start with the approved runtime?
 
 The spot monitor's audit ended with one lesson worth carrying over verbatim: a rule
 that lives only in a document is not a rule. Everything below either verifies
 something mechanically or reports that it could not.
 
-Four questions, and any of them failing blocks:
+Plan identity, capability scan, and the shared active-run gate are mandatory for every
+declared write class.  Sustained market-data capture additionally requires the global
+writer claim to be free, the prior capture record to be terminal, and a one-shot token.
+The short metadata registry refresh intentionally does not take those capture-only
+controls, so it cannot claim capture authority by accident or block an active capture.
+
+The common checks answer four questions, and any of them failing blocks:
 
 * does the checked-out runtime match the immutable PlanOnly, and is that plan the one
   the external trust root approves;
 * can the runtime still only do what the risk contract permits (capability scan);
-* is the shared workspace free - the active-run gate open and the single
-  market-data writer claim unheld;
-* is this project's own previous capture finished.
+* is the shared active-run gate open;
+* are the resolved control paths recorded in the verification receipt.
 
-Only then is a one-shot capture token minted. A capture that starts without one has
-not been through any of this.
+Only a passing ``market_data_capture`` preflight mints a token. A capture that starts
+without one has not been through the stricter capture path.
 """
 
 from __future__ import annotations
@@ -38,11 +43,28 @@ from capability_scan import assert_runtime_is_clean
 
 
 CAPTURE_TOKEN_SCHEMA = "premarket_capture_token_v1"
+PREFLIGHT_RESULT_SCHEMA = "premarket_write_preflight_v2"
 GATE_OPEN_STATUSES = frozenset({"READY_FOR_POSTPROCESS"})
 RUN_RECORD_ACTIVE_STATUSES = frozenset({"LAUNCHING", "RUNNING"})
 LAUNCH_GRACE_SEC = 120
 CAPTURE_TOKEN_TTL_SEC = 900
 GATE_TIMEOUT_SEC = 120
+
+METADATA_REGISTRY_ACTION = (
+    "refresh the public metadata event registry after metadata preflight"
+)
+OFFLINE_DESCRIPTIVE_ACTION = (
+    "verify and materialize descriptive proxy observations offline"
+)
+PLAN_WRITE_AUTHORIZATION: dict[str, dict[str, frozenset[str]]] = {
+    "AWAIT_CAPTURE_IMPLEMENTATION_AUDIT_NO_CAPTURE": {
+        "authorized_actions": frozenset({
+            METADATA_REGISTRY_ACTION,
+            OFFLINE_DESCRIPTIVE_ACTION,
+        }),
+        "write_classes": frozenset({"metadata_registry"}),
+    },
+}
 
 
 class RiskGateError(RuntimeError):
@@ -60,6 +82,63 @@ def sha256_file(path: Path) -> str:
 def _require(value: bool, message: str) -> None:
     if not value:
         raise RiskGateError(message)
+
+
+def resolved_path_bindings() -> dict[str, str]:
+    return {
+        "shared_gate_path": str(config.SHARED_GATE_PATH.resolve(strict=False)),
+        "shared_writer_claim_path": str(
+            config.SHARED_WRITER_CLAIM_PATH.resolve(strict=False)
+        ),
+        "capture_root": str(config.CAPTURE_ROOT.resolve(strict=False)),
+    }
+
+
+def verify_resolved_path_bindings(plan: Mapping[str, Any]) -> dict[str, str]:
+    expected = plan.get("resolved_path_bindings")
+    actual = resolved_path_bindings()
+    _require(isinstance(expected, dict), "plan carries no resolved path bindings")
+    _require(expected == actual, "runtime resolved path bindings differ from the plan")
+    return actual
+
+
+def verify_plan_write_authorization(
+    plan: Mapping[str, Any], write_class: str
+) -> dict[str, Any]:
+    """Bind a write preflight to the plan's exact status/action matrix.
+
+    Adding a new status, action, or write class must update this PlanOnly-bound
+    runtime and therefore requires a newly issued immutable plan. Unknown values
+    never inherit authority from a nearby human-readable phrase.
+    """
+    status = str(plan.get("status") or "").strip()
+    authorization = PLAN_WRITE_AUTHORIZATION.get(status)
+    _require(authorization is not None, f"unknown or unauthorized plan status: {status!r}")
+
+    actions = plan.get("authorized_after_gate_green")
+    _require(
+        isinstance(actions, list)
+        and all(isinstance(action, str) and action.strip() for action in actions),
+        "plan authorized actions are missing or malformed",
+    )
+    actual_actions = frozenset(actions)
+    _require(
+        len(actual_actions) == len(actions),
+        "plan authorized actions contain duplicates",
+    )
+    _require(
+        actual_actions == authorization["authorized_actions"],
+        "plan authorized actions are unknown, missing, or inconsistent with its status",
+    )
+    _require(
+        write_class in authorization["write_classes"],
+        f"plan status {status!r} does not authorize write class {write_class!r}",
+    )
+    return {
+        "status": status,
+        "authorized_actions": sorted(actual_actions),
+        "write_class": write_class,
+    }
 
 
 # ------------------------------------------------------------------ plan identity
@@ -115,6 +194,7 @@ def load_and_verify_plan(plan_path: Path | None = None) -> dict[str, Any]:
         == [list(item) for item in config.ALLOWED_ENDPOINTS],
         "runtime endpoint allow-list differs from the plan",
     )
+    verify_resolved_path_bindings(plan)
     return plan
 
 
@@ -339,27 +419,68 @@ def evaluate_risk_preflight(
     }
 
 
-def preflight(*, run_id: str, mint: bool = True) -> dict[str, Any]:
+def preflight(*, write_class: str, run_id: str) -> dict[str, Any]:
+    _require(bool(str(run_id).strip()), "run_id is required")
+    policy = config.WRITE_CLASSES.get(write_class)
+    _require(policy is not None, f"unknown write class: {write_class}")
+
     plan_error: str | None = None
     capability_error: str | None = None
+    plan: dict[str, Any] | None = None
+    plan_authorization: dict[str, Any] | None = None
+    capability_result: dict[str, Any] | None = None
     try:
-        load_and_verify_plan()
+        plan = load_and_verify_plan()
+        _require(
+            bool(str(plan.get("plan_id") or "").strip()),
+            "verified plan carries no plan_id",
+        )
+        _require(
+            bool(str(plan.get("plan_hash") or "").strip()),
+            "verified plan carries no plan_hash",
+        )
+        verify_resolved_path_bindings(plan)
+        plan_authorization = verify_plan_write_authorization(plan, write_class)
     except (RiskGateError, OSError, ValueError) as exc:
         plan_error = f"{type(exc).__name__}: {exc}"
     try:
-        run_capability_scan()
+        capability_result = run_capability_scan()
+        _require(
+            capability_result.get("status") == "CAPABILITY_SCAN_CLEAN",
+            "capability scan did not return CAPABILITY_SCAN_CLEAN",
+        )
     except Exception as exc:  # noqa: BLE001 - a failed scan must block, never crash
         capability_error = f"{type(exc).__name__}: {exc}"
+
+    free = {"present": False, "blocks": False, "stale": False}
+    needs_capture_controls = bool(
+        policy.get("exclusive_writer_claim") or policy.get("capture_token")
+    )
 
     decision = evaluate_risk_preflight(
         plan_error=plan_error,
         capability_error=capability_error,
         gate=read_shared_gate(),
-        claim=inspect_claim(),
-        run_record=inspect_run_record(),
+        claim=inspect_claim() if needs_capture_controls else free,
+        run_record=inspect_run_record() if needs_capture_controls else free,
     )
-    decision["run_id"] = run_id
-    if decision["ok"] and mint:
+    decision.update({
+        "schema": PREFLIGHT_RESULT_SCHEMA,
+        "verified": bool(decision["ok"]),
+        "write_class": write_class,
+        "run_id": run_id,
+        "write_policy": dict(policy),
+        "plan_id": plan.get("plan_id") if plan else None,
+        "plan_hash": plan.get("plan_hash") if plan else None,
+        "plan_authorization": plan_authorization,
+        "capability_scan": capability_result,
+    })
+    resolved_paths = resolved_config()
+    decision["resolved_paths"] = resolved_paths
+    decision["resolved_paths_hash"] = canonical_hash(resolved_paths)
+    if decision["ok"] and write_class == "metadata_registry":
+        decision["decision"] = "ALLOW_METADATA_REGISTRY"
+    if decision["ok"] and policy.get("capture_token"):
         token = mint_capture_token(run_id)
         decision["capture_token"] = token["token"]
         decision["capture_token_expires_at_ts"] = token["expires_at_ts"]
@@ -367,16 +488,17 @@ def preflight(*, run_id: str, mint: bool = True) -> dict[str, Any]:
 
 
 def resolved_config() -> dict[str, Any]:
-    return {
-        "project_root": str(config.PROJECT_ROOT),
-        "plan_path": str(config.PLAN_PATH),
-        "shared_gate_path": str(config.SHARED_GATE_PATH),
-        "shared_writer_claim_path": str(config.SHARED_WRITER_CLAIM_PATH),
-        "capture_root": str(config.CAPTURE_ROOT),
-        "run_record_path": str(config.RUN_RECORD_PATH),
-        "capture_token_path": str(config.CAPTURE_TOKEN_PATH),
-        "stop_request_path": str(config.STOP_REQUEST_PATH),
+    paths = {
+        "project_root": config.PROJECT_ROOT,
+        "plan_path": config.PLAN_PATH,
+        "shared_gate_path": config.SHARED_GATE_PATH,
+        "shared_writer_claim_path": config.SHARED_WRITER_CLAIM_PATH,
+        "capture_root": config.CAPTURE_ROOT,
+        "run_record_path": config.RUN_RECORD_PATH,
+        "capture_token_path": config.CAPTURE_TOKEN_PATH,
+        "stop_request_path": config.STOP_REQUEST_PATH,
     }
+    return {name: str(path.resolve(strict=False)) for name, path in paths.items()}
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -387,6 +509,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--plan-check", action="store_true")
     parser.add_argument("--capability-scan", action="store_true")
     parser.add_argument("--preflight", action="store_true")
+    parser.add_argument("--write-class", choices=sorted(config.WRITE_CLASSES))
     parser.add_argument("--run-id", default="")
     args = parser.parse_args(argv)
 
@@ -408,8 +531,10 @@ def main(argv: list[str] | None = None) -> int:
         }, ensure_ascii=False))
         return 0
     if args.preflight:
+        if not args.write_class:
+            parser.error("--write-class is required with --preflight")
         run_id = args.run_id or "capture_" + datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
-        decision = preflight(run_id=run_id)
+        decision = preflight(write_class=args.write_class, run_id=run_id)
         print(json.dumps(decision, ensure_ascii=False))
         return 0 if decision["ok"] else 1
     raise SystemExit("no action requested")

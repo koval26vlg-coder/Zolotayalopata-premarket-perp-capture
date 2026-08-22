@@ -40,7 +40,9 @@ CAPTURE_ROOT = Path(
     )
 ).expanduser()
 
-PLAN_PATH = PROJECT_ROOT / "docs/plans/premarket-perp-capture-planonly-20260822.json"
+V1_PLAN_PATH = PROJECT_ROOT / "docs/plans/premarket-perp-capture-planonly-20260822.json"
+V2_PLAN_PATH = PROJECT_ROOT / "docs/plans/premarket-perp-capture-planonly-20260822-v2.json"
+PLAN_PATH = PROJECT_ROOT / "docs/plans/premarket-perp-capture-planonly-20260822-v3.json"
 RUN_RECORD_PATH = PROJECT_ROOT / "docs/run/capture-run.json"
 STOP_REQUEST_PATH = PROJECT_ROOT / "docs/run/stop-request.json"
 CAPTURE_TOKEN_PATH = PROJECT_ROOT / "docs/run/capture-token.json"
@@ -62,7 +64,7 @@ BOUND_RUNTIME_FILES: tuple[tuple[str, str], ...] = (
     ("forbidden_capabilities", "docs/risk/forbidden-capabilities.txt"),
 )
 
-# Every host the runtime is allowed to contact, and every path prefix under it. A URL
+# Every host the runtime is allowed to contact, and every exact path under it. A URL
 # that is not covered here is a finding, not a feature: the capability scan reads this
 # tuple, so widening the reach of the project means editing this list, reissuing the
 # PlanOnly and passing review - not adding a string somewhere in a collector.
