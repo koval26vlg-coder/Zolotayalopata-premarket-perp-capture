@@ -20,8 +20,31 @@ Capture ещё не запускался.
 | `src/plan_builder.py` | генератор immutable PlanOnly |
 | `src/frozen_plan_bindings.py` | внешний trust-root вне цикла «план пинит runtime → runtime проверяет план» |
 | `docs/risk/forbidden-capabilities.txt` | словарь запрещённых возможностей, связан планом |
+| `src/public_http.py` | один HTTP-слой; проверяет allow-list **до** открытия соединения |
+| `src/event_registry.py` | реестр листингов: класс источника t0, ревизии, append-only |
 
-Коллектора и replay пока нет — это следующий этап.
+Коллектора рыночных данных и replay пока нет — это следующий этап.
+
+## Реестр событий
+
+`t0` — главный датум проекта: гипотеза про секунды вокруг него. Поэтому с каждым
+событием едет `t0_source_class`, и события разных классов **никогда не смешиваются**.
+Сегодня заполняется только `VENUE_INSTRUMENT_METADATA`; `OFFICIAL_ANNOUNCEMENT`
+объявлен, но ничем не заполняется.
+
+Gate отдаёт `create_time` — создание контракта, не обязательно начало торгов, — и
+несёт caveat `CONTRACT_CREATION_NOT_TRADING_START`.
+
+```powershell
+$env:PYTHONPATH="src"
+& $py src\event_registry.py --refresh      # читает метаданные площадок, дописывает изменения
+& $py src\event_registry.py --verify       # хеши строк и последовательность ревизий
+& $py src\event_registry.py --upcoming --horizon-hours 48
+```
+
+Реестр append-only: перенос `t0` дописывается ревизией с прежним значением в
+`supersedes`, а не затирает его. Refresh отчитывается о полноте — если курсор площадки
+остался живым на потолке страниц, это видно в `truncated_venues`, а не пропадает.
 
 ## Проверки
 

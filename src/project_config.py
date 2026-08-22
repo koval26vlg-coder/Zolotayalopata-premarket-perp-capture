@@ -55,6 +55,8 @@ BOUND_RUNTIME_FILES: tuple[tuple[str, str], ...] = (
     ("capability_scan", "src/capability_scan.py"),
     ("risk_gate", "src/risk_gate.py"),
     ("plan_builder", "src/plan_builder.py"),
+    ("public_http", "src/public_http.py"),
+    ("event_registry", "src/event_registry.py"),
     # The forbidden-capability vocabulary is part of the contract, not a note:
     # widening it must require reissuing the plan like any runtime change.
     ("forbidden_capabilities", "docs/risk/forbidden-capabilities.txt"),
@@ -104,6 +106,29 @@ RISK_CONTRACT: dict[str, object] = {
     "withdrawals_or_transfers": False,
     "execution_replay": "offline_simulation_over_captured_public_data_only",
     "acceptance_decision": "NONE_CAPTURE_ONLY",
+}
+
+# Not everything that writes a file is the same kind of write, and treating them alike
+# would be wrong in both directions: requiring the exclusive claim for a three-request
+# metadata refresh would block a capture for no reason, while letting a sustained
+# capture run without it is the two-writer accident the claim exists to prevent.
+WRITE_CLASSES: dict[str, dict[str, object]] = {
+    "metadata_registry": {
+        "what": "listing-event registry refresh from public instrument endpoints",
+        "requests": "a handful, one pass",
+        "exclusive_writer_claim": False,
+        "capture_token": False,
+        "plan_and_capability_scan": True,
+        "endpoint_allow_list": True,
+    },
+    "market_data_capture": {
+        "what": "continuous capture around a listing t0",
+        "requests": "sustained, while a market is moving",
+        "exclusive_writer_claim": True,
+        "capture_token": True,
+        "plan_and_capability_scan": True,
+        "endpoint_allow_list": True,
+    },
 }
 
 # Continuous capture around an event is a different risk class from a bounded tick:

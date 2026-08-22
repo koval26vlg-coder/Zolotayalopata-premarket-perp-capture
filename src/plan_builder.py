@@ -91,6 +91,30 @@ def build_plan(generated_at_utc: str) -> dict[str, Any]:
                 "--preflight; there is no honour-system flag"
             ),
         },
+        "write_classes": {
+            key: dict(value) for key, value in config.WRITE_CLASSES.items()
+        },
+        "event_registry": {
+            "t0_source_classes": ["OFFICIAL_ANNOUNCEMENT", "VENUE_INSTRUMENT_METADATA"],
+            "populated_today": ["VENUE_INSTRUMENT_METADATA"],
+            "never_mixed": (
+                "a capture set is drawn from one t0 source class only; mixing an "
+                "announcement-derived t0 with a metadata-derived one is the defect "
+                "the spot monitor's audit found in its listed_ts column"
+            ),
+            "revisions": (
+                "venues move launch times; a change is appended as a new revision "
+                "carrying the previous value, never written over the old one"
+            ),
+            "venue_t0_semantics": {
+                adapter_venue: semantics
+                for adapter_venue, semantics in (
+                    ("bybit", "launchTime: venue-declared contract launch time"),
+                    ("okx", "listTime: venue-declared instrument listing time"),
+                    ("gate", "create_time: contract creation, not necessarily trading start"),
+                )
+            },
+        },
         "capture_bounds": {
             "window_before_t0_sec": config.CAPTURE_WINDOW_BEFORE_SEC,
             "window_after_t0_sec": config.CAPTURE_WINDOW_AFTER_SEC,
