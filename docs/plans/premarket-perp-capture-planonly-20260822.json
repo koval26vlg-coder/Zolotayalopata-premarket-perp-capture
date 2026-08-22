@@ -5,7 +5,7 @@
   "strategy_branch": "premarket_perpetual_listing_impulse",
   "mode": "PlanOnly",
   "status": "AWAIT_RISK_GATE_GREEN_NO_CAPTURE_YET",
-  "generated_at_utc": "2026-08-22T19:21:09.948Z",
+  "generated_at_utc": "2026-08-22T20:21:14.957Z",
   "generated_at_project_root": "C:\\Users\\koval\\Documents\\ZolotyayLopata-premarket-perp-capture",
   "objective": "Capture public pre-market and early perpetual market data around a listing event t0 on Bybit, OKX and Gate, densely enough to replay the hypothesis 'enter before the listing, exit at t0/+5/+15/+60s' offline. Capture only: this plan authorises no execution of any kind, and the replay is a simulation over data already on disk.",
   "hypothesis_under_study": "LONG before the listing, exit at t0, +5s, +15s or +60s - stated here so the capture design can be judged against it, not so it can be traded",
@@ -54,6 +54,10 @@
     [
       "www.okx.com",
       "/api/v5/market/tickers"
+    ],
+    [
+      "www.okx.com",
+      "/api/v5/market/ticker"
     ],
     [
       "www.okx.com",
@@ -138,13 +142,35 @@
     "one_capture_at_a_time": true,
     "visible_terminal_required": true
   },
+  "sampling": {
+    "method": "rest_polling",
+    "is_continuous_tape": false,
+    "background_cadence_sec": {
+      "trades": 3.0,
+      "orderbook": 3.0,
+      "ticker": 6.0
+    },
+    "burst_cadence_sec": {
+      "trades": 0.5,
+      "orderbook": 0.5,
+      "ticker": 2.0
+    },
+    "burst_half_width_sec": 120,
+    "orderbook_depth": 50,
+    "probes": [
+      "trades",
+      "orderbook",
+      "ticker"
+    ],
+    "achieved_cadence_is_measured_and_published": true
+  },
   "implementation": {
     "files": [
       {
         "role": "project_config",
         "path": "C:\\Users\\koval\\Documents\\ZolotyayLopata-premarket-perp-capture\\src\\project_config.py",
         "repo_path": "src/project_config.py",
-        "sha256": "4b599ab46ab2de10868b3d0cd0a76b4efe24ab2b4617fdba5098db76b2782a67"
+        "sha256": "e32bd5b67c9588eda9564d9a305200a027754541eecd46a99ef56071085396f2"
       },
       {
         "role": "canonical_hash",
@@ -168,7 +194,7 @@
         "role": "plan_builder",
         "path": "C:\\Users\\koval\\Documents\\ZolotyayLopata-premarket-perp-capture\\src\\plan_builder.py",
         "repo_path": "src/plan_builder.py",
-        "sha256": "06023cfdffd1e4e8cc73f6863059abead10cb2d4634f36827ad94adc54ab2a54"
+        "sha256": "8efaac231fd026d1858561068dcdfabb7a6dd8fa7cc49d629b857b7f7a7c6a6d"
       },
       {
         "role": "public_http",
@@ -181,6 +207,18 @@
         "path": "C:\\Users\\koval\\Documents\\ZolotyayLopata-premarket-perp-capture\\src\\event_registry.py",
         "repo_path": "src/event_registry.py",
         "sha256": "93c121b640171b812dcc2d9de3768f6f7f95e41f600d23e9345514eb1c2ab50c"
+      },
+      {
+        "role": "global_market_writer_claim",
+        "path": "C:\\Users\\koval\\Documents\\ZolotyayLopata-premarket-perp-capture\\src\\global_market_writer_claim.py",
+        "repo_path": "src/global_market_writer_claim.py",
+        "sha256": "764af22b0b2ab24a2c36485fda2719e6c0425a2426c07778693a1be90ed3fc4e"
+      },
+      {
+        "role": "capture",
+        "path": "C:\\Users\\koval\\Documents\\ZolotyayLopata-premarket-perp-capture\\src\\capture.py",
+        "repo_path": "src/capture.py",
+        "sha256": "47fc1369e430f14cdc83475aae2d6fe936ce6800914d24a86a5bee7ae8f23ed9"
       },
       {
         "role": "forbidden_capabilities",
@@ -211,5 +249,5 @@
     "note": "no metric computed from this capture supports ACCEPT or REJECT of any strategy; a separate user-checkpointed plan is required for that"
   },
   "plan_hash_method": "sha256_canonical_json_excluding_plan_hash",
-  "plan_hash": "6b4093be300c456794413486879a9302af12e86c3bf0994bfa075f7c7270592a"
+  "plan_hash": "6e020bcd2a2f3ba83a9e17eaab1ac578fc72118bc014b27ff69a23a0cc8a2c77"
 }

@@ -57,6 +57,8 @@ BOUND_RUNTIME_FILES: tuple[tuple[str, str], ...] = (
     ("plan_builder", "src/plan_builder.py"),
     ("public_http", "src/public_http.py"),
     ("event_registry", "src/event_registry.py"),
+    ("global_market_writer_claim", "src/global_market_writer_claim.py"),
+    ("capture", "src/capture.py"),
     # The forbidden-capability vocabulary is part of the contract, not a note:
     # widening it must require reissuing the plan like any runtime change.
     ("forbidden_capabilities", "docs/risk/forbidden-capabilities.txt"),
@@ -76,6 +78,10 @@ ALLOWED_ENDPOINTS: tuple[tuple[str, str], ...] = (
     # OKX v5 public market data
     ("www.okx.com", "/api/v5/public/instruments"),
     ("www.okx.com", "/api/v5/market/tickers"),
+    # Narrower than the bulk form above, and added for that reason: /market/tickers
+    # ignores instId and answers with every SWAP instrument, so a per-instrument probe
+    # against it would pull ~450 unrelated rows on every sample.
+    ("www.okx.com", "/api/v5/market/ticker"),
     ("www.okx.com", "/api/v5/market/candles"),
     ("www.okx.com", "/api/v5/market/books"),
     ("www.okx.com", "/api/v5/market/trades"),
@@ -138,3 +144,12 @@ CAPTURE_WINDOW_AFTER_SEC = 15 * 60
 MAX_CAPTURE_RUNTIME_SEC = CAPTURE_WINDOW_BEFORE_SEC + CAPTURE_WINDOW_AFTER_SEC + 600
 MAX_REQUESTS_PER_CAPTURE = 20000
 MAX_EVENTS_PER_CAPTURE = 1
+
+# REST polling yields a sample at the instants we ask, not a tape of what happened.
+# For a hypothesis about +5/+15/+60 seconds that gap is the whole question, so the
+# cadence is declared, budgeted, and the achieved rate is measured and published rather
+# than assumed. Near t0 the sampling tightens, which is where the budget is worth spending.
+PROBE_CADENCE_SEC: dict[str, float] = {"trades": 3.0, "orderbook": 3.0, "ticker": 6.0}
+BURST_CADENCE_SEC: dict[str, float] = {"trades": 0.5, "orderbook": 0.5, "ticker": 2.0}
+BURST_HALF_WIDTH_SEC = 120
+ORDERBOOK_DEPTH = 50

@@ -153,7 +153,7 @@ class ScopeTests(unittest.TestCase):
         )
         self.assertEqual(
             sorted(entry.split()[-1] for entry in report["exemptions"]),
-            ["api_key", "api_key", "api_key"],
+            ["api_key", "api_key", "api_key", "api_key"],
         )
 
     def test_a_violation_raises_rather_than_returning_quietly(self) -> None:

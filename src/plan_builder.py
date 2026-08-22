@@ -125,6 +125,20 @@ def build_plan(generated_at_utc: str) -> dict[str, Any]:
             "one_capture_at_a_time": True,
             "visible_terminal_required": True,
         },
+        # The cadence is a bound, not a tuning knob: it sets both the request volume
+        # and the time resolution of the only data the hypothesis will ever be tested
+        # on. Loosening it silently would change what a capture means while leaving
+        # every file name and status the same.
+        "sampling": {
+            "method": "rest_polling",
+            "is_continuous_tape": False,
+            "background_cadence_sec": dict(config.PROBE_CADENCE_SEC),
+            "burst_cadence_sec": dict(config.BURST_CADENCE_SEC),
+            "burst_half_width_sec": config.BURST_HALF_WIDTH_SEC,
+            "orderbook_depth": config.ORDERBOOK_DEPTH,
+            "probes": ["trades", "orderbook", "ticker"],
+            "achieved_cadence_is_measured_and_published": True,
+        },
         "implementation": {"files": files},
         "forbidden": [
             "orders of any kind, on any venue, in any mode",
