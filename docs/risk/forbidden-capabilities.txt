@@ -1,0 +1,35 @@
+# Capabilities this project must never acquire, as literal markers found in runtime
+# source. One per line: pattern | why it is forbidden.
+#
+# This file is data, not code: the scanner reads it, so the vocabulary lives outside
+# the scanner and the scanner does not trip over its own definitions. It is bound by
+# the PlanOnly, so widening it means reissuing the plan.
+#
+# Matching is case-insensitive substring matching over src/ and tools/. Tests are
+# excluded on purpose - they must be able to name a forbidden thing in order to prove
+# it is rejected.
+
+# --- placing or managing orders -------------------------------------------------
+/v5/order            | Bybit order placement and management
+/api/v5/trade/       | OKX trade endpoints
+/futures/usdt/orders | Gate futures order endpoints
+place-order          | order placement by any venue's naming
+cancel-order         | order management implies an order existed
+/withdraw            | moving funds is outside a capture project entirely
+/transfer            | moving funds is outside a capture project entirely
+
+# --- authenticated surfaces -----------------------------------------------------
+/private/            | private WebSocket or REST namespace
+api_key              | credential material has no place in a public-data capture
+api_secret           | credential material has no place in a public-data capture
+apikey               | credential material has no place in a public-data capture
+passphrase           | OKX credential material
+x-bapi-sign          | Bybit request signing
+ok-access-sign       | OKX request signing
+hmac                 | request signing of any kind implies a private endpoint
+
+# --- taking leverage, as opposed to observing a leveraged market ----------------
+set-leverage         | changing leverage is an account action
+set_leverage         | changing leverage is an account action
+/position/leverage   | changing leverage is an account action
+set-margin-mode      | changing margin mode is an account action

@@ -1,0 +1,59 @@
+name: checks
+
+# The safety of this project rests on two mechanical claims: the runtime cannot reach
+# or do what the risk contract forbids, and the runtime on disk is the one the
+# immutable PlanOnly describes. Both are cheap to verify and expensive to discover
+# broken later, so they run on every push rather than when someone remembers.
+
+on:
+  push:
+    branches: ["**"]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  checks:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.12", "3.13"]
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+
+      - name: Confirm the runtime stays dependency-free
+        run: |
+          if grep -qvE '^\s*(#.*)?$' requirements.txt; then
+            echo "requirements.txt is no longer empty of packages:"
+            cat requirements.txt
+            exit 1
+          fi
+
+      # The plan pins SHA-256 of its own runtime, so a checkout that is not
+      # byte-identical to the committed tree would fail --plan-check for a reason that
+      # has nothing to do with drift. .gitattributes exists to prevent that; this keeps
+      # it honest on a platform where it would otherwise diverge silently.
+      - name: Checkout is byte-identical to the committed tree
+        run: |
+          git diff --exit-code
+          test -z "$(git status --porcelain)"
+
+      - name: Unit tests
+        run: python -m unittest discover -s tests
+
+      - name: Capability scan (no orders, signing, credentials, leverage, off-list URLs)
+        run: python src/risk_gate.py --capability-scan
+        env:
+          PYTHONPATH: src
+
+      - name: Plan identity and bindings
+        run: python src/risk_gate.py --plan-check
+        env:
+          PYTHONPATH: src

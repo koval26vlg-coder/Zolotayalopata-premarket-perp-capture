@@ -1,0 +1,5 @@
+# This project pins SHA-256 of its own runtime files in the immutable PlanOnly and
+# verifies them at startup. Any end-of-line normalisation would change those bytes
+# between platforms and break every plan check on a fresh clone, so no file is
+# converted: what is committed is what is checked out, everywhere.
+* -text

@@ -1,0 +1,11 @@
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+docs/run/*.json
+docs/run/global-writer-claim-archive/
+captures/
+*.log
+
+# docs/evidence/ is deliberately NOT ignored: receipts are the versioned trace.
