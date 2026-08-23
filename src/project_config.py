@@ -40,19 +40,10 @@ CAPTURE_ROOT = Path(
     )
 ).expanduser()
 
-PLAN_DIR = PROJECT_ROOT / "docs/plans"
-
-# A plan is immutable, so a reissue is a NEW file, never the same path rewritten.
-# This was prose in AGENTS.md and prose is not a mechanism: the plan at this path was
-# regenerated in place three times, keeping one plan_id and leaving no record of what
-# it replaced. The version is part of the filename and part of the plan_id now, the
-# superseded files stay on disk, and the current plan names them.
-PLAN_VERSION = 3
-PLAN_PATH = PLAN_DIR / f"premarket-perp-capture-planonly-20260822-v{PLAN_VERSION}.json"
-SUPERSEDED_PLAN_PATHS: tuple[Path, ...] = (
-    PLAN_DIR / "premarket-perp-capture-planonly-20260822.json",
-    PLAN_DIR / "premarket-perp-capture-planonly-20260822-v2.json",
-)
+V1_PLAN_PATH = PROJECT_ROOT / "docs/plans/premarket-perp-capture-planonly-20260822.json"
+V2_PLAN_PATH = PROJECT_ROOT / "docs/plans/premarket-perp-capture-planonly-20260822-v2.json"
+V3_PLAN_PATH = PROJECT_ROOT / "docs/plans/premarket-perp-capture-planonly-20260822-v3.json"
+PLAN_PATH = PROJECT_ROOT / "docs/plans/premarket-perp-capture-planonly-20260822-v4.json"
 RUN_RECORD_PATH = PROJECT_ROOT / "docs/run/capture-run.json"
 STOP_REQUEST_PATH = PROJECT_ROOT / "docs/run/stop-request.json"
 CAPTURE_TOKEN_PATH = PROJECT_ROOT / "docs/run/capture-token.json"
@@ -76,7 +67,7 @@ BOUND_RUNTIME_FILES: tuple[tuple[str, str], ...] = (
     ("forbidden_capabilities", "docs/risk/forbidden-capabilities.txt"),
 )
 
-# Every host the runtime is allowed to contact, and every path prefix under it. A URL
+# Every host the runtime is allowed to contact, and every exact path under it. A URL
 # that is not covered here is a finding, not a feature: the capability scan reads this
 # tuple, so widening the reach of the project means editing this list, reissuing the
 # PlanOnly and passing review - not adding a string somewhere in a collector.
@@ -90,9 +81,6 @@ ALLOWED_ENDPOINTS: tuple[tuple[str, str], ...] = (
     # OKX v5 public market data
     ("www.okx.com", "/api/v5/public/instruments"),
     ("www.okx.com", "/api/v5/market/tickers"),
-    # Narrower than the bulk form above, and added for that reason: /market/tickers
-    # ignores instId and answers with every SWAP instrument, so a per-instrument probe
-    # against it would pull ~450 unrelated rows on every sample.
     ("www.okx.com", "/api/v5/market/ticker"),
     ("www.okx.com", "/api/v5/market/candles"),
     ("www.okx.com", "/api/v5/market/books"),
@@ -156,6 +144,7 @@ CAPTURE_WINDOW_AFTER_SEC = 15 * 60
 MAX_CAPTURE_RUNTIME_SEC = CAPTURE_WINDOW_BEFORE_SEC + CAPTURE_WINDOW_AFTER_SEC + 600
 MAX_REQUESTS_PER_CAPTURE = 20000
 MAX_EVENTS_PER_CAPTURE = 1
+
 
 # REST polling yields a sample at the instants we ask, not a tape of what happened.
 # For a hypothesis about +5/+15/+60 seconds that gap is the whole question, so the

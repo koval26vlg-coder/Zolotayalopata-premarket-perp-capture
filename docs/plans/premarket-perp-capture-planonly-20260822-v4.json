@@ -1,0 +1,246 @@
+{
+  "schema": "premarket_perp_capture_planonly_v4",
+  "plan_id": "premarket_perp_capture_20260822_v4",
+  "supersedes_plan_id": "premarket_perp_capture_20260822_v3",
+  "supersedes_plan_hash": "ef17f97b00faf1de53eecb16b3bd4355bfabd70fd887e1df0efd787149cdef92",
+  "supersedes_plan_path": "docs/plans/premarket-perp-capture-planonly-20260822-v3.json",
+  "project": "ZolotyayLopata-premarket-perp-capture",
+  "strategy_branch": "premarket_perpetual_listing_impulse",
+  "mode": "PlanOnly",
+  "status": "AWAIT_CAPTURE_IMPLEMENTATION_AUDIT_NO_CAPTURE",
+  "generated_at_utc": "2026-08-23T06:45:11.443Z",
+  "implementation_path_semantics": "repo_path values are relative to the runtime Git root",
+  "objective": "Capture public pre-market and early perpetual market data around a listing event t0 on Bybit, OKX and Gate, densely enough to replay the hypothesis 'enter before the listing, exit at t0/+5/+15/+60s' offline. Capture only: this plan authorises no execution of any kind, and the replay is a simulation over data already on disk.",
+  "hypothesis_under_study": "LONG before the listing, exit at t0, +5s, +15s or +60s - stated here so the capture design can be judged against it, not so it can be traded",
+  "risk_contract": {
+    "observed_instrument_class": "crypto_perpetual_futures",
+    "research_only": true,
+    "public_data_only": true,
+    "private_api": false,
+    "api_keys": false,
+    "request_signing": false,
+    "orders": false,
+    "paper_execution": false,
+    "live_execution": false,
+    "uses_leverage": false,
+    "uses_margin": false,
+    "real_capital": false,
+    "withdrawals_or_transfers": false,
+    "execution_replay": "offline_simulation_over_captured_public_data_only",
+    "acceptance_decision": "NONE_CAPTURE_ONLY"
+  },
+  "allowed_endpoints": [
+    [
+      "api.bybit.com",
+      "/v5/market/instruments-info"
+    ],
+    [
+      "api.bybit.com",
+      "/v5/market/tickers"
+    ],
+    [
+      "api.bybit.com",
+      "/v5/market/kline"
+    ],
+    [
+      "api.bybit.com",
+      "/v5/market/orderbook"
+    ],
+    [
+      "api.bybit.com",
+      "/v5/market/recent-trade"
+    ],
+    [
+      "www.okx.com",
+      "/api/v5/public/instruments"
+    ],
+    [
+      "www.okx.com",
+      "/api/v5/market/tickers"
+    ],
+    [
+      "www.okx.com",
+      "/api/v5/market/ticker"
+    ],
+    [
+      "www.okx.com",
+      "/api/v5/market/candles"
+    ],
+    [
+      "www.okx.com",
+      "/api/v5/market/books"
+    ],
+    [
+      "www.okx.com",
+      "/api/v5/market/trades"
+    ],
+    [
+      "api.gateio.ws",
+      "/api/v4/futures/usdt/contracts"
+    ],
+    [
+      "api.gateio.ws",
+      "/api/v4/futures/usdt/tickers"
+    ],
+    [
+      "api.gateio.ws",
+      "/api/v4/futures/usdt/candlesticks"
+    ],
+    [
+      "api.gateio.ws",
+      "/api/v4/futures/usdt/order_book"
+    ],
+    [
+      "api.gateio.ws",
+      "/api/v4/futures/usdt/trades"
+    ]
+  ],
+  "resolved_path_bindings": {
+    "shared_gate_path": "C:\\Users\\koval\\Documents\\ZolotyayLopata\\tools\\check_active_run_gate.ps1",
+    "shared_writer_claim_path": "C:\\Users\\koval\\Documents\\ZolotyayLopata\\docs\\agent-log\\active-market-data-writer-claim.json",
+    "capture_root": "E:\\trading_mvp\\premarket-perp-capture\\captures"
+  },
+  "enforcement": {
+    "capability_scan": "src/ and tools/ are scanned against docs/risk/forbidden-capabilities.txt and against allowed_endpoints; any order, signing, credential, leverage-changing or off-list URL marker blocks the gate",
+    "plan_bindings": "every bound file's SHA-256 is verified against this plan, and this plan against the external trust root src/frozen_plan_bindings.py, which sits outside the plan-binds-runtime cycle on purpose",
+    "shared_single_writer": "the workspace-wide active-run gate must be open and the shared market-data writer claim unheld; a stale claim is reported, never cleared automatically",
+    "capture_token": "a capture requires a one-shot token minted only by a passing --preflight; there is no honour-system flag",
+    "runtime_http_allow_list": "GET requests require HTTPS, an exact declared host/path and declared query keys; userinfo, redirects, dot/encoded paths, non-public DNS answers and caller-supplied allow-lists fail closed; TCP connects to the already validated IP while TLS SNI and Host retain the venue name",
+    "resolved_path_bindings": "shared gate, shared writer claim and capture root are compared to their canonical absolute values before either write class is allowed"
+  },
+  "write_classes": {
+    "metadata_registry": {
+      "what": "listing-event registry refresh from public instrument endpoints",
+      "requests": "a handful, one pass",
+      "exclusive_writer_claim": false,
+      "capture_token": false,
+      "plan_and_capability_scan": true,
+      "endpoint_allow_list": true
+    },
+    "market_data_capture": {
+      "what": "continuous capture around a listing t0",
+      "requests": "sustained, while a market is moving",
+      "exclusive_writer_claim": true,
+      "capture_token": true,
+      "plan_and_capability_scan": true,
+      "endpoint_allow_list": true
+    }
+  },
+  "event_registry": {
+    "schema": "premarket_perp_event_registry_v2",
+    "path": "docs/registry/listing-events-v2.jsonl",
+    "legacy_v1_path": "docs/registry/listing-events.jsonl",
+    "timestamp_kinds": [
+      "premarket_contract_launch_ts",
+      "official_spot_t0",
+      "first_trade_ts",
+      "transition_ts",
+      "contract_created_ts"
+    ],
+    "source_classes": [
+      "OFFICIAL_ANNOUNCEMENT",
+      "VENUE_INSTRUMENT_METADATA",
+      "OBSERVED_PUBLIC_TRADE",
+      "OBSERVED_LIFECYCLE"
+    ],
+    "acceptance_anchor": {
+      "timestamp_kind": "official_spot_t0",
+      "source_class": "OFFICIAL_ANNOUNCEMENT"
+    },
+    "proxy_policy": "venue metadata, first-trade observations and observed lifecycle timestamps are DESCRIPTIVE_ONLY and cannot enter capture selection",
+    "episode_identity": "sha256(venue,native_premarket_contract_id,lifecycle_generation); schedule revisions do not change episode identity",
+    "stream_identity": "sha256(episode_id,timestamp_kind,instrument_role,source_class,source_identity)",
+    "lineage": "strict global record_seq/previous_record_hash chain plus independent stream_revision/supersedes_record_hash chains; forks and orphan revisions fail closed; a nonempty production registry requires its tail-anchoring summary receipt before capture selection",
+    "locking": "metadata refresh uses an atomic O_EXCL registry lock from load and lineage verification through append, fsync and summary receipt",
+    "venue_metadata_semantics": {
+      "bybit": "status=PreLaunch,isPreListing=true LinearPerpetual launchTime; descriptive contract launch only",
+      "okx": "instType=FUTURES,ruleType=pre_market listTime; descriptive contract launch only",
+      "gate": "status=prelaunch create_time; contract_created_ts only, not trading start"
+    }
+  },
+  "capture_bounds": {
+    "window_before_t0_sec": 1800,
+    "window_after_t0_sec": 900,
+    "max_runtime_sec": 3300,
+    "max_requests_per_capture": 20000,
+    "max_events_per_capture": 1,
+    "capture_root": "E:\\trading_mvp\\premarket-perp-capture\\captures",
+    "one_capture_at_a_time": true,
+    "visible_terminal_required": true
+  },
+  "implementation": {
+    "files": [
+      {
+        "role": "project_config",
+        "repo_path": "src/project_config.py",
+        "sha256": "da28846826888223900aeb58972ee887becdbd37d5c885bf8c552c92a8ed40cd"
+      },
+      {
+        "role": "canonical_hash",
+        "repo_path": "src/canonical_hash.py",
+        "sha256": "0462fadc9f1ce05a3d6fa27e863b1778fcc04991d8e78c3836f56714cc8cd04f"
+      },
+      {
+        "role": "capability_scan",
+        "repo_path": "src/capability_scan.py",
+        "sha256": "97ebfa4e35c10b665539072e79f7ef8f3cbe5472c2ba5d39220c0a2eb7f3a077"
+      },
+      {
+        "role": "risk_gate",
+        "repo_path": "src/risk_gate.py",
+        "sha256": "132c14ff6d4513c2e79a3402d842623f67fc2c756421d83b0c018b02b66ce44d"
+      },
+      {
+        "role": "plan_builder",
+        "repo_path": "src/plan_builder.py",
+        "sha256": "d6724caadbdd19fb8bc0a99ba70969e2fc238f3fd5d618a0208088fde2c7a29d"
+      },
+      {
+        "role": "public_http",
+        "repo_path": "src/public_http.py",
+        "sha256": "9b1d9ba8714eea87ff6688e5c4d4d9c04efa729fbf913c6cdffd2e3bfb73324d"
+      },
+      {
+        "role": "event_registry",
+        "repo_path": "src/event_registry.py",
+        "sha256": "4fc8ae1eae28750c829f0f4e197e4ec6f765c82e8de8863f58aed7c5831ddb93"
+      },
+      {
+        "role": "global_market_writer_claim",
+        "repo_path": "src/global_market_writer_claim.py",
+        "sha256": "764af22b0b2ab24a2c36485fda2719e6c0425a2426c07778693a1be90ed3fc4e"
+      },
+      {
+        "role": "capture",
+        "repo_path": "src/capture.py",
+        "sha256": "11e000a0084d7a03d6a51cc2d8c4d3b6b2f88cef7c2a9aa26df7f52a2219ece2"
+      },
+      {
+        "role": "forbidden_capabilities",
+        "repo_path": "docs/risk/forbidden-capabilities.txt",
+        "sha256": "dedf35eaa7b1fd1168dc25c2436471ab29eca097e670f7f3e67c8f1176b1d36a"
+      }
+    ]
+  },
+  "forbidden": [
+    "orders of any kind, on any venue, in any mode",
+    "paper or live execution",
+    "private API surfaces, credentials, request signing",
+    "taking leverage or margin, or changing either",
+    "withdrawals or transfers",
+    "acceptance or rejection decisions from captured data",
+    "a second concurrent market-data writer in this workspace",
+    "background or hidden capture runs"
+  ],
+  "authorized_after_gate_green": [
+    "refresh the public metadata event registry after metadata preflight",
+    "verify and materialize descriptive proxy observations offline"
+  ],
+  "acceptance_policy": {
+    "evidence_class": "PUBLIC_PREMARKET_PERP_CAPTURE",
+    "acceptance_decision": "NONE_CAPTURE_ONLY",
+    "note": "no metric computed from this capture supports ACCEPT or REJECT of any strategy; a separate user-checkpointed plan is required for that"
+  },
+  "plan_hash_method": "sha256_canonical_json_excluding_plan_hash",
+  "plan_hash": "fae208baf126163e2041fccffe4c1b656848a80647b1a15b0bc0af5901dd3314"
+}
