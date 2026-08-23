@@ -161,6 +161,22 @@ class OfficialAttestationAuthorizationTests(unittest.TestCase):
         with self.assertRaisesRegex(risk_gate.RiskGateError, "does not authorize"):
             risk_gate.verify_plan_write_authorization(plan, "market_data_capture")
 
+    @staticmethod
+    def _on_the_host_the_plan_describes(plan):
+        """Run as if this were the machine whose control paths the plan records.
+
+        The plan pins absolute paths to the shared gate, the claim file and the capture
+        root. Path.resolve leaves a Windows path alone on Windows and turns it into a
+        relative path under the working directory on Linux, so asserting a verified
+        preflight without pinning the environment asserts a property of the developer's
+        machine. The real verification still runs against these values - only the
+        environment is fixed, not the check."""
+        return mock.patch.object(
+            risk_gate,
+            "resolved_path_bindings",
+            return_value=dict(plan["resolved_path_bindings"]),
+        )
+
     @mock.patch.object(risk_gate, "mint_capture_token")
     @mock.patch.object(risk_gate, "inspect_run_record")
     @mock.patch.object(risk_gate, "inspect_claim")
@@ -172,6 +188,7 @@ class OfficialAttestationAuthorizationTests(unittest.TestCase):
     ) -> None:
         plan = self._active_plan()
         with (
+            self._on_the_host_the_plan_describes(plan),
             mock.patch.object(risk_gate, "load_and_verify_plan", return_value=plan),
             mock.patch.object(
                 risk_gate,
@@ -199,6 +216,53 @@ class OfficialAttestationAuthorizationTests(unittest.TestCase):
         inspect_claim.assert_not_called()
         inspect_run_record.assert_not_called()
         mint_token.assert_not_called()
+
+    def test_a_host_whose_control_paths_differ_from_the_plan_is_refused(self) -> None:
+        """The property the previous test accidentally proved, asserted on purpose.
+
+        A machine whose shared gate, claim file or capture root is not the one the plan
+        pins must not be allowed to write. This is what CI was reporting as a failure:
+        the gate refusing on a Linux runner was correct, and only the assertion above
+        was wrong."""
+        plan = self._active_plan()
+        elsewhere = dict(plan["resolved_path_bindings"])
+        elsewhere["capture_root"] = "/somewhere/else/captures"
+        with (
+            mock.patch.object(
+                risk_gate, "resolved_path_bindings", return_value=elsewhere
+            ),
+            mock.patch.object(risk_gate, "load_and_verify_plan", return_value=plan),
+            mock.patch.object(
+                risk_gate,
+                "run_capability_scan",
+                return_value={"status": "CAPABILITY_SCAN_CLEAN"},
+            ),
+            mock.patch.object(
+                risk_gate,
+                "read_shared_gate",
+                return_value={"open": True, "status": "READY_FOR_POSTPROCESS"},
+            ),
+        ):
+            result = risk_gate.preflight(
+                write_class="official_attestation",
+                run_id="official_attestation_v6_2",
+            )
+        self.assertFalse(result["verified"])
+        self.assertNotEqual(result.get("decision"), "ALLOW_OFFICIAL_ATTESTATION")
+
+    def test_the_binding_covers_every_path_the_plan_pins(self) -> None:
+        plan = self._active_plan()
+        for key in plan["resolved_path_bindings"]:
+            with self.subTest(path=key):
+                moved = dict(plan["resolved_path_bindings"])
+                moved[key] = moved[key] + "_moved"
+                with mock.patch.object(
+                    risk_gate, "resolved_path_bindings", return_value=moved
+                ):
+                    with self.assertRaisesRegex(
+                        risk_gate.RiskGateError, "resolved path bindings"
+                    ):
+                        risk_gate.verify_resolved_path_bindings(plan)
 
 
 class RuntimeHttpBoundaryTests(unittest.TestCase):
