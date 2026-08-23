@@ -52,6 +52,9 @@ class ResolvedPathBindingTests(unittest.TestCase):
                 risk_gate.config.SHARED_WRITER_CLAIM_PATH.resolve(strict=False)
             ),
             "capture_root": str(risk_gate.config.CAPTURE_ROOT.resolve(strict=False)),
+            "registry_quarantine_root": str(
+                risk_gate.config.REGISTRY_QUARANTINE_ROOT.resolve(strict=False)
+            ),
         }
         self.assertEqual(
             risk_gate.verify_resolved_path_bindings(

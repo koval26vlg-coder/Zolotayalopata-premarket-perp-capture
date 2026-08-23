@@ -99,7 +99,7 @@ class _Opener:
 
 
 class RuntimePlanLineageTests(unittest.TestCase):
-    def test_v9_retires_every_published_v1_through_v8_identity(self) -> None:
+    def test_active_plan_retires_every_earlier_published_identity(self) -> None:
         self.assertEqual(
             tuple(str(item["path"]).replace("\\", "/") for item in trust_root.RETIRED_PLANS),
             tuple(name for name in published_plan_files()
@@ -337,9 +337,9 @@ class CrossPlatformContractTests(unittest.TestCase):
         workflow = (ROOT / ".github/workflows/checks.yml").read_text(encoding="utf-8")
         self.assertIn("windows-latest", workflow)
 
-    def test_readme_names_v9_and_shows_an_explicit_preflight_write_class(self) -> None:
+    def test_readme_names_v17_and_shows_an_explicit_preflight_write_class(self) -> None:
         readme = (ROOT / "README.md").read_text(encoding="utf-8")
-        self.assertIn("активный **v9**", readme)
+        self.assertIn("PlanOnly v17", readme)
         self.assertIn("--write-class", readme)
 
 

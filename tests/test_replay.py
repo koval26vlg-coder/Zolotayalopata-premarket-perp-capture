@@ -49,10 +49,16 @@ def gate_book(bid, ask):
             "current": 0}
 
 
-def sample(exchange_ts, payload, *, probe="orderbook", error=None):
+def sample(received_ts, payload, *, request_ts=None, exchange_ts=None,
+           probe="orderbook", error=None):
+    request_ts = received_ts - 0.1 if request_ts is None else request_ts
+    exchange_ts = received_ts if exchange_ts is None else exchange_ts
     row = {
         "schema": "premarket_perp_capture_sample_v1",
+        "capture_id": "test_capture",
         "probe": probe,
+        "request_ts": request_ts,
+        "received_ts": received_ts,
         "exchange_ts": exchange_ts,
         "payload": payload,
     }
@@ -67,7 +73,10 @@ def write_capture(rows, *, venue="bybit", t0_ts=T0, readiness=None):
     (directory / "samples.jsonl").write_text(body, encoding="utf-8", newline="")
     digest = hashlib.sha256((directory / "samples.jsonl").read_bytes()).hexdigest()
     manifest = {
+        "schema": "premarket_perp_capture_v1",
         "capture_id": "test_capture",
+        "evidence_class": "SYNTHETIC_OFFLINE_ONLY",
+        "acceptance_capable": False,
         "venue": venue,
         "symbol": "NEWUSDT",
         "t0_ts": t0_ts,
@@ -81,10 +90,21 @@ def write_capture(rows, *, venue="bybit", t0_ts=T0, readiness=None):
     return directory
 
 
+def replay_fixture(directory, **kwargs):
+    return replay.replay_capture(
+        directory,
+        evidence_mode=replay.SYNTHETIC_EVIDENCE_MODE,
+        **kwargs,
+    )
+
+
 class IntegrityTests(unittest.TestCase):
     def test_a_capture_replays_when_its_bytes_match_its_manifest(self):
         directory = write_capture([sample(T0, bybit_book(100, 101))])
-        manifest, samples = replay.load_capture(directory)
+        manifest, samples = replay.load_capture(
+            directory,
+            evidence_mode=replay.SYNTHETIC_EVIDENCE_MODE,
+        )
         self.assertEqual(len(samples), 1)
         self.assertEqual(manifest["venue"], "bybit")
 
@@ -96,12 +116,18 @@ class IntegrityTests(unittest.TestCase):
         path.write_text(path.read_text(encoding="utf-8").replace("100", "999"),
                         encoding="utf-8", newline="")
         with self.assertRaisesRegex(replay.ReplayError, "do not match the manifest"):
-            replay.load_capture(directory)
+            replay.load_capture(
+                directory,
+                evidence_mode=replay.SYNTHETIC_EVIDENCE_MODE,
+            )
 
     def test_a_missing_manifest_or_samples_file_is_refused(self):
         directory = Path(tempfile.mkdtemp())
         with self.assertRaises(replay.ReplayError):
-            replay.load_capture(directory)
+            replay.load_capture(
+                directory,
+                evidence_mode=replay.SYNTHETIC_EVIDENCE_MODE,
+            )
 
 
 class BookExtractionTests(unittest.TestCase):
@@ -134,85 +160,43 @@ class BookExtractionTests(unittest.TestCase):
         series = replay.book_series(rows, "bybit")
         self.assertEqual([item.bid_px for item in series], [100.0, 102.0])
 
-    def test_the_series_is_indexed_by_the_venue_clock_not_ours(self):
+    def test_the_series_is_indexed_by_received_clock_not_exchange_clock(self):
         rows = [
-            sample(T0 + 5, bybit_book(102, 103)),
-            sample(T0 + 1, bybit_book(100, 101)),
+            sample(T0 + 5, bybit_book(102, 103), exchange_ts=T0 + 1),
+            sample(T0 + 1, bybit_book(100, 101), exchange_ts=T0 + 2),
         ]
         series = replay.book_series(rows, "bybit")
-        self.assertEqual([item.exchange_ts for item in series], [T0 + 1, T0 + 5])
+        self.assertEqual([item.received_ts for item in series], [T0 + 1, T0 + 5])
+        self.assertEqual([item.exchange_ts for item in series], [T0 + 2, T0 + 1])
 
 
-class BracketTests(unittest.TestCase):
-    def _series(self, stamps):
-        return [replay.BookSample(t, 100.0 + i, 1.0, 101.0 + i, 1.0)
-                for i, t in enumerate(stamps)]
+class GrossReturnTests(unittest.TestCase):
+    def observation(self, price):
+        return replay.CausalBookObservation(
+            status="OBSERVED",
+            target_ts=T0,
+            side="bid",
+            max_lag_sec=0.5,
+            price=price,
+        )
 
-    def test_a_horizon_between_two_samples_is_straddled(self):
-        bracket = replay.bracket_at(self._series([T0 - 1, T0 + 1]), T0)
-        self.assertTrue(bracket.straddled)
-        self.assertEqual(bracket.gap_before_sec, 1.0)
-        self.assertEqual(bracket.gap_after_sec, 1.0)
+    def test_gross_bbo_return_uses_two_observed_point_prices(self):
+        result = replay.gross_bbo_return(
+            self.observation(100.0), self.observation(120.0)
+        )
+        self.assertTrue(result["computable"])
+        self.assertAlmostEqual(result["value"], 0.2, places=6)
 
-    def test_a_wide_bracket_is_straddled_but_not_tight(self):
-        wide = replay.BRACKET_TOLERANCE_SEC + 1
-        bracket = replay.bracket_at(self._series([T0 - wide, T0 + wide]), T0)
-        self.assertTrue(bracket.straddled)
-        self.assertFalse(bracket.tight)
-
-    def test_a_horizon_after_the_last_sample_has_no_sample_after_it(self):
-        bracket = replay.bracket_at(self._series([T0 - 5, T0 - 1]), T0)
-        self.assertFalse(bracket.straddled)
-        self.assertIsNotNone(bracket.before)
-        self.assertIsNone(bracket.after)
-
-
-class BoundTests(unittest.TestCase):
-    def test_a_price_between_two_samples_is_an_interval_not_a_number(self):
-        series = [replay.BookSample(T0 - 1, 100.0, 1, 101.0, 1),
-                  replay.BookSample(T0 + 1, 110.0, 1, 111.0, 1)]
-        bound = replay.bound_from_bracket(replay.bracket_at(series, T0), "bid")
-        self.assertTrue(bound.observed)
-        self.assertEqual((bound.low, bound.high), (100.0, 110.0))
-
-    def test_a_horizon_the_capture_never_reached_is_not_computable(self):
-        series = [replay.BookSample(T0 - 5, 100.0, 1, 101.0, 1)]
-        bound = replay.bound_from_bracket(replay.bracket_at(series, T0 + 60), "bid")
-        self.assertFalse(bound.observed)
-        self.assertIn("capture ended before", bound.note)
-
-    def test_a_horizon_before_the_capture_started_is_not_computable(self):
-        series = [replay.BookSample(T0 + 5, 100.0, 1, 101.0, 1)]
-        bound = replay.bound_from_bracket(replay.bracket_at(series, T0 - 60), "ask")
-        self.assertFalse(bound.observed)
-        self.assertIn("capture began after", bound.note)
-
-    def test_no_samples_at_all_yields_no_bound(self):
-        bound = replay.bound_from_bracket(replay.bracket_at([], T0), "bid")
-        self.assertFalse(bound.observed)
-
-
-class ReturnArithmeticTests(unittest.TestCase):
-    def _bound(self, low, high):
-        return replay.PriceBound(low=low, high=high, observed=True)
-
-    def test_the_worst_case_is_the_lowest_exit_against_the_highest_entry(self):
-        result = replay.bounded_return(self._bound(100.0, 110.0),
-                                       self._bound(120.0, 130.0))
-        self.assertAlmostEqual(result["low"], 120.0 / 110.0 - 1, places=6)
-        self.assertAlmostEqual(result["high"], 130.0 / 100.0 - 1, places=6)
-
-    def test_an_interval_may_straddle_zero_and_that_is_the_answer(self):
-        # When the data cannot distinguish profit from loss, saying so is the result.
-        result = replay.bounded_return(self._bound(100.0, 110.0),
-                                       self._bound(99.0, 115.0))
-        self.assertLess(result["low"], 0)
-        self.assertGreater(result["high"], 0)
-
-    def test_an_unobserved_leg_makes_the_return_uncomputable(self):
-        missing = replay.PriceBound(low=None, high=None, observed=False)
-        self.assertFalse(replay.bounded_return(self._bound(1.0, 2.0), missing)["computable"])
-        self.assertFalse(replay.bounded_return(missing, self._bound(1.0, 2.0))["computable"])
+    def test_an_unobserved_leg_is_not_computable(self):
+        missing = replay.CausalBookObservation(
+            status="NO_SAMPLE_AT_OR_AFTER_TARGET",
+            target_ts=T0,
+            side="bid",
+            max_lag_sec=0.5,
+        )
+        self.assertFalse(
+            replay.gross_bbo_return(self.observation(100.0), missing)["computable"]
+        )
 
 
 class ReplayReportTests(unittest.TestCase):
@@ -224,42 +208,53 @@ class ReplayReportTests(unittest.TestCase):
         return write_capture(rows)
 
     def test_a_dense_capture_answers_every_horizon(self):
-        report = replay.replay_capture(self._dense_capture())
-        self.assertEqual(report["horizons_computable"], report["horizons_requested"])
+        report = replay_fixture(self._dense_capture())
+        self.assertEqual(report["horizons_observed"], report["horizons_requested"])
+        self.assertTrue(report["causal_replay_readiness"]["ready"])
         for horizon in report["horizons"]:
             with self.subTest(offset=horizon["offset_sec"]):
-                self.assertTrue(horizon["well_observed"])
+                self.assertTrue(horizon["exit_observation"]["observed"])
+                self.assertTrue(horizon["gross_bbo_return"]["computable"])
 
     def test_exits_are_priced_against_the_bid_and_entries_against_the_ask(self):
         # Selling a long means hitting a bid. A mid price is not a price anyone trades at.
-        report = replay.replay_capture(self._dense_capture())
-        self.assertEqual(report["entry"]["side"], "ask")
+        report = replay_fixture(self._dense_capture())
+        self.assertEqual(report["entry"]["observation"]["side"], "ask")
+        self.assertTrue(all(
+            horizon["exit_observation"]["side"] == "bid"
+            for horizon in report["horizons"]
+        ))
         self.assertIn("bid", report["method"])
 
-    def test_a_sparse_capture_reports_wide_brackets_rather_than_hiding_them(self):
+    def test_a_sparse_capture_does_not_invent_brackets_or_returns(self):
         rows = [sample(T0 - 100, bybit_book(100, 101)),
                 sample(T0 + 100, bybit_book(200, 201))]
-        report = replay.replay_capture(write_capture(rows))
+        report = replay_fixture(write_capture(rows))
         for horizon in report["horizons"]:
             with self.subTest(offset=horizon["offset_sec"]):
-                self.assertFalse(horizon["well_observed"])
-                self.assertTrue(horizon["return"]["computable"])
-                span = horizon["return"]["high"] - horizon["return"]["low"]
-                self.assertGreater(span, 0.5)
+                self.assertFalse(horizon["exit_observation"]["observed"])
+                self.assertFalse(horizon["gross_bbo_return"]["computable"])
+                self.assertIsNone(horizon["gross_bbo_return"]["value"])
 
     def test_a_capture_that_stopped_early_says_which_horizons_it_cannot_answer(self):
         rows = [sample(T0 + offset, bybit_book(100, 101)) for offset in range(-60, 11)]
-        report = replay.replay_capture(write_capture(rows))
-        answered = {h["offset_sec"] for h in report["horizons"] if h["return"]["computable"]}
+        report = replay_fixture(write_capture(rows))
+        answered = {
+            h["offset_sec"] for h in report["horizons"]
+            if h["gross_bbo_return"]["computable"]
+        }
         self.assertIn(0, answered)
         self.assertIn(5, answered)
         self.assertNotIn(60, answered)
         missing = next(h for h in report["horizons"] if h["offset_sec"] == 60)
-        self.assertIn("capture ended before", missing["exit_price"]["note"])
+        self.assertEqual(
+            missing["exit_observation"]["status"], "NO_SAMPLE_AT_OR_AFTER_TARGET"
+        )
 
     def test_the_report_never_produces_an_acceptance_decision(self):
-        report = replay.replay_capture(self._dense_capture())
-        self.assertEqual(report["acceptance_decision"], "NONE_REPLAY_IS_DESCRIPTIVE")
+        report = replay_fixture(self._dense_capture())
+        self.assertNotIn("acceptance_decision", report)
+        self.assertEqual(report["research_classification"], "DESCRIPTIVE_ONLY")
         self.assertEqual(config.RISK_CONTRACT["acceptance_decision"], "NONE_CAPTURE_ONLY")
 
     def test_the_report_carries_the_captures_own_readiness_verdict(self):
@@ -267,22 +262,23 @@ class ReplayReportTests(unittest.TestCase):
             [sample(T0, bybit_book(100, 101))],
             readiness={"ready": False, "notes": ["only 3s of pre-t0 coverage"]},
         )
-        report = replay.replay_capture(directory)
+        report = replay_fixture(directory)
         self.assertFalse(report["capture_replay_readiness"]["ready"])
 
     def test_the_t0_source_class_travels_into_the_replay(self):
-        report = replay.replay_capture(self._dense_capture())
+        report = replay_fixture(self._dense_capture())
         self.assertEqual(report["t0_source_class"], "OFFICIAL_ANNOUNCEMENT")
 
     def test_a_manifest_without_a_venue_or_t0_is_refused(self):
         directory = write_capture([sample(T0, bybit_book(100, 101))], t0_ts=0)
         with self.assertRaisesRegex(replay.ReplayError, "no venue or t0"):
-            replay.replay_capture(directory)
+            replay_fixture(directory)
 
-    def test_the_human_report_shows_intervals_not_single_numbers(self):
-        text = replay.format_report(replay.replay_capture(self._dense_capture()))
-        self.assertIn("..", text)
-        self.assertIn("no acceptance decision", text)
+    def test_the_human_report_shows_observed_points_not_intervals(self):
+        text = replay.format_report(replay_fixture(self._dense_capture()))
+        self.assertNotIn("..", text)
+        self.assertIn("gross BBO return", text)
+        self.assertIn("descriptive top-of-book observations only", text)
 
 
 class OfflineTests(unittest.TestCase):

@@ -55,6 +55,12 @@ def _build_attestation(**overrides):
         "quoted_symbol_text": QUOTED_SYMBOL,
         "attested_by": "registry-v6-test",
         "now_ts": _t0_ts() - 7 * 24 * 3600,
+        "asset_identity": registry.AssetIdentity(
+            asset_class=registry.ASSET_CLASS_CRYPTO_TOKEN,
+            issuer_namespace="crypto_asset",
+            issuer_id="KII",
+            evidence_class=registry.IDENTITY_EVIDENCE_OFFICIAL_ATTESTATION,
+        ),
     }
     fields.update(overrides)
     return attestation.build_attestation(**fields)
@@ -75,6 +81,12 @@ def _metadata_observation() -> dict:
         source_url="https://api.bybit.com/v5/market/instruments-info",
         received_at_utc=RECEIVED_AT,
         precision_sec=1,
+        asset_identity=registry.AssetIdentity(
+            asset_class=registry.ASSET_CLASS_CRYPTO_TOKEN,
+            issuer_namespace="crypto_asset",
+            issuer_id="KII",
+            evidence_class=registry.IDENTITY_EVIDENCE_VENUE_EXPLICIT_METADATA,
+        ),
     )
     observation["lifecycle_generation"] = GENERATION
     return observation
@@ -105,6 +117,12 @@ def _official_observation(
         received_at_utc=received_at_utc,
         precision_sec=60,
         caveats=("OFFICIAL_T0_READ_BY_A_PERSON_FROM_ANNOUNCEMENT_PROSE",),
+        asset_identity=registry.AssetIdentity(
+            asset_class=registry.ASSET_CLASS_CRYPTO_TOKEN,
+            issuer_namespace="crypto_asset",
+            issuer_id="KII",
+            evidence_class=registry.IDENTITY_EVIDENCE_OFFICIAL_ATTESTATION,
+        ),
     )
     observation["lifecycle_generation"] = GENERATION
     evidence = {

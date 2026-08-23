@@ -54,12 +54,43 @@ V11_PLAN_PATH = PROJECT_ROOT / "docs/plans/premarket-perp-capture-planonly-20260
 V12_PLAN_PATH = PROJECT_ROOT / "docs/plans/premarket-perp-capture-planonly-20260822-v12.json"
 V13_PLAN_PATH = PROJECT_ROOT / "docs/plans/premarket-perp-capture-planonly-20260822-v13.json"
 V14_PLAN_PATH = PROJECT_ROOT / "docs/plans/premarket-perp-capture-planonly-20260822-v14.json"
-PLAN_PATH = PROJECT_ROOT / "docs/plans/premarket-perp-capture-planonly-20260822-v15.json"
+V15_PLAN_PATH = PROJECT_ROOT / "docs/plans/premarket-perp-capture-planonly-20260822-v15.json"
+V16_PLAN_PATH = PROJECT_ROOT / "docs/plans/premarket-perp-capture-planonly-20260822-v16.json"
+PLAN_PATH = PROJECT_ROOT / "docs/plans/premarket-perp-capture-planonly-20260822-v17.json"
 RUN_RECORD_PATH = PROJECT_ROOT / "docs/run/capture-run.json"
 STOP_REQUEST_PATH = PROJECT_ROOT / "docs/run/stop-request.json"
 CAPTURE_TOKEN_PATH = PROJECT_ROOT / "docs/run/capture-token.json"
 EVIDENCE_DIR = PROJECT_ROOT / "docs/evidence"
 CLAIM_ARCHIVE_DIR = PROJECT_ROOT / "docs/run/global-writer-claim-archive"
+REGISTRY_QUARANTINE_ROOT = PROJECT_ROOT / "docs/registry/quarantine"
+
+# Exact authority surface copied from a selected registry episode into the capture
+# job, immutable manifest and receipt. Keep it here so the collector, replay loader
+# and PlanOnly builder cannot evolve subtly different lineage vocabularies.
+CAPTURE_LINEAGE_FIELDS: tuple[str, ...] = (
+    "episode_id",
+    "venue",
+    "premarket_contract_id",
+    "spot_symbol",
+    "official_spot_t0",
+    "t0_source_class",
+    "t0_precision_sec",
+    "official_record_hash",
+    "official_source_url",
+    "official_source_identity",
+    "registry_sha256",
+    "registry_tail_record_hash",
+    "mutation_receipt_seq",
+    "mutation_receipt_hash",
+    "summary_content_sha256",
+    "registry_authority_state_hash",
+    "plan_id",
+    "plan_hash",
+    "asset_class",
+    "issuer_namespace",
+    "issuer_id",
+    "asset_identity_hash",
+)
 
 # Runtime files bound by the PlanOnly, as repo-relative paths so the plan can be
 # generated and verified from any checkout location.
@@ -71,6 +102,7 @@ BOUND_RUNTIME_FILES: tuple[tuple[str, str], ...] = (
     ("plan_builder", "src/plan_builder.py"),
     ("public_http", "src/public_http.py"),
     ("event_registry", "src/event_registry.py"),
+    ("registry_quarantine", "src/registry_quarantine.py"),
     ("global_market_writer_claim", "src/global_market_writer_claim.py"),
     ("capture", "src/capture.py"),
     ("replay", "src/replay.py"),
@@ -158,6 +190,14 @@ WRITE_CLASSES: dict[str, dict[str, object]] = {
         "plan_and_capability_scan": True,
         "endpoint_allow_list": True,
     },
+    "registry_quarantine": {
+        "what": "archive one failed registry generation before deactivation",
+        "requests": "none; local recovery transaction only",
+        "exclusive_writer_claim": True,
+        "capture_token": False,
+        "plan_and_capability_scan": True,
+        "endpoint_allow_list": True,
+    },
     "market_data_capture": {
         "what": "continuous capture around a listing t0",
         "requests": "sustained, while a market is moving",
@@ -183,6 +223,13 @@ CAPTURE_LAUNCH_LATE_GRACE_SEC = 5
 # evidence that every missing pre-market contract terminated.
 MAX_COMPLETE_METADATA_REFRESH_AGE_SEC = 300
 MIN_FULL_UNIVERSE_RETENTION_RATIO = 0.50
+FULL_UNIVERSE_SURFACE_IDS = (
+    "bybit_linear_trading",
+    "okx_swap",
+    "okx_futures",
+    "gate_usdt_contracts",
+)
+LEGITIMATELY_EMPTY_SURFACE_IDS = ("bybit_linear_prelaunch",)
 
 
 # REST polling yields a sample at the instants we ask, not a tape of what happened.
@@ -198,6 +245,15 @@ ORDERBOOK_DEPTH = 50
 # data exists, and the largest successful-sample gap in the burst may be only a small
 # multiple of the declared cadence for that probe.
 PRIMARY_EXIT_OFFSETS_SEC: tuple[int, ...] = (0, 5, 15, 60)
+PRIMARY_ENTRY_LEAD_SEC = 60
+REPLAY_REQUIRED_PROBES_BY_VENUE: dict[str, tuple[str, ...]] = {
+    "bybit": ("trades", "orderbook", "ticker"),
+    "okx": ("trades", "orderbook", "ticker"),
+    # Gate's public futures ticker has no exchange timestamp (and may omit BBO).
+    # It is still retained as an optional descriptive payload, but cannot be used
+    # as causal clock evidence. Timestamped trades and depth are the replay surface.
+    "gate": ("trades", "orderbook"),
+}
 MAX_BURST_GAP_CADENCE_MULTIPLIER = 3.0
 MAX_SAMPLE_STALENESS_SEC: dict[str, float] = {
     "trades": 10.0,

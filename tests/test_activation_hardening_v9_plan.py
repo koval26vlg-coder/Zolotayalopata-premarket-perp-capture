@@ -98,7 +98,7 @@ class V9FinalRebindTests(unittest.TestCase):
         self.assertEqual(refresh["concurrency_control"], "RECEIPT_HEAD_COMPARE_AND_SWAP")
         self.assertEqual(refresh["empty_full_universe_response"], "ACQUISITION_FAILURE")
         self.assertEqual(
-            registry["capture_authority_lineage_fields"],
+            registry["capture_authority_receipt_fields"],
             [
                 "mutation_receipt_seq",
                 "mutation_receipt_hash",
@@ -121,8 +121,22 @@ class V9FinalRebindTests(unittest.TestCase):
         self.assertEqual(attestation["announcement_url_policy"]["explicit_port"], "FORBIDDEN")
 
         mutation = registry["mutation_receipt_chain"]
-        self.assertIn("registry_head_record_hash", mutation["anchors"])
-        self.assertIn("summary_content_hash", mutation["anchors"])
+        self.assertIn(
+            "registry_head_record_hash",
+            mutation["record_fields_before_receipt_hash"],
+        )
+        self.assertIn(
+            "summary_content_hash",
+            mutation["record_fields_before_receipt_hash"],
+        )
+        self.assertIn(
+            "relevant_identity_set_sha256_by_surface",
+            mutation["record_fields_before_receipt_hash"],
+        )
+        self.assertIn(
+            "explicit_terminal_ids_by_surface",
+            mutation["record_fields_before_receipt_hash"],
+        )
         self.assertEqual(
             mutation["process_crash_recovery"],
             "FAIL_CLOSED_MANUAL_RECOVERY_NO_AUTOMATIC_ATOMICITY_CLAIM",

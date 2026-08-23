@@ -44,21 +44,7 @@ from global_market_writer_claim import (
 CAPTURE_SCHEMA = "premarket_perp_capture_v1"
 SAMPLE_SCHEMA = "premarket_perp_capture_sample_v1"
 PROBES = ("trades", "orderbook", "ticker")
-LINEAGE_FIELDS = (
-    "episode_id",
-    "official_record_hash",
-    "official_source_url",
-    "official_source_identity",
-    "registry_sha256",
-    "registry_summary_sha256",
-    "registry_tail_record_hash",
-    "mutation_receipt_seq",
-    "mutation_receipt_hash",
-    "summary_content_sha256",
-    "registry_authority_state_hash",
-    "plan_id",
-    "plan_hash",
-)
+LINEAGE_FIELDS = config.CAPTURE_LINEAGE_FIELDS
 SAFE_RUN_ID = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.-]{0,127}$")
 
 
@@ -148,6 +134,14 @@ PROBE_TABLE: tuple[Probe, ...] = (
 
 def probes_for(venue: str) -> tuple[Probe, ...]:
     return tuple(probe for probe in PROBE_TABLE if probe.venue == venue)
+
+
+def required_replay_probes_for(venue: str) -> tuple[str, ...]:
+    required = tuple(config.REPLAY_REQUIRED_PROBES_BY_VENUE.get(venue, ()))
+    available = {probe.probe for probe in probes_for(venue)}
+    if not required or len(required) != len(set(required)) or not set(required) <= available:
+        raise CaptureError(f"invalid replay-required probe policy for venue: {venue}")
+    return required
 
 
 def request_identity_for(probe: Probe, symbol: str) -> dict[str, Any]:
@@ -345,6 +339,20 @@ def job_from_event(event: Mapping[str, Any], *, capture_id: str) -> CaptureJob:
     )
 
 
+def capture_evidence_classification(
+    replay_readiness: Mapping[str, Any],
+) -> dict[str, Any]:
+    """Classify causal input quality without claiming fill or strategy acceptance."""
+    return {
+        "evidence_class": (
+            "CAUSAL_REPLAY_INPUT_READY"
+            if replay_readiness.get("ready") is True
+            else "DESCRIPTIVE_ONLY"
+        ),
+        "acceptance_capable": False,
+    }
+
+
 def utc_now_iso() -> str:
     return datetime.now(timezone.utc).isoformat(timespec="seconds").replace("+00:00", "Z")
 
@@ -401,14 +409,40 @@ def _validate_capture_lineage(
     lineage = job.lineage
     if lineage.get("episode_id") != event_id:
         raise CaptureError("capture event_id does not match registry episode lineage")
+    if lineage.get("venue") != job.venue:
+        raise CaptureError("capture venue does not match registry episode lineage")
     if lineage.get("plan_id") != plan.get("plan_id"):
         raise CaptureError("capture registry lineage plan_id is stale")
     if lineage.get("plan_hash") != plan.get("plan_hash"):
         raise CaptureError("capture registry lineage plan_hash is stale")
+    if lineage.get("premarket_contract_id") != job.symbol:
+        raise CaptureError("capture contract identity does not match the market symbol")
+    if not str(lineage.get("spot_symbol") or "").strip():
+        raise CaptureError("capture lineage spot_symbol is missing")
+    if lineage.get("official_spot_t0") != job.t0_ts:
+        raise CaptureError("capture lineage official_spot_t0 does not match the job")
+    if lineage.get("t0_source_class") != job.t0_source_class:
+        raise CaptureError("capture lineage t0 source class does not match the job")
+    lineage_precision = lineage.get("t0_precision_sec")
+    if (
+        isinstance(lineage_precision, bool)
+        or not isinstance(lineage_precision, int)
+        or lineage_precision <= 0
+        or lineage_precision != job.t0_precision_sec
+    ):
+        raise CaptureError("capture lineage t0_precision_sec does not match the job")
+    if lineage.get("asset_class") != registry.ASSET_CLASS_CRYPTO_TOKEN:
+        raise CaptureError("capture lineage is not an explicit crypto asset")
+    for field in ("issuer_namespace", "issuer_id"):
+        if not str(lineage.get(field) or "").strip():
+            raise CaptureError(f"capture registry lineage {field} is missing")
+    if not re.fullmatch(
+        r"[0-9a-f]{64}", str(lineage.get("asset_identity_hash") or "")
+    ):
+        raise CaptureError("capture registry lineage asset_identity_hash is invalid")
     for field in (
         "official_record_hash",
         "registry_sha256",
-        "registry_summary_sha256",
         "registry_tail_record_hash",
         "mutation_receipt_hash",
         "summary_content_sha256",
@@ -528,10 +562,16 @@ def _require_levels(levels: Any, label: str) -> float:
         raise CaptureError(f"{label} has no depth")
     first_price: float | None = None
     for index, level in enumerate(levels):
-        if not isinstance(level, (list, tuple)) or len(level) < 2:
+        if isinstance(level, Mapping):
+            price_raw = level.get("p")
+            size_raw = level.get("s")
+        elif isinstance(level, (list, tuple)) and len(level) >= 2:
+            price_raw = level[0]
+            size_raw = level[1]
+        else:
             raise CaptureError(f"{label}[{index}] is malformed")
-        price = _require_number(level[0], f"{label}[{index}].price", positive=True)
-        _require_number(level[1], f"{label}[{index}].size", positive=True)
+        price = _require_number(price_raw, f"{label}[{index}].price", positive=True)
+        _require_number(size_raw, f"{label}[{index}].size", positive=True)
         if first_price is None:
             first_price = price
     assert first_price is not None
@@ -552,6 +592,50 @@ def _require_depth(bids: Any, asks: Any, *, label: str) -> None:
         raise CaptureError(f"{label} depth is crossed or locked")
 
 
+def _require_exact_request_identity(
+    venue: str,
+    probe_name: str,
+    symbol: str,
+    *,
+    request_url: Any,
+    request_params: Any,
+    request_identity_sha256: Any,
+) -> None:
+    """Bind a payload that does not echo its instrument to the sealed request."""
+    candidates = tuple(
+        item for item in probes_for(venue) if item.probe == probe_name
+    )
+    if len(candidates) != 1:
+        raise CaptureError(f"{venue} {probe_name} request identity is unavailable")
+    probe = candidates[0]
+    expected_keys = set(probe.params_for(symbol))
+    if venue == "okx":
+        symbol_parameter = "instId"
+    elif venue == "gate":
+        symbol_parameter = "contract"
+    else:
+        raise CaptureError(f"{venue} {probe_name} request identity is unsupported")
+    material = {
+        "venue": venue,
+        "probe": probe_name,
+        "symbol": symbol,
+        "url": request_url,
+        "params": dict(request_params) if isinstance(request_params, Mapping) else None,
+    }
+    if (
+        request_url != probe.url
+        or not isinstance(request_params, Mapping)
+        or set(request_params) != expected_keys
+        or str(request_params.get(symbol_parameter) or "").upper()
+        != str(symbol or "").upper()
+        or request_identity_sha256 != canonical_hash(material)
+    ):
+        raise CaptureError(
+            f"{venue} {probe_name} response has no echoed instrument and no exact "
+            "bound request identity"
+        )
+
+
 def validate_probe_payload(
     venue: str,
     probe: str,
@@ -569,7 +653,12 @@ def validate_probe_payload(
     replay.  A REST response that merely has HTTP success is not market evidence.
     """
     if venue == "bybit":
-        if not isinstance(payload, Mapping) or payload.get("retCode") not in (0, "0"):
+        ret_code = payload.get("retCode") if isinstance(payload, Mapping) else None
+        exact_success = bool(
+            (type(ret_code) is int and ret_code == 0)
+            or (type(ret_code) is str and ret_code == "0")
+        )
+        if not exact_success:
             raise CaptureError("bybit payload has no successful retCode")
         result = payload.get("result")
         if not isinstance(result, Mapping):
@@ -635,7 +724,19 @@ def validate_probe_payload(
             if len(rows) != 1:
                 raise CaptureError("okx orderbook payload is not instrument-specific")
             row = rows[0]
-            _require_symbol(row.get("instId"), symbol, "okx orderbook")
+            # The documented REST books response does not echo instId.  In that
+            # shape, the exact on-wire request is the instrument authority.
+            if row.get("instId") is not None:
+                _require_symbol(row.get("instId"), symbol, "okx orderbook")
+            else:
+                _require_exact_request_identity(
+                    "okx",
+                    "orderbook",
+                    symbol,
+                    request_url=request_url,
+                    request_params=request_params,
+                    request_identity_sha256=request_identity_sha256,
+                )
             _require_depth(row.get("bids"), row.get("asks"), label="okx orderbook")
             exchange_ts = _exchange_timestamp(row.get("ts"), "okx orderbook ts")
         elif probe == "ticker":
@@ -659,44 +760,14 @@ def validate_probe_payload(
             if payload.get("contract") is not None:
                 _require_symbol(payload.get("contract"), symbol, "gate orderbook")
             else:
-                candidates = tuple(
-                    item
-                    for item in probes_for("gate")
-                    if item.probe == "orderbook"
+                _require_exact_request_identity(
+                    "gate",
+                    "orderbook",
+                    symbol,
+                    request_url=request_url,
+                    request_params=request_params,
+                    request_identity_sha256=request_identity_sha256,
                 )
-                if len(candidates) != 1:
-                    raise CaptureError("gate orderbook request identity is unavailable")
-                canonical_probe = candidates[0]
-                bound_params = (
-                    dict(request_params)
-                    if isinstance(request_params, Mapping)
-                    else {}
-                )
-                expected_keys = set(canonical_probe.params_for(symbol))
-                material = {
-                    "venue": canonical_probe.venue,
-                    "probe": canonical_probe.probe,
-                    "symbol": symbol,
-                    "url": request_url,
-                    "params": bound_params,
-                }
-                try:
-                    bound_limit = int(bound_params.get("limit"))
-                except (TypeError, ValueError):
-                    bound_limit = 0
-                if (
-                    request_url != canonical_probe.url
-                    or set(bound_params) != expected_keys
-                    or str(bound_params.get("contract") or "").upper()
-                    != symbol.upper()
-                    or bound_limit <= 0
-                    or request_identity_sha256
-                    != canonical_hash(material)
-                ):
-                    raise CaptureError(
-                        "gate orderbook has no echoed contract and no exact bound "
-                        "request identity"
-                    )
             _require_depth(payload.get("bids"), payload.get("asks"), label="gate orderbook")
             exchange_ts = _exchange_timestamp(
                 payload.get("current") or payload.get("update"), "gate orderbook time"
@@ -949,7 +1020,7 @@ def _run_capture_core(
         sampled_records,
         t0_ts=job.t0_ts,
         t0_precision_sec=job.t0_precision_sec,
-        required_probes=tuple(probe.probe for probe in probes),
+        required_probes=required_replay_probes_for(job.venue),
     )
     status = "COMPLETED" if stop_reason == "window_complete" else "STOPPED_INCOMPLETE"
     if successful_payloads == 0:
@@ -1116,12 +1187,15 @@ def replay_readiness(
             "ready": False,
             "successful_samples": 0,
             "successful_probes": [],
+            "required_probes": [],
             "invalid_samples": len(sampled),
             "noncausal_samples": 0,
             "covered_before_t0_sec": None,
             "covered_after_t0_sec": None,
             "covers_full_burst_window": False,
             "max_burst_gap_sec_by_probe": {},
+            "required_entry_lead_sec": config.PRIMARY_ENTRY_LEAD_SEC,
+            "entry_available": False,
             "required_exit_offsets_sec": list(config.PRIMARY_EXIT_OFFSETS_SEC),
             "available_exit_offsets_sec": [],
             "t0_precision_sec": int(t0_precision_sec),
@@ -1139,11 +1213,14 @@ def replay_readiness(
     invalid = 0
     validation_errors: dict[str, int] = {}
     for raw in sampled:
-        if not isinstance(raw, Mapping) or raw.get("error") or "payload" not in raw:
+        if not isinstance(raw, Mapping):
             invalid += 1
             continue
         probe = str(raw.get("probe") or "")
         if probe not in valid_by_probe:
+            continue
+        if raw.get("error") or "payload" not in raw:
+            invalid += 1
             continue
         try:
             request_ts = float(raw["request_ts"])
@@ -1226,6 +1303,22 @@ def replay_readiness(
                 f"{probe} burst gap {max_gap} exceeds allowed {allowed_gap:g}s"
             )
 
+    entry_target_ts = float(t0_ts - config.PRIMARY_ENTRY_LEAD_SEC)
+    entry_available = all(
+        any(
+            entry_target_ts <= float(record["received_ts"])
+            <= entry_target_ts
+            + float(cadence_for(probe, -float(config.PRIMARY_ENTRY_LEAD_SEC)))
+            for record in valid_by_probe[probe]
+        )
+        for probe in required
+    )
+    if not entry_available:
+        notes.append(
+            "fixed entry target lacks all-probe evidence within one cadence: "
+            f"t0-{config.PRIMARY_ENTRY_LEAD_SEC}s"
+        )
+
     available_exits: list[int] = []
     for exit_offset in config.PRIMARY_EXIT_OFFSETS_SEC:
         target_ts = float(t0_ts + exit_offset)
@@ -1256,12 +1349,15 @@ def replay_readiness(
         "ready": not notes,
         "successful_samples": sum(len(records) for records in valid_by_probe.values()),
         "successful_probes": successful_probes,
+        "required_probes": list(required),
         "invalid_samples": invalid,
         "noncausal_samples": noncausal,
         "covered_before_t0_sec": before,
         "covered_after_t0_sec": after,
         "covers_full_burst_window": covers_full_burst,
         "max_burst_gap_sec_by_probe": gap_by_probe,
+        "required_entry_lead_sec": config.PRIMARY_ENTRY_LEAD_SEC,
+        "entry_available": entry_available,
         "required_exit_offsets_sec": list(config.PRIMARY_EXIT_OFFSETS_SEC),
         "available_exit_offsets_sec": available_exits,
         "t0_precision_sec": precision,
@@ -1354,11 +1450,13 @@ def _build_capture_receipt_from_committed_manifest(
         "transport_attempts": committed_manifest.get("transport_attempts"),
         "request_attempts": dict(committed_manifest.get("request_attempts") or {}),
         "evidence_class": committed_manifest.get("evidence_class"),
+        "acceptance_capable": committed_manifest.get("acceptance_capable"),
         "output_sha256": current_output_sha256,
         "manifest_sha256": hashlib.sha256(manifest_bytes).hexdigest(),
         "sampling": committed_manifest["sampling"],
         "replay_readiness": committed_manifest["replay_readiness"],
         "venue_metadata_observed": committed_manifest.get("venue_metadata_observed"),
+        "implementation": dict(committed_manifest.get("implementation") or {}),
         "lineage": dict(committed_manifest.get("lineage") or {}),
     }
     for key in LINEAGE_FIELDS:
@@ -1382,6 +1480,7 @@ def _select_capture_job(
     eligible = registry.events_for_capture(
         now_ts=selection_now_ts,
         source_class=source_class,
+        asset_class=registry.ASSET_CLASS_CRYPTO_TOKEN,
         horizon_sec=horizon_sec,
     )
     event = next(
@@ -1520,12 +1619,10 @@ def capture_event(
                 }
                 draft["replay_readiness"] = readiness
             readiness["structural_ready"] = bool(readiness.get("ready"))
-            draft["evidence_class"] = (
-                "SECONDS_GRADE_REPLAY_READY"
-                if readiness.get("ready")
-                else "DESCRIPTIVE_ONLY"
-            )
-            draft["acceptance_capable"] = True
+            draft.update(capture_evidence_classification(readiness))
+            draft["plan_id"] = current_plan.get("plan_id")
+            draft["plan_hash"] = current_plan.get("plan_hash")
+            draft["implementation"] = dict(current_plan.get("implementation") or {})
             try:
                 _write_json_exclusive(capture_dir / "manifest.json", draft)
             except FileExistsError as exc:

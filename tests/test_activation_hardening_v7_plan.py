@@ -84,7 +84,7 @@ class V7CaptureDisabledContractTests(unittest.TestCase):
 
     def test_audit_green_status_still_cannot_authorize_capture(self) -> None:
         plan = self._plan()
-        self.assertEqual(plan["status"], "CAPTURE_IMPLEMENTATION_AUDIT_GREEN_NO_CAPTURE")
+        self.assertIn(plan["status"], risk_gate.PLAN_WRITE_AUTHORIZATION)
         self.assertFalse(plan["activation_gate"]["capture_authorized"])
         self.assertNotIn(risk_gate.CAPTURE_ACTION, plan["authorized_after_gate_green"])
         self.assertNotIn(
@@ -102,7 +102,14 @@ class V7CaptureDisabledContractTests(unittest.TestCase):
         self.assertEqual(registry["selection_clock"], "received_at_utc")
         self.assertEqual(evidence["coverage_clock"], "received_ts")
         self.assertEqual(evidence["metadata_max_retries"], 0)
-        self.assertEqual(evidence["required_probes"], ["trades", "orderbook", "ticker"])
+        self.assertEqual(
+            evidence["required_probes_by_venue"],
+            {
+                "bybit": ["trades", "orderbook", "ticker"],
+                "okx": ["trades", "orderbook", "ticker"],
+                "gate": ["trades", "orderbook"],
+            },
+        )
         self.assertEqual(evidence["artifact_commit"]["manifest_creation"], "O_EXCL")
         self.assertIn("after claim", evidence["post_claim_revalidation"])
         self.assertIn("not consumed", evidence["token_mismatch_policy"])

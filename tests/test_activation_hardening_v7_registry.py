@@ -294,24 +294,32 @@ class ExactAttestationPreflightTests(unittest.TestCase):
 class PersistentLifecycleGenerationTests(unittest.TestCase):
     @staticmethod
     def _payloads(*, present: bool) -> dict:
-        bybit_rows = []
-        if present:
-            bybit_rows.append(
-                {
-                    "symbol": "RELUSDT",
-                    "status": "PreLaunch",
-                    "isPreListing": True,
-                    "contractType": "LinearPerpetual",
-                    "launchTime": str(v6._t0_ts() * 1000),
-                }
-            )
+        bybit_row = {
+            "symbol": "RELUSDT",
+            "status": "PreLaunch" if present else "Trading",
+            "isPreListing": bool(present),
+            "contractType": "LinearPerpetual",
+            "launchTime": str(v6._t0_ts() * 1000),
+        }
+        prelaunch_rows = [bybit_row] if present else []
+        trading_rows = [] if present else [bybit_row]
         return {
             "bybit": {
-                "retCode": 0,
-                "result": {
-                    "category": "linear",
-                    "list": bybit_rows,
-                    "nextPageCursor": "",
+                "prelaunch": {
+                    "retCode": 0,
+                    "result": {
+                        "category": "linear",
+                        "list": prelaunch_rows,
+                        "nextPageCursor": "",
+                    },
+                },
+                "trading": {
+                    "retCode": 0,
+                    "result": {
+                        "category": "linear",
+                        "list": trading_rows,
+                        "nextPageCursor": "",
+                    },
                 },
             },
             "okx": {
@@ -327,11 +335,12 @@ class PersistentLifecycleGenerationTests(unittest.TestCase):
             "gate": [{
                 "name": "FILL_USDT",
                 "status": "trading",
+                "is_pre_market": False,
                 "create_time": 1_700_000_000,
             }],
         }
 
-    def test_disappear_then_reappear_allocates_a_new_episode_generation(self) -> None:
+    def test_explicit_terminal_then_reappear_allocates_a_new_episode_generation(self) -> None:
         path = Path(tempfile.mkdtemp()) / "registry.jsonl"
 
         def preflight(*, write_class: str, run_id: str) -> dict:

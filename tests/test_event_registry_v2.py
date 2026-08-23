@@ -28,6 +28,12 @@ def valid_metadata_observation(
         source_identity="bybit:instrument_metadata:launchTime",
         source_url="https://api.bybit.com/v5/market/instruments-info",
         received_at_utc="2026-08-22T20:00:00Z",
+        asset_identity=registry.AssetIdentity(
+            asset_class=registry.ASSET_CLASS_CRYPTO_TOKEN,
+            issuer_namespace="crypto_asset",
+            issuer_id=contract.removesuffix("USDT"),
+            evidence_class=registry.IDENTITY_EVIDENCE_VENUE_EXPLICIT_METADATA,
+        ),
     )
 
 
@@ -55,6 +61,12 @@ def valid_official_observation(
         received_at_utc="2026-08-22T20:00:00Z",
         precision_sec=60,
         caveats=("OFFICIAL_T0_READ_BY_A_PERSON_FROM_ANNOUNCEMENT_PROSE",),
+        asset_identity=registry.AssetIdentity(
+            asset_class=registry.ASSET_CLASS_CRYPTO_TOKEN,
+            issuer_namespace="crypto_asset",
+            issuer_id=contract.removesuffix("USDT"),
+            evidence_class=registry.IDENTITY_EVIDENCE_OFFICIAL_ATTESTATION,
+        ),
     )
     observation["attestation"] = {
         "schema": config.OFFICIAL_ATTESTATION_SCHEMA,
@@ -124,7 +136,7 @@ class LifecycleTimestampTests(unittest.TestCase):
             [],
         )
 
-    def test_okx_transition_is_a_separate_lifecycle_stream(self) -> None:
+    def test_untracked_okx_xperp_cannot_create_a_lifecycle_stream(self) -> None:
         adapter = next(item for item in registry.ADAPTERS if item.venue == "okx")
         events = registry.normalise_rows(
             adapter,
@@ -132,25 +144,15 @@ class LifecycleTimestampTests(unittest.TestCase):
                 "instId": "NEW-USDT-250101",
                 "instType": "FUTURES",
                 "ruleType": "xperp",
+                "state": "live",
+                "instCategory": "1",
                 "listTime": "1799990000000",
                 "preMktSwTime": "1800000000000",
             }],
             observed_at_utc="2026-08-22T20:00:00Z",
         )
 
-        self.assertEqual(
-            {item["timestamp_kind"] for item in events},
-            {
-                registry.TIMESTAMP_PREMARKET_CONTRACT_LAUNCH,
-                registry.TIMESTAMP_TRANSITION,
-            },
-        )
-        self.assertEqual(len({item["stream_id"] for item in events}), 2)
-        transition = next(
-            item for item in events if item["timestamp_kind"] == registry.TIMESTAMP_TRANSITION
-        )
-        self.assertEqual(transition["transition_ts"], 1_800_000_000)
-        self.assertEqual(transition["evidence_use"], "DESCRIPTIVE_ONLY")
+        self.assertEqual(events, [])
 
 
 class CaptureSelectionContractTests(unittest.TestCase):
@@ -246,7 +248,7 @@ class CaptureSelectionContractTests(unittest.TestCase):
     def test_registry_exposes_a_validated_timestamp_observation_factory(self) -> None:
         self.assertIsNotNone(getattr(registry, "make_timestamp_observation", None))
 
-    def test_official_spot_timestamp_is_the_only_acceptance_anchor(self) -> None:
+    def test_official_spot_timestamp_without_asset_identity_is_descriptive(self) -> None:
         try:
             event = registry.make_timestamp_observation(
                 episode_id="ep_bybit_new_0",
@@ -266,8 +268,8 @@ class CaptureSelectionContractTests(unittest.TestCase):
             self.fail(str(exc))
 
         self.assertEqual(event["official_spot_t0"], 1_800_000_000)
-        self.assertEqual(event["evidence_use"], "ACCEPTANCE_ANCHOR")
-        self.assertIs(event["capture_eligible"], True)
+        self.assertEqual(event["evidence_use"], "DESCRIPTIVE_ONLY")
+        self.assertIs(event["capture_eligible"], False)
 
     def test_registry_exposes_episode_materialization(self) -> None:
         self.assertIsNotNone(getattr(registry, "materialize_episodes", None))
@@ -289,6 +291,12 @@ class CaptureSelectionContractTests(unittest.TestCase):
             source_class=registry.SOURCE_VENUE_INSTRUMENT_METADATA,
             source_identity="bybit:instrument_metadata:launchTime",
             source_url="https://api.bybit.com/v5/market/instruments-info",
+            asset_identity=registry.AssetIdentity(
+                asset_class=registry.ASSET_CLASS_CRYPTO_TOKEN,
+                issuer_namespace="crypto_asset",
+                issuer_id="NEW",
+                evidence_class=registry.IDENTITY_EVIDENCE_VENUE_EXPLICIT_METADATA,
+            ),
         )
         official_spot = registry.make_timestamp_observation(
             **common,
@@ -298,6 +306,12 @@ class CaptureSelectionContractTests(unittest.TestCase):
             source_class=registry.SOURCE_OFFICIAL_ANNOUNCEMENT,
             source_identity="bybit:announcement:123",
             source_url="https://announcements.bybit.com/example",
+            asset_identity=registry.AssetIdentity(
+                asset_class=registry.ASSET_CLASS_CRYPTO_TOKEN,
+                issuer_namespace="crypto_asset",
+                issuer_id="NEW",
+                evidence_class=registry.IDENTITY_EVIDENCE_OFFICIAL_ATTESTATION,
+            ),
         )
 
         materialized = registry.materialize_episodes([contract_launch, official_spot])
@@ -388,7 +402,7 @@ class CaptureSelectionContractTests(unittest.TestCase):
         self.assertEqual(event.get("evidence_use"), "DESCRIPTIVE_ONLY")
         self.assertIs(event.get("capture_eligible"), False)
 
-    def test_gate_records_the_launch_instant_and_never_the_spot_t0(self) -> None:
+    def test_gate_records_creation_and_never_relabels_expiry_as_launch(self) -> None:
         adapter = next(item for item in registry.ADAPTERS if item.venue == "gate")
         event = registry.normalise_rows(
             adapter,
@@ -402,9 +416,8 @@ class CaptureSelectionContractTests(unittest.TestCase):
             observed_at_utc="2026-08-22T20:00:00Z",
         )[0]
 
-        # launch_time is a contract launch, so it lands in that named timestamp -
-        # and it is still not an official spot t0, which no venue publishes.
-        self.assertEqual(event["premarket_contract_launch_ts"], 1_800_000_000)
+        self.assertEqual(event["contract_created_ts"], 1_799_992_800)
+        self.assertIsNone(event["premarket_contract_launch_ts"])
         self.assertIsNone(event["official_spot_t0"])
 
 

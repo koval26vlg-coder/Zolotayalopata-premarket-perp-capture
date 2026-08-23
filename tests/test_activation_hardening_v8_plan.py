@@ -110,7 +110,7 @@ class V8ImmutableLineageTests(unittest.TestCase):
 
         plan = risk_gate.load_and_verify_plan()
         self.assertEqual(plan["plan_id"], trust_root.PLAN_ID)
-        self.assertEqual(plan["status"], NO_CAPTURE_STATUS)
+        self.assertIn(plan["status"], risk_gate.PLAN_WRITE_AUTHORIZATION)
         self.assertNotIn(risk_gate.CAPTURE_ACTION, plan["authorized_after_gate_green"])
         with self.assertRaisesRegex(risk_gate.RiskGateError, "does not authorize"):
             risk_gate.verify_plan_write_authorization(plan, "market_data_capture")
