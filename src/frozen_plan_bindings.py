@@ -11,10 +11,10 @@ reviewable act in its own right.
 """
 
 ACTIVE_PLAN = {
-    "schema": "premarket_perp_capture_planonly_v4",
-    "plan_id": "premarket_perp_capture_20260822_v4",
-    "plan_hash": "fae208baf126163e2041fccffe4c1b656848a80647b1a15b0bc0af5901dd3314",
-    "plan_file_sha256": "48e8e33171425cff1642b1b9088dd24593edd5649211e3552d958933a42a4f27",
+    "schema": "premarket_perp_capture_planonly_v5",
+    "plan_id": "premarket_perp_capture_20260822_v5",
+    "plan_hash": "01b60cf10d82ccd523a43dc96539bce035fda73454c93b702250746b8b10d9e0",
+    "plan_file_sha256": "948f8820e52b16ac3804445e830629003b33d8194f17cec46355c66e5213c349",
 }
 
 # Every plan this project ever published, in order. They stay on disk and are
@@ -42,6 +42,13 @@ RETIRED_PLANS = (
         "plan_hash": "ef17f97b00faf1de53eecb16b3bd4355bfabd70fd887e1df0efd787149cdef92",
         "plan_file_sha256": "60e2c64048091ea191ba40a60e69ba4916af2a13f22dcb0c089fca614d114192",
         "path": "docs/plans/premarket-perp-capture-planonly-20260822-v3.json"
+    },
+    {
+        "schema": "premarket_perp_capture_planonly_v4",
+        "plan_id": "premarket_perp_capture_20260822_v4",
+        "plan_hash": "fae208baf126163e2041fccffe4c1b656848a80647b1a15b0bc0af5901dd3314",
+        "plan_file_sha256": "48e8e33171425cff1642b1b9088dd24593edd5649211e3552d958933a42a4f27",
+        "path": "docs/plans/premarket-perp-capture-planonly-20260822-v4.json"
     },
 )
 
