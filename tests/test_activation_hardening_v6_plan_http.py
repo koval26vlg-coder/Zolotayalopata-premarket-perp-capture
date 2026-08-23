@@ -31,16 +31,17 @@ import public_http  # noqa: E402
 import risk_gate  # noqa: E402
 
 
-EXPECTED_RETIRED_PLAN_FILES = (
-    "docs/plans/premarket-perp-capture-planonly-20260822.json",
-    "docs/plans/premarket-perp-capture-planonly-20260822-v2.json",
-    "docs/plans/premarket-perp-capture-planonly-20260822-v3.json",
-    "docs/plans/premarket-perp-capture-planonly-20260822-v4.json",
-    "docs/plans/premarket-perp-capture-planonly-20260822-v5.json",
-    "docs/plans/premarket-perp-capture-planonly-20260822-v6.json",
-    "docs/plans/premarket-perp-capture-planonly-20260822-v7.json",
-    "docs/plans/premarket-perp-capture-planonly-20260822-v8.json",
-)
+def published_plan_files() -> tuple[str, ...]:
+    """Every plan artifact on disk, oldest first, as repo-relative paths."""
+    plans = sorted(
+        (config.PROJECT_ROOT / "docs/plans").glob(
+            "premarket-perp-capture-planonly-20260822*.json"
+        ),
+        key=lambda path: (len(path.stem), path.stem),
+    )
+    return tuple(f"docs/plans/{path.name}" for path in plans)
+
+
 
 
 def _copy_runtime_checkout(destination: Path) -> Path:
@@ -101,11 +102,18 @@ class RuntimePlanLineageTests(unittest.TestCase):
     def test_v9_retires_every_published_v1_through_v8_identity(self) -> None:
         self.assertEqual(
             tuple(str(item["path"]).replace("\\", "/") for item in trust_root.RETIRED_PLANS),
-            EXPECTED_RETIRED_PLAN_FILES,
+            tuple(name for name in published_plan_files()
+                  if not name.endswith(config.PLAN_PATH.name)),
         )
-        self.assertEqual(trust_root.ACTIVE_PLAN["schema"], "premarket_perp_capture_planonly_v9")
-        self.assertEqual(trust_root.ACTIVE_PLAN["plan_id"], "premarket_perp_capture_20260822_v9")
-        self.assertTrue(config.PLAN_PATH.name.endswith("-v9.json"))
+        # The version is whatever the trust root pins today. What must hold at every
+        # reissue is that the schema, the plan_id and the filename agree about it.
+        version = trust_root.ACTIVE_PLAN["plan_id"].rsplit("_", 1)[-1]
+        self.assertRegex(version, r"^v\d+$")
+        self.assertEqual(
+            trust_root.ACTIVE_PLAN["schema"],
+            f"premarket_perp_capture_planonly_{version}",
+        )
+        self.assertTrue(config.PLAN_PATH.name.endswith(f"-{version}.json"))
 
     def test_load_and_verify_plan_rejects_each_missing_retired_plan(self) -> None:
         for retired in trust_root.RETIRED_PLANS:

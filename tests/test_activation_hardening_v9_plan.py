@@ -25,13 +25,20 @@ V8_PATH = ROOT / V8_RELATIVE_PATH
 V8_PLAN_HASH = "fb9a44f17ca2f3ffcb8f9ef87c7e9ad42684bfd80ad03dfe5ad48d05f34d223f"
 V8_FILE_SHA256 = "045c614865cc0744025b93eb1ee5ef1de2d093d8680a1a9d3f2e64909839ced5"
 NO_CAPTURE_STATUS = "CAPTURE_IMPLEMENTATION_AUDIT_GREEN_NO_CAPTURE"
+V9_RELATIVE_PATH = "docs/plans/premarket-perp-capture-planonly-20260822-v9.json"
+
+
+def _published_v9_plan() -> dict:
+    """v9 as it was published. It is retired now; its identity is fixed forever."""
+    import json as _json
+    return _json.loads((ROOT / V9_RELATIVE_PATH).read_text(encoding="utf-8"))
 
 
 class V9FinalRebindTests(unittest.TestCase):
     def active_plan(self) -> dict:
         return json.loads(config.PLAN_PATH.read_text(encoding="utf-8"))
 
-    def test_v8_is_preserved_byte_identical_as_last_retired_plan(self) -> None:
+    def test_v8_is_preserved_byte_identical_in_the_lineage(self) -> None:
         self.assertTrue(V8_PATH.is_file())
         self.assertEqual(hashlib.sha256(V8_PATH.read_bytes()).hexdigest(), V8_FILE_SHA256)
         plan = json.loads(V8_PATH.read_text(encoding="utf-8"))
@@ -47,14 +54,15 @@ class V9FinalRebindTests(unittest.TestCase):
         self.assertIn(V8_RELATIVE_PATH, retired)
         self.assertEqual(retired[V8_RELATIVE_PATH]["plan_hash"], V8_PLAN_HASH)
         self.assertEqual(retired[V8_RELATIVE_PATH]["plan_file_sha256"], V8_FILE_SHA256)
-        self.assertEqual(
-            str(trust_root.RETIRED_PLANS[-1]["path"]).replace("\\", "/"),
-            V8_RELATIVE_PATH,
-        )
+        # v8 sits immediately before v9 in the lineage. Asserting it is *last* was
+        # true only while v9 was current, and quietly became a currency check.
+        paths = [str(item["path"]).replace("\\", "/") for item in trust_root.RETIRED_PLANS]
+        self.assertEqual(paths[paths.index(V8_RELATIVE_PATH) + 1], V9_RELATIVE_PATH)
 
-    def test_active_v9_supersedes_exact_v8_and_remains_no_capture(self) -> None:
-        self.assertEqual(config.PLAN_PATH.name, "premarket-perp-capture-planonly-20260822-v9.json")
-        plan = self.active_plan()
+    def test_published_v9_supersedes_exact_v8_and_authorised_no_capture(self) -> None:
+        # An artifact assertion, not a currency one: v9 is retired, and what it said
+        # must stay true whatever version is active today.
+        plan = _published_v9_plan()
         self.assertEqual(plan["schema"], "premarket_perp_capture_planonly_v9")
         self.assertEqual(plan["plan_id"], "premarket_perp_capture_20260822_v9")
         self.assertEqual(plan["supersedes_plan_id"], "premarket_perp_capture_20260822_v8")
@@ -164,9 +172,9 @@ class V9FinalRebindTests(unittest.TestCase):
         self.assertEqual(trades["okx"], "NONEMPTY_ALL_ROWS_EXACT_INSTRUMENT")
         self.assertEqual(trades["gate"], "NONEMPTY_ALL_ROWS_EXACT_CONTRACT")
 
-    def test_runtime_verifier_loads_v9_but_capture_authorization_stays_blocked(self) -> None:
+    def test_the_active_plan_loads_but_capture_authorization_stays_blocked(self) -> None:
         plan = risk_gate.load_and_verify_plan()
-        self.assertEqual(plan["plan_id"], "premarket_perp_capture_20260822_v9")
+        self.assertEqual(plan["plan_id"], trust_root.PLAN_ID)
         self.assertNotIn(risk_gate.CAPTURE_ACTION, plan["authorized_after_gate_green"])
         with self.assertRaisesRegex(risk_gate.RiskGateError, "does not authorize"):
             risk_gate.verify_plan_write_authorization(plan, "market_data_capture")

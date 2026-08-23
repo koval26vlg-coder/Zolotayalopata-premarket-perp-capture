@@ -50,9 +50,15 @@ class V7ImmutableLineageTests(unittest.TestCase):
             "docs/plans/premarket-perp-capture-planonly-20260822-v7.json",
             retired,
         )
-        self.assertEqual(trust_root.ACTIVE_PLAN["schema"], "premarket_perp_capture_planonly_v9")
-        self.assertEqual(trust_root.ACTIVE_PLAN["plan_id"], "premarket_perp_capture_20260822_v9")
-        self.assertTrue(config.PLAN_PATH.name.endswith("-v9.json"))
+        # The version is whatever the trust root pins today. What must hold at every
+        # reissue is that the schema, the plan_id and the filename agree about it.
+        version = trust_root.ACTIVE_PLAN["plan_id"].rsplit("_", 1)[-1]
+        self.assertRegex(version, r"^v\d+$")
+        self.assertEqual(
+            trust_root.ACTIVE_PLAN["schema"],
+            f"premarket_perp_capture_planonly_{version}",
+        )
+        self.assertTrue(config.PLAN_PATH.name.endswith(f"-{version}.json"))
 
     def test_active_plan_matches_external_trust_root_and_supersedes_v8(self) -> None:
         plan = json.loads(config.PLAN_PATH.read_text(encoding="utf-8"))
@@ -64,11 +70,11 @@ class V7ImmutableLineageTests(unittest.TestCase):
         )
         without_hash = {key: value for key, value in plan.items() if key != "plan_hash"}
         self.assertEqual(plan["plan_hash"], canonical_hash(without_hash))
-        self.assertEqual(plan["supersedes_plan_id"], "premarket_perp_capture_20260822_v8")
-        self.assertEqual(
-            plan["supersedes_plan_hash"],
-            "fb9a44f17ca2f3ffcb8f9ef87c7e9ad42684bfd80ad03dfe5ad48d05f34d223f",
-        )
+        # Whichever plan the lineage retired last, the active one must name it. A
+        # literal here has to be hand-edited at every reissue and eventually is.
+        previous = trust_root.RETIRED_PLANS[-1]
+        self.assertEqual(plan["supersedes_plan_id"], previous["plan_id"])
+        self.assertEqual(plan["supersedes_plan_hash"], previous["plan_hash"])
 
 
 class V7CaptureDisabledContractTests(unittest.TestCase):

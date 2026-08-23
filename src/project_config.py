@@ -49,7 +49,7 @@ V6_PLAN_PATH = PROJECT_ROOT / "docs/plans/premarket-perp-capture-planonly-202608
 V7_PLAN_PATH = PROJECT_ROOT / "docs/plans/premarket-perp-capture-planonly-20260822-v7.json"
 V8_PLAN_PATH = PROJECT_ROOT / "docs/plans/premarket-perp-capture-planonly-20260822-v8.json"
 V9_PLAN_PATH = PROJECT_ROOT / "docs/plans/premarket-perp-capture-planonly-20260822-v9.json"
-PLAN_PATH = V9_PLAN_PATH
+PLAN_PATH = PROJECT_ROOT / "docs/plans/premarket-perp-capture-planonly-20260822-v10.json"
 RUN_RECORD_PATH = PROJECT_ROOT / "docs/run/capture-run.json"
 STOP_REQUEST_PATH = PROJECT_ROOT / "docs/run/stop-request.json"
 CAPTURE_TOKEN_PATH = PROJECT_ROOT / "docs/run/capture-token.json"
@@ -68,6 +68,7 @@ BOUND_RUNTIME_FILES: tuple[tuple[str, str], ...] = (
     ("event_registry", "src/event_registry.py"),
     ("global_market_writer_claim", "src/global_market_writer_claim.py"),
     ("capture", "src/capture.py"),
+    ("replay", "src/replay.py"),
     ("official_attestation", "src/official_attestation.py"),
     # The forbidden-capability vocabulary is part of the contract, not a note:
     # widening it must require reissuing the plan like any runtime change.

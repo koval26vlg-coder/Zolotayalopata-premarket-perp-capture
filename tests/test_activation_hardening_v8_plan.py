@@ -47,6 +47,15 @@ def _published_v8_plan() -> dict[str, object]:
     return json.loads(V8_PATH.read_text(encoding="utf-8"))
 
 
+def _published_v9_plan() -> dict:
+    """v9 as it was published. It is retired now; its identity is fixed forever."""
+    path = (
+        config.PROJECT_ROOT
+        / "docs/plans/premarket-perp-capture-planonly-20260822-v9.json"
+    )
+    return json.loads(path.read_text(encoding="utf-8"))
+
+
 class V8ImmutableLineageTests(unittest.TestCase):
     def test_v7_is_preserved_exactly_and_retired_before_v8(self) -> None:
         self.assertTrue(V7_PATH.is_file(), "the published v7 PlanOnly must remain on disk")
@@ -72,11 +81,13 @@ class V8ImmutableLineageTests(unittest.TestCase):
         )
         self.assertLess(retired_paths.index(V7_RELATIVE_PATH), len(retired_paths) - 1)
 
-    def test_active_identity_is_new_v9_and_supersedes_exact_v8(self) -> None:
-        plan = _active_plan()
-        self.assertEqual(config.PLAN_PATH.name, "premarket-perp-capture-planonly-20260822-v9.json")
-        self.assertEqual(trust_root.ACTIVE_PLAN["schema"], "premarket_perp_capture_planonly_v9")
-        self.assertEqual(trust_root.ACTIVE_PLAN["plan_id"], "premarket_perp_capture_20260822_v9")
+    def test_published_v9_identity_supersedes_exact_v8(self) -> None:
+        # v9 was the active plan when this was written and is retired now. Its
+        # identity and what it superseded are fixed for good, so the assertion moved
+        # from "the active plan" to "the v9 artifact".
+        plan = _published_v9_plan()
+        retired = {item["plan_id"] for item in trust_root.RETIRED_PLANS}
+        self.assertIn("premarket_perp_capture_20260822_v9", retired)
         self.assertEqual(plan["schema"], "premarket_perp_capture_planonly_v9")
         self.assertEqual(plan["plan_id"], "premarket_perp_capture_20260822_v9")
         self.assertEqual(plan["supersedes_plan_id"], "premarket_perp_capture_20260822_v8")
@@ -91,9 +102,14 @@ class V8ImmutableLineageTests(unittest.TestCase):
         self.assertEqual(plan["status"], NO_CAPTURE_STATUS)
         self.assertFalse(plan["activation_gate"]["capture_authorized"])
 
-    def test_v9_loads_through_runtime_verifier_and_remains_capture_disabled(self) -> None:
+    def test_the_active_plan_loads_and_remains_capture_disabled(self) -> None:
+        # The identity is whatever the trust root pins today; the property under test
+        # is that capture stays unauthorised across every reissue, not that one
+        # particular version is current.
+        import frozen_plan_bindings as trust_root
+
         plan = risk_gate.load_and_verify_plan()
-        self.assertEqual(plan["plan_id"], "premarket_perp_capture_20260822_v9")
+        self.assertEqual(plan["plan_id"], trust_root.PLAN_ID)
         self.assertEqual(plan["status"], NO_CAPTURE_STATUS)
         self.assertNotIn(risk_gate.CAPTURE_ACTION, plan["authorized_after_gate_green"])
         with self.assertRaisesRegex(risk_gate.RiskGateError, "does not authorize"):
