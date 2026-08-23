@@ -70,10 +70,17 @@ class LegacyV2MigrationBoundaryTests(unittest.TestCase):
             with self.assertRaisesRegex(registry.EventRegistryError, "receipt"):
                 registry.load_legacy_v2_projection()
 
-    def test_v3_is_a_distinct_empty_authority_path(self) -> None:
+    def test_v3_is_a_distinct_authority_path_from_v2(self) -> None:
+        # Emptiness was the bootstrap state, not a property: filling v3 is the stage
+        # this migration exists to reach, and the assertion would have had to be
+        # deleted the moment it was. What must hold for good is that v3 is a separate
+        # authority and that v2 is never the active registry again.
         self.assertNotEqual(registry.REGISTRY_PATH, registry.REGISTRY_V2_PATH)
         self.assertEqual(registry.REGISTRY_SCHEMA, "premarket_perp_event_registry_v3")
-        self.assertFalse(registry.REGISTRY_PATH.exists())
+        self.assertNotEqual(
+            registry.REGISTRY_PATH.name, registry.REGISTRY_V2_PATH.name
+        )
+        self.assertTrue(str(registry.REGISTRY_PATH).endswith("-v3.jsonl"))
 
     def test_projection_is_descriptive_and_does_not_modify_v2(self) -> None:
         before = registry.REGISTRY_V2_PATH.read_bytes()

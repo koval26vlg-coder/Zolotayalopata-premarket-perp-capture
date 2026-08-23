@@ -822,12 +822,17 @@ def _surface_payload_rows(surface: VenueSurface, payload: Any) -> list[Mapping[s
         elif surface.venue == "okx":
             state = row.get("state")
             rule_type = row.get("ruleType")
+            # ruleType may be empty: OKX returns "" for an instrument under no special
+            # rule. Measured 2026-08-23, exactly one live SWAP row does so
+            # (JP225-USDT-SWAP, state preopen), and requiring it non-empty rejected the
+            # whole 454-row surface, made every refresh incomplete and blocked every
+            # registry write. An absent rule is a fact about the instrument, not a
+            # malformed payload; downstream simply never matches it as pre_market.
             if (
                 not isinstance(state, str)
                 or not state
                 or state != state.strip()
                 or not isinstance(rule_type, str)
-                or not rule_type
                 or rule_type != rule_type.strip()
             ):
                 raise EventRegistryError(
