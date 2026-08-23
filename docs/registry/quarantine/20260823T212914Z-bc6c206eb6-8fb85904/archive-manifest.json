@@ -1,0 +1,60 @@
+{
+  "archive_files": [
+    {
+      "archive_name": "registry.bin",
+      "role": "registry",
+      "sha256": "3b896bd4e4634fe08b7684b04c4947f58141d6837e5a34a1eb55c5d30f153610",
+      "size": 28607
+    },
+    {
+      "archive_name": "summary.bin",
+      "role": "summary",
+      "sha256": "7bb039f1cf49d585a28e175fffbc9ec461e7d74406b343a337d376d48e9a5153",
+      "size": 4845
+    },
+    {
+      "archive_name": "mutation-receipts.jsonl",
+      "role": "mutation_receipt_archive",
+      "sha256": "a6abf385e9c5ce719906673c1a82a5bc8e431c2a1ac8a6d74ed6b2508c45b331",
+      "size": 4560
+    }
+  ],
+  "authority": {
+    "plan_hash": "25be0f87b96f0faf117eedc96f9079f8c7a5256302e714b1148f24dda0f82942",
+    "plan_id": "premarket_perp_capture_20260822_v20",
+    "registry_lock_name": "listing-events-v3.lock",
+    "registry_lock_sha256": "71abdf6aa150e314d8ad3ee16d4170f484edcecefa76175b1a5833835774865d",
+    "resolved_paths_hash": "943bbd2cb62f1108bb084e33430c7c66deff736d90e75cba4eb6a04fe54a42bd"
+  },
+  "created_at_utc": "2026-08-23T21:29:14Z",
+  "reason": "plan reissued to v20 for the cross-venue attestation change; the summary is bound to the previous plan hash and no matching summary can exist",
+  "receipt_entries": [
+    {
+      "original_name": "00000000000000000000-fe05ab9d085cc8c1d7f4177d70a4e4c1779a6678ed70096157a0c8e2ead9de81.json",
+      "sha256": "a300874dbbb1625534d48f6e9e19fdbb92076252dc9947b646f5479f40f9a50e",
+      "size": 3217
+    }
+  ],
+  "run_id": "reanchor_after_plan_v20",
+  "schema": "premarket_perp_registry_quarantine_v2",
+  "source": {
+    "receipt_dir_name": "listing-events-v3.jsonl.mutation-receipts",
+    "receipt_dir_present": true,
+    "registry_name": "listing-events-v3.jsonl",
+    "summary_name": "listing-events-v3.summary.json",
+    "summary_plan_identity": {
+      "plan_hash": "0e8336b3e5b85a87b21443b15af56768226833cae03000e5d03b684c306b6b11",
+      "plan_id": "premarket_perp_capture_20260822_v19"
+    },
+    "summary_present": true
+  },
+  "source_generation_cas": "e4557eaba734c208e152730f1421ecd80b2e31c6a5a01e9982f895fbead4d78d",
+  "transaction_id": "20260823T212914Z-bc6c206eb6-8fb85904",
+  "verifier": {
+    "problem_count": 1,
+    "problems_hash": "ba9f93951fbc31d13501d94ee1db2aee16b858d75e8ef8668d856530f522b0f7",
+    "recovery_action": "RESTORE_MATCHING_SUMMARY_OR_QUARANTINE_AND_BOOTSTRAP_NEW_GENERATION",
+    "status": "REGISTRY_PROBLEMS",
+    "summary_verified": false
+  }
+}
