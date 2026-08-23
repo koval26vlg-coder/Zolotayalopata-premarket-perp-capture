@@ -137,6 +137,7 @@ class TempHarness(unittest.TestCase):
             CAPTURE_WINDOW_BEFORE_SEC=1,
             CAPTURE_WINDOW_AFTER_SEC=2,
             BURST_HALF_WIDTH_SEC=1,
+            PRIMARY_ENTRY_LEAD_SEC=1,
             PRIMARY_EXIT_OFFSETS_SEC=(0,),
             PROBE_CADENCE_SEC={"trades": 0.5, "orderbook": 0.5, "ticker": 0.5},
             BURST_CADENCE_SEC={"trades": 0.5, "orderbook": 0.5, "ticker": 0.5},
@@ -255,6 +256,30 @@ class PublicCaptureBoundaryTests(TempHarness):
 
 
 class GateOrderbookIdentityTests(unittest.TestCase):
+    def test_gate_orderbook_accepts_documented_mapping_levels(self):
+        probe = next(
+            item
+            for item in capture.probes_for("gate")
+            if item.probe == "orderbook"
+        )
+        identity = capture.request_identity_for(probe, "TARGET_USDT")
+        payload = {
+            "bids": [{"p": "9.9", "s": 1}],
+            "asks": [{"p": "10.1", "s": 1}],
+            "current": T0 * 1000,
+        }
+
+        exchange_ts = capture.validate_probe_payload(
+            "gate",
+            "orderbook",
+            payload,
+            "TARGET_USDT",
+            received_ts=T0,
+            **identity,
+        )
+
+        self.assertEqual(exchange_ts, float(T0))
+
     def test_gate_orderbook_without_echoed_contract_has_no_identity(self):
         payload = {
             "bids": [["9.9", "1"]],
@@ -303,6 +328,49 @@ class GateOrderbookIdentityTests(unittest.TestCase):
                 "orderbook",
                 payload,
                 "TARGET_USDT",
+                received_ts=T0,
+                **altered,
+            )
+
+
+class OkxOrderbookIdentityTests(unittest.TestCase):
+    def test_okx_orderbook_without_inst_id_uses_exact_request_binding(self):
+        probe = next(
+            item
+            for item in capture.probes_for("okx")
+            if item.probe == "orderbook"
+        )
+        identity = capture.request_identity_for(probe, "NEW-USDT-SWAP")
+        payload = {
+            "code": "0",
+            "data": [{
+                "bids": [["9.9", "1", "0", "1"]],
+                "asks": [["10.1", "1", "0", "1"]],
+                "ts": str(T0 * 1000),
+            }],
+        }
+
+        exchange_ts = capture.validate_probe_payload(
+            "okx",
+            "orderbook",
+            payload,
+            "NEW-USDT-SWAP",
+            received_ts=T0,
+            **identity,
+        )
+        self.assertEqual(exchange_ts, float(T0))
+
+        altered = dict(identity)
+        altered["request_params"] = {
+            **identity["request_params"],
+            "instId": "OTHER-USDT-SWAP",
+        }
+        with self.assertRaisesRegex(capture.CaptureError, "identity|request|instrument"):
+            capture.validate_probe_payload(
+                "okx",
+                "orderbook",
+                payload,
+                "NEW-USDT-SWAP",
                 received_ts=T0,
                 **altered,
             )
@@ -371,6 +439,38 @@ class MultiTradePayloadTests(unittest.TestCase):
 
 
 class BoundRequestRecordingTests(TempHarness):
+    def test_gate_readiness_requires_timestamped_trades_and_orderbook_not_ticker(self):
+        self.short_window()
+        root = self.tmpdir()
+        directory = root / "offline-gate-readiness"
+        clock = FakeClock(T0 - config.CAPTURE_WINDOW_BEFORE_SEC)
+        gate_job = capture.CaptureJob(
+            capture_id="capture-v8-gate-readiness",
+            venue="gate",
+            symbol="TARGET_USDT",
+            t0_ts=T0,
+            t0_source_class="OFFICIAL_ANNOUNCEMENT",
+            t0_precision_sec=1,
+        )
+
+        with mock.patch.object(capture, "replay_readiness", wraps=capture.replay_readiness) as readiness:
+            capture._run_capture_core(
+                gate_job,
+                capture_dir=directory,
+                clock=clock.time,
+                monotonic=clock.monotonic,
+                sleep_fn=clock.sleep,
+                should_stop=lambda: False,
+                fetch=lambda probe, _symbol, _timeout: gate_payload(
+                    probe.probe, clock.time()
+                ),
+            )
+
+        self.assertEqual(
+            readiness.call_args.kwargs["required_probes"],
+            ("trades", "orderbook"),
+        )
+
     def test_sample_identity_is_the_exact_request_used_by_fetch(self):
         self.short_window()
         root = self.tmpdir()

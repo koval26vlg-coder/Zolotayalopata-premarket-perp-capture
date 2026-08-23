@@ -46,13 +46,26 @@ def _preflight(run_id: str) -> dict:
     }
 
 
-def _payloads(*, present: bool, with_t0: bool = True) -> dict:
+def _payloads(
+    *,
+    present: bool,
+    with_t0: bool = True,
+    bybit_status: str = "PreLaunch",
+    bybit_is_prelisting: bool = True,
+) -> dict:
     bybit_rows: list[dict] = []
     if present:
         row = {
             "symbol": v6.CONTRACT_ID,
-            "status": "PreLaunch",
-            "isPreListing": True,
+            "symbolType": "innovation",
+            "status": (
+                "PreLaunch"
+                if bybit_status == "PreLaunch" and bybit_is_prelisting
+                else "Trading"
+            ),
+            "isPreListing": bool(
+                bybit_status == "PreLaunch" and bybit_is_prelisting
+            ),
             "contractType": "LinearPerpetual",
         }
         if with_t0:
@@ -60,11 +73,25 @@ def _payloads(*, present: bool, with_t0: bool = True) -> dict:
         bybit_rows.append(row)
     return {
         "bybit": {
-            "retCode": 0,
-            "result": {
-                "category": "linear",
-                "list": bybit_rows,
-                "nextPageCursor": "",
+            "prelaunch": {
+                "retCode": 0,
+                "result": {
+                    "category": "linear",
+                    "list": [
+                        row for row in bybit_rows if row["status"] == "PreLaunch"
+                    ],
+                    "nextPageCursor": "",
+                },
+            },
+            "trading": {
+                "retCode": 0,
+                "result": {
+                    "category": "linear",
+                    "list": [
+                        row for row in bybit_rows if row["status"] == "Trading"
+                    ],
+                    "nextPageCursor": "",
+                },
             },
         },
         "okx": {
@@ -83,15 +110,29 @@ def _payloads(*, present: bool, with_t0: bool = True) -> dict:
             {
                 "name": "FILL_USDT",
                 "status": "trading",
+                "is_pre_market": False,
                 "create_time": 1_700_000_000,
             }
         ],
     }
 
 
-def _refresh(path: Path, *, run_id: str, present: bool, with_t0: bool = True) -> dict:
+def _refresh(
+    path: Path,
+    *,
+    run_id: str,
+    present: bool,
+    with_t0: bool = True,
+    bybit_status: str = "PreLaunch",
+    bybit_is_prelisting: bool = True,
+) -> dict:
     return registry.refresh(
-        payloads=_payloads(present=present, with_t0=with_t0),
+        payloads=_payloads(
+            present=present,
+            with_t0=with_t0,
+            bybit_status=bybit_status,
+            bybit_is_prelisting=bybit_is_prelisting,
+        ),
         path=path,
         observed_at_utc="2027-01-08T04:00:00Z",
         run_id=run_id,
@@ -110,7 +151,13 @@ class ExactLifecycleStateTests(unittest.TestCase):
             side_effect=lambda *, write_class, run_id: _preflight(run_id),
         ):
             first = _refresh(self.path, run_id="present-generation-0", present=True)
-            absent = _refresh(self.path, run_id="absent-generation-0", present=False)
+            terminal = _refresh(
+                self.path,
+                run_id="terminal-generation-0",
+                present=True,
+                bybit_status="Closed",
+                bybit_is_prelisting=False,
+            )
             reappeared = _refresh(
                 self.path,
                 run_id="reappeared-generation-1-no-t0",
@@ -122,14 +169,21 @@ class ExactLifecycleStateTests(unittest.TestCase):
         high_water_field = registry.LIFECYCLE_GENERATION_HIGH_WATER_FIELD
         self.assertEqual(first[active_field]["bybit"], {v6.CONTRACT_ID: 0})
         self.assertEqual(first[high_water_field]["bybit"], {v6.CONTRACT_ID: 0})
-        self.assertEqual(absent[active_field]["bybit"], {})
-        self.assertEqual(absent[high_water_field]["bybit"], {v6.CONTRACT_ID: 0})
+        self.assertEqual(terminal[active_field]["bybit"], {})
+        self.assertEqual(terminal[high_water_field]["bybit"], {v6.CONTRACT_ID: 0})
         self.assertEqual(reappeared[active_field]["bybit"], {v6.CONTRACT_ID: 1})
         self.assertEqual(reappeared[high_water_field]["bybit"], {v6.CONTRACT_ID: 1})
         self.assertEqual(reappeared[registry.ACTIVE_CONTRACTS_FIELD]["bybit"], [v6.CONTRACT_ID])
         # The relisted row has no usable launch timestamp, but its lifecycle still
-        # advances durably; no fabricated timestamp record is appended.
-        self.assertEqual(len(registry.load_registry(self.path)), 1)
+        # advances durably. The second row is the append-only terminal observation;
+        # no timestamp is fabricated for the relisted generation.
+        records = registry.load_registry(self.path)
+        self.assertEqual(len(records), 2)
+        self.assertEqual(records[-1]["timestamp_kind"], registry.TIMESTAMP_TRANSITION)
+        self.assertEqual(
+            records[-1]["lifecycle_phase"],
+            registry.LIFECYCLE_TRANSITIONED_STANDARD,
+        )
 
         receipts, problems = registry._load_mutation_receipt_chain(self.path)
         self.assertEqual(problems, [])
@@ -145,7 +199,13 @@ class ExactLifecycleStateTests(unittest.TestCase):
             side_effect=lambda *, write_class, run_id: _preflight(run_id),
         ):
             _refresh(self.path, run_id="old-present", present=True)
-            _refresh(self.path, run_id="old-absent", present=False)
+            _refresh(
+                self.path,
+                run_id="old-terminal",
+                present=True,
+                bybit_status="Closed",
+                bybit_is_prelisting=False,
+            )
             _refresh(
                 self.path,
                 run_id="new-present-no-t0",
@@ -430,6 +490,7 @@ class OkxTerminalLifecycleTests(unittest.TestCase):
                         "instType": "SWAP" if rule_type == "pre_market" else "FUTURES",
                         "ruleType": rule_type,
                         "state": state,
+                        "instCategory": "1",
                         "listTime": str((v6._t0_ts() - 8 * 24 * 3600) * 1000),
                         "preMktSwTime": str(v6._t0_ts() * 1000),
                     }
@@ -439,10 +500,41 @@ class OkxTerminalLifecycleTests(unittest.TestCase):
                 {
                     "name": "FILL_USDT",
                     "status": "trading",
+                    "is_pre_market": False,
                     "create_time": 1_700_000_000,
                 }
             ],
         }
+
+    def test_first_seen_xperp_cannot_allocate_a_local_generation(self) -> None:
+        path = Path(tempfile.mkdtemp()) / "registry.jsonl"
+        with mock.patch.object(
+            registry.risk_gate,
+            "preflight",
+            side_effect=lambda *, write_class, run_id: _preflight(run_id),
+        ):
+            result = registry.refresh(
+                payloads=self._payloads(rule_type="xperp", state="live"),
+                path=path,
+                observed_at_utc="2027-01-15T03:30:00Z",
+                run_id="okx-untracked-xperp-v17",
+            )
+
+        self.assertEqual(
+            result[registry.ACTIVE_LIFECYCLE_GENERATIONS_FIELD]["okx"], {}
+        )
+        self.assertEqual(
+            result[registry.LIFECYCLE_GENERATION_HIGH_WATER_FIELD]["okx"], {}
+        )
+        self.assertEqual(result["appended_entries"], 0)
+        self.assertFalse(
+            any(
+                item["premarket_contract_id"] == self.CONTRACT
+                for item in registry.materialize_episodes(
+                    registry.load_registry(path)
+                )
+            )
+        )
 
     def test_xperp_transition_is_terminal_and_cannot_remain_capture_active(self) -> None:
         path = Path(tempfile.mkdtemp()) / "registry.jsonl"
@@ -660,23 +752,40 @@ class SyntheticRefreshIsolationTests(unittest.TestCase):
 
 class ProductionUniverseCompletenessTests(unittest.TestCase):
     @staticmethod
-    def _venue_payload(url: str, *, count: int) -> object:
+    def _venue_payload(
+        url: str, *, count: int, request_params: dict[str, str] | None = None
+    ) -> object:
         if "bybit.com" in url:
+            status = str((request_params or {}).get("status") or "")
+            rows = []
+            if status == "Trading":
+                rows = [
+                    {
+                        "symbol": f"FILL{i}USDT",
+                        "baseCoin": f"FILL{i}",
+                        "contractType": "LinearPerpetual",
+                        "status": "Trading",
+                        "isPreListing": False,
+                        "launchTime": "1700000000000",
+                    }
+                    for i in range(count)
+                ]
             return {
                 "retCode": 0,
                 "result": {
                     "category": "linear",
-                    "list": [],
+                    "list": rows,
                     "nextPageCursor": "",
                 },
             }
         if "okx.com" in url:
+            inst_type = str((request_params or {}).get("instType") or "FUTURES")
             return {
                 "code": "0",
                 "data": [
                     {
                         "instId": f"FILL{i}-USDT-250101",
-                        "instType": "FUTURES",
+                        "instType": inst_type,
                         "ruleType": "normal",
                         "state": "live",
                         "listTime": "1700000000000",
@@ -688,6 +797,7 @@ class ProductionUniverseCompletenessTests(unittest.TestCase):
             {
                 "name": f"FILL{i}_USDT",
                 "status": "trading",
+                "is_pre_market": False,
                 "create_time": 1_700_000_000,
             }
             for i in range(count)
@@ -706,7 +816,9 @@ class ProductionUniverseCompletenessTests(unittest.TestCase):
         ), mock.patch.object(
             registry.public_http,
             "get_json",
-            side_effect=lambda url, **_kwargs: self._venue_payload(url, count=0),
+            side_effect=lambda url, **kwargs: self._venue_payload(
+                url, count=0, request_params=kwargs.get("params")
+            ),
         ), mock.patch.object(
             registry, "_writer_refresh_completed_at_utc", return_value="2027-01-08T04:00:00Z"
         ):
@@ -723,8 +835,12 @@ class ProductionUniverseCompletenessTests(unittest.TestCase):
         lock = root / "listing-events-v2.lock"
         phase = {"count": 10}
 
-        def fetch(url: str, **_kwargs):
-            return self._venue_payload(url, count=phase["count"])
+        def fetch(url: str, **kwargs):
+            return self._venue_payload(
+                url,
+                count=phase["count"],
+                request_params=kwargs.get("params"),
+            )
 
         with mock.patch.object(registry, "REGISTRY_PATH", production), mock.patch.object(
             registry, "REGISTRY_LOCK_PATH", lock
@@ -752,7 +868,7 @@ class ProductionUniverseCompletenessTests(unittest.TestCase):
             ):
                 registry.refresh(run_id="partial-universe-v9")
 
-        self.assertEqual(first[registry.RAW_UNIVERSE_ROWS_FIELD]["okx"], 10)
+        self.assertEqual(first[registry.RAW_UNIVERSE_ROWS_FIELD]["okx"], 20)
         self.assertEqual(
             production.read_bytes() if production.is_file() else None,
             registry_before,
@@ -767,6 +883,66 @@ class ProductionUniverseCompletenessTests(unittest.TestCase):
             ],
             receipts_before,
         )
+
+    def test_bybit_trading_surface_drop_cannot_commit(self) -> None:
+        root = Path(tempfile.mkdtemp())
+        production = root / "listing-events-v3.jsonl"
+        lock = root / "listing-events-v3.lock"
+        phase = {"bybit_trading_count": 10}
+
+        def fetch(url: str, **kwargs):
+            count = (
+                phase["bybit_trading_count"] if "bybit.com" in url else 10
+            )
+            return self._venue_payload(
+                url,
+                count=count,
+                request_params=kwargs.get("params"),
+            )
+
+        with mock.patch.object(registry, "REGISTRY_PATH", production), mock.patch.object(
+            registry, "REGISTRY_LOCK_PATH", lock
+        ), mock.patch.object(
+            registry.risk_gate,
+            "preflight",
+            side_effect=lambda *, write_class, run_id: _preflight(run_id),
+        ), mock.patch.object(
+            registry.public_http, "get_json", side_effect=fetch
+        ), mock.patch.object(
+            registry,
+            "_writer_refresh_completed_at_utc",
+            side_effect=["2027-01-08T04:00:00Z", "2027-01-08T04:01:00Z"],
+        ):
+            first = registry.refresh(run_id="bybit-full-surface-v17")
+            summary_before = production.with_suffix(".summary.json").read_bytes()
+            receipts_before = [
+                item.read_bytes()
+                for item in sorted(
+                    registry._mutation_receipt_dir(production).glob("*.json")
+                )
+            ]
+            phase["bybit_trading_count"] = 1
+            with self.assertRaisesRegex(
+                registry.EventRegistryError, r"bybit_linear_trading"
+            ):
+                registry.refresh(run_id="bybit-partial-surface-v17")
+
+        self.assertEqual(first[registry.RAW_UNIVERSE_ROWS_BY_SURFACE_FIELD][
+            "bybit_linear_trading"
+        ], 10)
+        self.assertEqual(
+            production.with_suffix(".summary.json").read_bytes(), summary_before
+        )
+        self.assertEqual(
+            [
+                item.read_bytes()
+                for item in sorted(
+                    registry._mutation_receipt_dir(production).glob("*.json")
+                )
+            ],
+            receipts_before,
+        )
+
     def test_offline_fixture_is_explicitly_non_production_evidence(self) -> None:
         path = Path(tempfile.mkdtemp()) / "fixture-registry.jsonl"
         with mock.patch.object(

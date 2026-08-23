@@ -210,6 +210,7 @@ def _build_attestation(
     attested_by: str,
     now_ts: int,
     enforce_min_lead: bool,
+    asset_identity: registry.AssetIdentity | None = None,
 ) -> dict[str, Any]:
     venue = _canonical_text(venue, field="venue", allow_internal_space=False)
     spot_symbol = _canonical_text(
@@ -276,6 +277,7 @@ def _build_attestation(
         precision_sec=ANNOUNCED_PRECISION_SEC,
         caveats=("OFFICIAL_T0_READ_BY_A_PERSON_FROM_ANNOUNCEMENT_PROSE",),
         lifecycle_generation=lifecycle_generation,
+        asset_identity=asset_identity,
     )
     # The evidence rides with the record, not in a commit message someone has to find.
     observation["attestation"] = {
@@ -306,6 +308,7 @@ def build_attestation(
     quoted_symbol_text: str,
     attested_by: str,
     now_ts: int,
+    asset_identity: registry.AssetIdentity | None = None,
 ) -> dict[str, Any]:
     """Build a new acceptance anchor and enforce usable causal lead."""
     return _build_attestation(
@@ -321,6 +324,7 @@ def build_attestation(
         attested_by=attested_by,
         now_ts=now_ts,
         enforce_min_lead=True,
+        asset_identity=asset_identity,
     )
 
 
@@ -354,6 +358,7 @@ def attest(
     ):
         raise AttestationError("PREFLIGHT_BLOCKED: attestation preflight is not verified")
 
+    prelock_now_ts = int(time.time())
     observation = _build_attestation(
         venue=venue,
         spot_symbol=spot_symbol,
@@ -365,7 +370,7 @@ def attest(
         quoted_time_text=quoted_time_text,
         quoted_symbol_text=quoted_symbol_text,
         attested_by=attested_by,
-        now_ts=int(time.time()),
+        now_ts=prelock_now_ts,
         enforce_min_lead=False,
     )
 
@@ -386,6 +391,19 @@ def attest(
             raise AttestationError(
                 "existing registry lineage is invalid: "
                 + "; ".join(existing_report["problems"])
+            )
+        active_generations, lifecycle_high_water = (
+            registry._load_lifecycle_generation_state(
+                target.with_suffix(".summary.json"),
+                existing=existing,
+            )
+        )
+        active_generation = active_generations.get(venue, {}).get(
+            premarket_contract_id
+        )
+        if active_generation is None or lifecycle_generation != active_generation:
+            raise AttestationError(
+                "new official attestation must target the current active lifecycle generation"
             )
         matching_metadata = [
             entry
@@ -408,6 +426,50 @@ def attest(
             raise AttestationError(
                 "official t0 has no matching metadata lifecycle episode"
             )
+        known_metadata_identities = {
+            (
+                str(entry.get("asset_class") or registry.ASSET_CLASS_UNCLASSIFIED),
+                str(entry.get("issuer_namespace") or ""),
+                str(entry.get("issuer_id") or ""),
+            )
+            for entry in matching_metadata
+            if str(entry.get("asset_class") or registry.ASSET_CLASS_UNCLASSIFIED)
+            != registry.ASSET_CLASS_UNCLASSIFIED
+        }
+        if len(known_metadata_identities) != 1:
+            raise AttestationError(
+                "official t0 requires one known metadata asset identity; legacy or "
+                "conflicting ticker-only identity is descriptive-only"
+            )
+        metadata_asset_class, metadata_namespace, metadata_issuer_id = next(
+            iter(known_metadata_identities)
+        )
+        if metadata_asset_class != registry.ASSET_CLASS_CRYPTO_TOKEN:
+            raise AttestationError(
+                "official spot t0 for the crypto listing track cannot bind a pre-IPO "
+                "equity or other tradfi perpetual"
+            )
+        asset_identity = registry.AssetIdentity(
+            asset_class=metadata_asset_class,
+            issuer_namespace=metadata_namespace,
+            issuer_id=metadata_issuer_id,
+            evidence_class=registry.IDENTITY_EVIDENCE_OFFICIAL_ATTESTATION,
+        )
+        observation = _build_attestation(
+            venue=venue,
+            spot_symbol=spot_symbol,
+            premarket_contract_id=premarket_contract_id,
+            lifecycle_generation=lifecycle_generation,
+            announced_utc=announced_utc,
+            announcement_url=announcement_url,
+            quoted_sentence=quoted_sentence,
+            quoted_time_text=quoted_time_text,
+            quoted_symbol_text=quoted_symbol_text,
+            attested_by=attested_by,
+            now_ts=prelock_now_ts,
+            enforce_min_lead=False,
+            asset_identity=asset_identity,
+        )
         mapped_spot_symbols = {
             str(entry.get("spot_symbol") or "").strip()
             for entry in existing
@@ -421,12 +483,6 @@ def attest(
             raise AttestationError(
                 "spot symbol conflicts with the existing episode mapping"
             )
-        active_generations, lifecycle_high_water = (
-            registry._load_lifecycle_generation_state(
-                target.with_suffix(".summary.json"),
-                existing=existing,
-            )
-        )
         last_complete_metadata_refresh_received_at = (
             registry._summary_complete_metadata_refresh_received_at(
                 target.with_suffix(".summary.json")
@@ -437,17 +493,29 @@ def attest(
         )
         if raw_universe_rows is None:
             raise AttestationError("raw universe row-count anchor is missing")
+        try:
+            previous_summary = json.loads(
+                target.with_suffix(".summary.json").read_text(encoding="utf-8")
+            )
+        except (OSError, ValueError) as exc:
+            raise AttestationError(f"registry summary is unreadable: {exc}") from exc
+        surface_authority_fields = {
+            field: previous_summary.get(field)
+            for field in (
+                registry.RAW_UNIVERSE_ROWS_BY_SURFACE_FIELD,
+                registry.RELEVANT_IDENTITY_IDS_BY_SURFACE_FIELD,
+                registry.RELEVANT_IDENTITY_HASHES_BY_SURFACE_FIELD,
+                registry.EXPLICIT_TERMINAL_IDS_BY_SURFACE_FIELD,
+            )
+        }
+        if any(value is None for value in surface_authority_fields.values()):
+            raise AttestationError(
+                "relevant identity surface authority is missing from registry summary"
+            )
         active_contracts = {
             venue_name: sorted(generations)
             for venue_name, generations in sorted(active_generations.items())
         }
-        active_generation = active_generations.get(venue, {}).get(
-            premarket_contract_id
-        )
-        if active_generation is None or lifecycle_generation != active_generation:
-            raise AttestationError(
-                "new official attestation must target the current active lifecycle generation"
-            )
         appended = registry.merge_observations(existing, [observation])
         if not appended:
             official_entry = next(
@@ -503,6 +571,7 @@ def attest(
             attested_by=attested_by,
             now_ts=writer_now_ts,
             enforce_min_lead=True,
+            asset_identity=asset_identity,
         )
         appended = registry.merge_observations(existing, [observation])
         if not appended:
@@ -566,6 +635,7 @@ def attest(
                     last_complete_metadata_refresh_received_at
                 ),
                 registry.RAW_UNIVERSE_ROWS_FIELD: raw_universe_rows,
+                **surface_authority_fields,
                 "appended_entries": written,
                 "registry": report,
             }

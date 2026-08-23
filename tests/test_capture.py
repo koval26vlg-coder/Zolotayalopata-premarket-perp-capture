@@ -510,6 +510,8 @@ class CaptureEligibilityTests(CaptureHarness):
         "event_id": "bybit:NEWUSDT",
         "venue": "bybit",
         "symbol": "NEWUSDT",
+        "premarket_contract_id": "NEWUSDT",
+        "spot_symbol": "NEWUSDT",
         "official_spot_t0": T0,
         "t0_source_class": "OFFICIAL_ANNOUNCEMENT",
         "t0_precision_sec": 1,
@@ -519,7 +521,6 @@ class CaptureEligibilityTests(CaptureHarness):
         "official_source_url": "https://announcements.bybit.com/en/article/new-listing",
         "official_source_identity": "human_attestation:test",
         "registry_sha256": "b" * 64,
-        "registry_summary_sha256": "c" * 64,
         "registry_tail_record_hash": "d" * 64,
         "mutation_receipt_seq": 0,
         "mutation_receipt_hash": "1" * 64,
@@ -527,6 +528,10 @@ class CaptureEligibilityTests(CaptureHarness):
         "registry_authority_state_hash": "3" * 64,
         "plan_id": "plan-test",
         "plan_hash": "e" * 64,
+        "asset_class": capture.registry.ASSET_CLASS_CRYPTO_TOKEN,
+        "issuer_namespace": "crypto_asset",
+        "issuer_id": "NEW",
+        "asset_identity_hash": "f" * 64,
     }
 
     def test_metadata_derived_events_are_refused_as_capture_anchors(self):

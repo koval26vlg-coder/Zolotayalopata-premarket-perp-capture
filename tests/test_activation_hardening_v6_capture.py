@@ -123,11 +123,16 @@ def dense_success_samples() -> list[dict]:
 
 LINEAGE = {
     "episode_id": EVENT_ID,
+    "venue": "bybit",
+    "premarket_contract_id": "NEWUSDT",
+    "spot_symbol": "NEWUSDT",
+    "official_spot_t0": T0,
+    "t0_source_class": SOURCE_CLASS,
+    "t0_precision_sec": 1,
     "official_record_hash": "a" * 64,
     "official_source_url": "https://announcements.bybit.com/en/article/newusdt-listing",
     "official_source_identity": "announcements.bybit.com",
     "registry_sha256": "b" * 64,
-    "registry_summary_sha256": "c" * 64,
     "registry_tail_record_hash": "d" * 64,
     "mutation_receipt_seq": 0,
     "mutation_receipt_hash": "1" * 64,
@@ -135,6 +140,10 @@ LINEAGE = {
     "registry_authority_state_hash": "3" * 64,
     "plan_id": "premarket_perp_capture_20260823_v6",
     "plan_hash": "e" * 64,
+    "asset_class": capture.registry.ASSET_CLASS_CRYPTO_TOKEN,
+    "issuer_namespace": "crypto_asset",
+    "issuer_id": "NEW",
+    "asset_identity_hash": "f" * 64,
 }
 
 
@@ -243,6 +252,8 @@ class ReplayEvidenceTests(CaptureHarness):
             dense_success_samples(), t0_ts=T0, required_probes=capture.PROBES
         )
         self.assertTrue(verdict["ready"], verdict["notes"])
+        self.assertTrue(verdict["entry_available"])
+        self.assertEqual(verdict["required_entry_lead_sec"], 60)
         self.assertEqual(verdict["required_exit_offsets_sec"], [0, 5, 15, 60])
         self.assertEqual(verdict["available_exit_offsets_sec"], [0, 5, 15, 60])
         self.assertEqual(
@@ -259,6 +270,25 @@ class ReplayEvidenceTests(CaptureHarness):
         )
         self.assertFalse(verdict["ready"])
         self.assertNotIn(15, verdict["available_exit_offsets_sec"])
+
+    def test_missing_fixed_entry_target_blocks_readiness(self):
+        records = [
+            row
+            for row in dense_success_samples()
+            if row["offset_sec"] != -config.PRIMARY_ENTRY_LEAD_SEC
+        ]
+        records.extend(
+            sample(probe, -config.PRIMARY_ENTRY_LEAD_SEC - 1)
+            for probe in capture.PROBES
+        )
+
+        verdict = capture.replay_readiness(
+            records, t0_ts=T0, required_probes=capture.PROBES
+        )
+
+        self.assertFalse(verdict["ready"])
+        self.assertFalse(verdict["entry_available"])
+        self.assertTrue(any("entry" in note for note in verdict["notes"]))
 
     def test_noncausal_received_timestamps_cannot_support_readiness(self):
         records = [
@@ -291,8 +321,6 @@ class CaptureLineageTests(CaptureHarness):
         self.assertEqual(receipt["episode_id"], EVENT_ID)
         self.assertEqual(receipt["official_record_hash"], LINEAGE["official_record_hash"])
         self.assertEqual(receipt["registry_sha256"], LINEAGE["registry_sha256"])
-        self.assertEqual(receipt["registry_summary_sha256"],
-                         LINEAGE["registry_summary_sha256"])
         self.assertEqual(receipt["plan_id"], LINEAGE["plan_id"])
         self.assertEqual(receipt["plan_hash"], LINEAGE["plan_hash"])
 
@@ -473,6 +501,7 @@ class CapabilityTokenBindingTests(unittest.TestCase):
             {
                 "AWAIT_CAPTURE_IMPLEMENTATION_AUDIT_NO_CAPTURE",
                 "CAPTURE_IMPLEMENTATION_AUDIT_GREEN_NO_CAPTURE",
+                risk_gate.REGISTRY_QUARANTINE_PLAN_STATUS,
             },
         )
         forged = self.verified_preflight()

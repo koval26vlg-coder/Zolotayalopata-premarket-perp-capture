@@ -34,11 +34,15 @@ PLAN_HASH = "e" * 64
 
 LINEAGE = {
     "episode_id": EVENT_ID,
+    "venue": "bybit",
+    "premarket_contract_id": "NEWUSDT",
+    "spot_symbol": "NEWUSDT",
+    "official_spot_t0": T0,
+    "t0_source_class": SOURCE_CLASS,
     "official_record_hash": "a" * 64,
     "official_source_url": "https://announcements.bybit.com/en/article/newusdt-listing",
     "official_source_identity": "human_attestation:reviewer",
     "registry_sha256": "b" * 64,
-    "registry_summary_sha256": "c" * 64,
     "registry_tail_record_hash": "d" * 64,
     "mutation_receipt_seq": 0,
     "mutation_receipt_hash": "1" * 64,
@@ -46,6 +50,10 @@ LINEAGE = {
     "registry_authority_state_hash": "3" * 64,
     "plan_id": PLAN_ID,
     "plan_hash": PLAN_HASH,
+    "asset_class": capture.registry.ASSET_CLASS_CRYPTO_TOKEN,
+    "issuer_namespace": "crypto_asset",
+    "issuer_id": "NEW",
+    "asset_identity_hash": "f" * 64,
 }
 
 
@@ -68,6 +76,7 @@ class FakeClock:
 
 def official_event(*, precision_sec: int = 1) -> dict:
     return {
+        **LINEAGE,
         "episode_id": EVENT_ID,
         "event_id": EVENT_ID,
         "venue": "bybit",
@@ -78,7 +87,6 @@ def official_event(*, precision_sec: int = 1) -> dict:
         "caveats": [],
         "capture_eligible": True,
         "evidence_use": "ACCEPTANCE_ANCHOR",
-        **LINEAGE,
     }
 
 

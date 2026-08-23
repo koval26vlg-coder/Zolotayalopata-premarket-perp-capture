@@ -24,7 +24,9 @@
 - вывод и переводы средств;
 - решения ACCEPT/REJECT по захваченным данным.
 
-`execution_replay` — офлайн-симуляция по уже лежащим на диске публичным данным.
+`execution_replay` — офлайн-анализ уже лежащих на диске публичных данных. Текущий
+replay v2 публикует только gross BBO markout и не моделирует fill, очередь, комиссии,
+funding или net PnL.
 Полный контракт: `RISK_CONTRACT` в `src/project_config.py`, он же записан в PlanOnly.
 
 ## Risk gate
@@ -41,9 +43,10 @@
 - для `market_data_capture`: общий market-data writer claim занят либо собственный
   предыдущий capture не завершён.
 
-Только `market_data_capture` может получить одноразовый capture-токен. Metadata refresh
-и human official attestation имеют отдельные действия и не заимствуют capture-authority.
-Capture без токена невозможен — флага «я подтверждаю» здесь нет по замыслу.
+Только `market_data_capture` может получить одноразовый capture-токен. Metadata refresh,
+human official attestation и локальная registry quarantine имеют отдельные действия и
+не заимствуют capture-authority. Capture без токена невозможен — флага «я подтверждаю»
+здесь нет по замыслу.
 
 ## Общий writer
 
@@ -78,10 +81,22 @@ Workspace общий с `ZolotyayLopata`. Этот проект — второй
   проверяет план и capability scan перед первой записью.
 - Исключения capability scan объявляются построчно (`# risk-scan: allow <pattern>`),
   считаются и видны в выводе. Молчаливое исключение файла запрещено.
+- Production registry v3 хранит явный `asset_class` и issuer identity. Только
+  `CRYPTO_TOKEN` может стать capture-кандидатом; equity, tokenized equity, другой
+  TradFi и неразрешённая идентичность остаются `DESCRIPTIVE_ONLY`.
+- Bybit Linear PreLaunch, Bybit Linear Trading, OKX SWAP, OKX FUTURES и Gate USDT
+  Futures — пять отдельных discovery-поверхностей. Полнота и relevant identity set
+  фиксируются по каждой поверхности; Bybit Trading используется для явного
+  cross-surface transition уже отслеживаемого PreLaunch-контракта.
+- Replay production evidence проверяется по историческому префиксу реестра и точной
+  mutation receipt, а не по текущему head.
+- Текущий официальный producer фиксирует `t0` с точностью 60 секунд. Поэтому данные
+  этого поколения могут быть только descriptive для секундной гипотезы; readiness
+  требует отдельного producer с точностью не хуже одной секунды и нового PlanOnly.
 
 ## Статус
 
 Capture ещё **не запускался**. PlanOnly в статусе
-`CAPTURE_IMPLEMENTATION_AUDIT_GREEN_NO_CAPTURE`; активный immutable план — v9.
+`REGISTRY_QUARANTINE_HARDENED_NO_CAPTURE`; активный immutable план — v17.
 `market_data_capture` этим статусом не авторизован. Первый capture требует отдельного
 нового PlanOnly/checkpoint и отдельного разрешения пользователя на видимый запуск.

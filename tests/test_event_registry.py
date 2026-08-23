@@ -147,16 +147,14 @@ class NormalisationTests(unittest.TestCase):
         self.assertEqual(self._one("okx", okx_payload())["t0_ts"], T0)
 
     def test_gate_seconds_stay_seconds(self) -> None:
-        self.assertEqual(self._one("gate", gate_payload())["t0_ts"], T0)
+        self.assertEqual(self._one("gate", gate_payload())["t0_ts"], T0 - 7200)
 
-    def test_gate_reads_the_launch_field_rather_than_the_creation_field(self) -> None:
-        """The caveat existed because create_time is not trading start. Gate publishes
-        launch_time beside it, and the two differ on 419 of 935 contracts."""
+    def test_gate_records_creation_without_claiming_a_trading_launch(self) -> None:
+        """Gate documents launch_time as expiry; create_time is descriptive only."""
         event = self._one("gate", gate_payload())
-        self.assertEqual(event["t0_ts"], T0)          # launch_time
-        self.assertNotEqual(event["t0_ts"], T0 - 7200)  # not create_time
-        self.assertEqual(event["t0_source_field"], "launch_time")
-        self.assertNotIn("CONTRACT_CREATION_NOT_TRADING_START", event["caveats"])
+        self.assertEqual(event["t0_ts"], T0 - 7200)
+        self.assertEqual(event["t0_source_field"], "create_time")
+        self.assertIn("CONTRACT_CREATION_NOT_TRADING_START", event["caveats"])
 
     def test_every_event_declares_where_its_t0_came_from(self) -> None:
         for venue, payload in (("bybit", bybit_payload()), ("okx", okx_payload()),
@@ -192,9 +190,9 @@ class PaginationTests(unittest.TestCase):
 
     def test_the_cursor_is_followed_to_the_end(self) -> None:
         pages = [
-            {"retCode": 0, "result": {"list": [{"symbol": "A", "launchTime": str(T0 * 1000)}],
+            {"retCode": 0, "result": {"category": "linear", "list": [{"symbol": "A", "launchTime": str(T0 * 1000)}],
                                       "nextPageCursor": "p2"}},
-            {"retCode": 0, "result": {"list": [{"symbol": "B", "launchTime": str(T0 * 1000)}],
+            {"retCode": 0, "result": {"category": "linear", "list": [{"symbol": "B", "launchTime": str(T0 * 1000)}],
                                       "nextPageCursor": ""}},
         ]
         queue = list(pages)
@@ -209,7 +207,7 @@ class PaginationTests(unittest.TestCase):
         def fetch(adapter, params):
             seen.append(dict(params))
             cursor = "" if len(seen) > 1 else "p2"
-            return {"retCode": 0, "result": {"list": [], "nextPageCursor": cursor}}
+            return {"retCode": 0, "result": {"category": "linear", "list": [], "nextPageCursor": cursor}}
 
         registry.fetch_venue(self._adapter("bybit"), fetch)
         self.assertNotIn("cursor", seen[0])
@@ -217,9 +215,46 @@ class PaginationTests(unittest.TestCase):
 
     def test_repeated_cursor_is_rejected_not_swallowed(self) -> None:
         adapter = self._adapter("bybit")
-        endless = {"retCode": 0, "result": {"list": [], "nextPageCursor": "always"}}
+        endless = {"retCode": 0, "result": {"category": "linear", "list": [], "nextPageCursor": "always"}}
         with self.assertRaisesRegex(registry.EventRegistryError, "repeated pagination cursor"):
             registry.fetch_venue(adapter, lambda a, p: endless)
+
+    def test_missing_or_non_string_cursor_is_not_treated_as_end_of_pagination(self) -> None:
+        adapter = self._adapter("bybit")
+        for cursor_payload in ({}, {"nextPageCursor": None}, {"nextPageCursor": 0}):
+            with self.subTest(cursor_payload=cursor_payload):
+                payload = {
+                    "retCode": 0,
+                    "result": {
+                        "category": "linear",
+                        "list": [
+                            {"symbol": f"ROW{i}", "launchTime": str(T0 * 1000)}
+                            for i in range(500)
+                        ],
+                        **cursor_payload,
+                    },
+                }
+                with self.assertRaisesRegex(
+                    registry.EventRegistryError, "string nextPageCursor"
+                ):
+                    registry.fetch_venue(adapter, lambda a, p, value=payload: value)
+
+    def test_cursor_must_be_canonical_without_padding(self) -> None:
+        adapter = self._adapter("bybit")
+        for cursor in (" ", " next-page", "next-page "):
+            with self.subTest(cursor=cursor):
+                payload = {
+                    "retCode": 0,
+                    "result": {
+                        "category": "linear",
+                        "list": [],
+                        "nextPageCursor": cursor,
+                    },
+                }
+                with self.assertRaisesRegex(
+                    registry.EventRegistryError, "canonical nextPageCursor"
+                ):
+                    registry.fetch_venue(adapter, lambda a, p, value=payload: value)
 
     def test_a_venue_without_a_cursor_stops_after_one_page(self) -> None:
         result = registry.fetch_venue(self._adapter("gate"), lambda a, p: gate_payload())
@@ -258,7 +293,9 @@ class PaginationTests(unittest.TestCase):
             )
         self.assertTrue(summary["complete"])
         self.assertEqual(summary["truncated_venues"], [])
-        self.assertEqual(summary["pages_by_venue"]["bybit"], 2)
+        # Two paged PreLaunch responses plus the separately required Trading
+        # lifecycle surface.
+        self.assertEqual(summary["pages_by_venue"]["bybit"], 3)
         self.assertEqual(summary["observed_by_venue"]["bybit"], 2)
 
 
@@ -357,6 +394,12 @@ class CaptureSelectionTests(unittest.TestCase):
             source_identity="bybit:metadata",
             source_url="https://api.bybit.com/v5/market/instruments-info",
             received_at_utc="2026-08-22T00:00:00Z",
+            asset_identity=registry.AssetIdentity(
+                asset_class=registry.ASSET_CLASS_CRYPTO_TOKEN,
+                issuer_namespace="crypto_asset",
+                issuer_id="B",
+                evidence_class=registry.IDENTITY_EVIDENCE_VENUE_EXPLICIT_METADATA,
+            ),
         )
         official = registry.make_timestamp_observation(
             episode_id=episode, venue="bybit", premarket_contract_id="B",
@@ -368,6 +411,12 @@ class CaptureSelectionTests(unittest.TestCase):
             received_at_utc="2026-08-22T00:00:00Z",
             precision_sec=60,
             caveats=("OFFICIAL_T0_READ_BY_A_PERSON_FROM_ANNOUNCEMENT_PROSE",),
+            asset_identity=registry.AssetIdentity(
+                asset_class=registry.ASSET_CLASS_CRYPTO_TOKEN,
+                issuer_namespace="crypto_asset",
+                issuer_id="B",
+                evidence_class=registry.IDENTITY_EVIDENCE_OFFICIAL_ATTESTATION,
+            ),
         )
         official["attestation"] = {
             "schema": config.OFFICIAL_ATTESTATION_SCHEMA,

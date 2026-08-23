@@ -27,6 +27,7 @@ from __future__ import annotations
 import hashlib
 import json
 import os
+import re
 import secrets
 import shutil
 import socket
@@ -59,12 +60,17 @@ OFFLINE_DESCRIPTIVE_ACTION = (
 OFFICIAL_ATTESTATION_ACTION = (
     "append one human-verified official spot t0 after attestation preflight"
 )
+REGISTRY_QUARANTINE_ACTION = (
+    "quarantine one failed registry generation after exact recovery preflight"
+)
 CAPTURE_ACTION = "capture one official event in a bounded visible terminal"
 WRITE_CLASS_ACTION = {
     "metadata_registry": METADATA_REGISTRY_ACTION,
     "official_attestation": OFFICIAL_ATTESTATION_ACTION,
+    "registry_quarantine": REGISTRY_QUARANTINE_ACTION,
     "market_data_capture": CAPTURE_ACTION,
 }
+REGISTRY_QUARANTINE_PLAN_STATUS = "REGISTRY_QUARANTINE_HARDENED_NO_CAPTURE"
 PLAN_WRITE_AUTHORIZATION: dict[str, dict[str, frozenset[str]]] = {
     "AWAIT_CAPTURE_IMPLEMENTATION_AUDIT_NO_CAPTURE": {
         "authorized_actions": frozenset({
@@ -81,6 +87,19 @@ PLAN_WRITE_AUTHORIZATION: dict[str, dict[str, frozenset[str]]] = {
             OFFICIAL_ATTESTATION_ACTION,
         }),
         "write_classes": frozenset({"metadata_registry", "official_attestation"}),
+    },
+    REGISTRY_QUARANTINE_PLAN_STATUS: {
+        "authorized_actions": frozenset({
+            METADATA_REGISTRY_ACTION,
+            OFFLINE_DESCRIPTIVE_ACTION,
+            OFFICIAL_ATTESTATION_ACTION,
+            REGISTRY_QUARANTINE_ACTION,
+        }),
+        "write_classes": frozenset({
+            "metadata_registry",
+            "official_attestation",
+            "registry_quarantine",
+        }),
     },
 }
 
@@ -109,6 +128,9 @@ def resolved_path_bindings() -> dict[str, str]:
             config.SHARED_WRITER_CLAIM_PATH.resolve(strict=False)
         ),
         "capture_root": str(config.CAPTURE_ROOT.resolve(strict=False)),
+        "registry_quarantine_root": str(
+            config.REGISTRY_QUARANTINE_ROOT.resolve(strict=False)
+        ),
     }
 
 
@@ -250,6 +272,100 @@ def load_and_verify_plan(plan_path: Path | None = None) -> dict[str, Any]:
     # perfectly valid. The binding is an operational precondition of a WRITE, so it is
     # checked in the write preflight below, where those paths are about to be used.
     return plan
+
+
+def verify_plan_identity(
+    *,
+    plan_id: str,
+    plan_hash: str,
+    implementation: Mapping[str, Any],
+    required_write_class: str | None = None,
+) -> dict[str, Any]:
+    """Verify evidence against one exact active or immutable retired PlanOnly.
+
+    Identity alone is not evidence-origin authority. A capture can be production
+    evidence only if the selected historical Plan itself authorized the capture write
+    class when the bytes were created. Current write permission is deliberately not
+    consulted for retired evidence.
+    """
+    _require(bool(str(plan_id).strip()), "plan identity carries no plan_id")
+    _require(
+        bool(re.fullmatch(r"[0-9a-f]{64}", str(plan_hash or ""))),
+        "plan identity carries an invalid plan_hash",
+    )
+    _require(
+        isinstance(implementation, Mapping),
+        "plan identity implementation binding is not an object",
+    )
+
+    # This also verifies every retired file and the current runtime bindings. Replay
+    # evidence may be historical, but it must not run under an unbound current runtime.
+    active_plan = load_and_verify_plan()
+    active = (
+        active_plan.get("plan_id") == plan_id
+        and active_plan.get("plan_hash") == plan_hash
+    )
+    selected_plan: Mapping[str, Any] | None = active_plan if active else None
+    selected_path: str | None = str(config.PLAN_PATH)
+    if not active:
+        selected_path = None
+        for retired in trust_root.RETIRED_PLANS:
+            if (
+                retired.get("plan_id") == plan_id
+                and retired.get("plan_hash") == plan_hash
+            ):
+                relative = str(retired.get("path") or "")
+                path = config.PROJECT_ROOT / relative
+                try:
+                    candidate = json.loads(path.read_text(encoding="utf-8"))
+                except (OSError, ValueError) as exc:
+                    raise RiskGateError(
+                        f"retired plan identity is unreadable: {relative}: {exc}"
+                    ) from exc
+                _require(isinstance(candidate, Mapping), "retired plan root is not an object")
+                selected_plan = candidate
+                selected_path = relative
+                break
+    _require(selected_plan is not None, "plan identity is neither active nor immutable retired")
+    _require(
+        selected_plan.get("implementation") == dict(implementation),
+        "plan identity implementation binding mismatch",
+    )
+    evidence_origin: Mapping[str, Any] | None = None
+    evidence_origin_capture_root: str | None = None
+    if required_write_class is not None:
+        evidence_origin = verify_plan_write_authorization(
+            selected_plan, required_write_class
+        )
+        bindings = selected_plan.get("resolved_path_bindings")
+        _require(
+            isinstance(bindings, Mapping),
+            "selected PlanOnly has no resolved path bindings",
+        )
+        capture_root_raw = str(bindings.get("capture_root") or "")
+        capture_root = Path(capture_root_raw)
+        _require(
+            config.path_is_absolute(capture_root_raw),
+            "selected PlanOnly capture root is missing or not absolute",
+        )
+        evidence_origin_capture_root = str(capture_root.resolve(strict=False))
+    return {
+        "schema": "premarket_perp_plan_identity_verification_v1",
+        "ok": True,
+        "status": "PLAN_IDENTITY_OK",
+        "plan_id": plan_id,
+        "plan_hash": plan_hash,
+        "active": active,
+        "plan_path": selected_path,
+        "implementation_hash": canonical_hash(dict(implementation)),
+        "evidence_origin_capture_authorized": (
+            evidence_origin is not None
+            and required_write_class == "market_data_capture"
+        ),
+        "evidence_origin_write_class": required_write_class,
+        "evidence_origin_plan_status": selected_plan.get("status"),
+        "evidence_origin_capture_root": evidence_origin_capture_root,
+    }
 
 
 def run_capability_scan() -> dict[str, Any]:
@@ -737,6 +853,8 @@ def preflight(
         decision["decision"] = "ALLOW_METADATA_REGISTRY"
     if decision["ok"] and write_class == "official_attestation":
         decision["decision"] = "ALLOW_OFFICIAL_ATTESTATION"
+    if decision["ok"] and write_class == "registry_quarantine":
+        decision["decision"] = "ALLOW_REGISTRY_QUARANTINE"
     if decision["ok"] and policy.get("capture_token"):
         token = mint_capture_token(
             run_id,
@@ -759,6 +877,7 @@ def resolved_config() -> dict[str, Any]:
         "run_record_path": config.RUN_RECORD_PATH,
         "capture_token_path": config.CAPTURE_TOKEN_PATH,
         "stop_request_path": config.STOP_REQUEST_PATH,
+        "registry_quarantine_root": config.REGISTRY_QUARANTINE_ROOT,
     }
     return {name: str(path.resolve(strict=False)) for name, path in paths.items()}
 

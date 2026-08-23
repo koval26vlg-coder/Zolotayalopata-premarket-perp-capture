@@ -1,234 +1,208 @@
 # ZolotyayLopata Pre-market Perpetual Capture
 
-Research-only захват публичных market-data вокруг листинга бессрочных фьючерсов на
-Bybit, OKX и Gate. Цель — переиграть офлайн гипотезу «вход до листинга, выход на
-`t0`/+5с/+15с/+60с».
+Research-only контур для публичных pre-market perpetual данных Bybit, OKX и Gate.
+Гипотеза: LONG до официального spot-листинга и описательные выходы на
+`t0`/`+5s`/`+15s`/`+60s`.
 
-Проект **наблюдает** рынок с плечом и **никогда не берёт** плечо. Отдельный
-репозиторий существует именно ради этой границы; она проверяется механически. См.
-`AGENTS.md` и `docs/decisions/001-separate-repository-and-risk-gate.md`.
+Проект наблюдает рынок с плечом, но никогда не берёт плечо: private API, ключи,
+подпись запросов, ордера, margin, real capital и переводы запрещены. Capture не
+запускался и активным PlanOnly v17 не разрешён.
 
-Capture ещё не запускался и текущим PlanOnly не разрешён.
+## Состояние v17
 
-## Что уже есть
+- immutable PlanOnly: `premarket_perp_capture_20260822_v17`;
+- status: `REGISTRY_QUARANTINE_HARDENED_NO_CAPTURE`;
+- разрешены только metadata registry, human official attestation и локальная
+  fail-closed registry quarantine;
+- `market_data_capture` отсутствует в authorization matrix;
+- replay descriptive-only и не поддерживает ACCEPT/REJECT стратегии.
 
-| | |
+Активные v17 identity: plan hash
+`56cc373e25d1710e2fbd6fe5ac039ecb1065dfb1fbe0ead53757ae6342fb731b`, file
+SHA-256 `748f116c785aa5a9cc694be394eb355e554eceef7cd44a32d746cf673c406209`.
+Они закреплены во внешнем trust root `src/frozen_plan_bindings.py`; v16 сохранён
+byte-identical как непосредственный предшественник и никогда не был активирован для
+capture.
+
+## Компоненты
+
+| Файл | Назначение |
 |---|---|
-| `src/project_config.py` | пути, общий контроль, `ALLOWED_ENDPOINTS`, `RISK_CONTRACT` |
-| `src/capability_scan.py` | статический запрет ордеров, подписи, ключей, смены плеча и URL вне allow-list |
-| `src/risk_gate.py` | preflight: план, capability scan, общий gate и claim, свой run, одноразовый токен |
-| `src/plan_builder.py` | генератор immutable PlanOnly |
-| `src/frozen_plan_bindings.py` | внешний trust-root вне цикла «план пинит runtime → runtime проверяет план» |
-| `docs/risk/forbidden-capabilities.txt` | словарь запрещённых возможностей, связан планом |
-| `src/public_http.py` | один HTTP-слой; проверяет allow-list **до** открытия соединения |
-| `src/event_registry.py` | эпизоды листинга: именованные величины t0, классы источника, ревизии, lock |
-| `src/capture.py` | коллектор: опрос вокруг t0, манифест, квитанция |
-| `src/official_attestation.py` | официальный `t0`, засвидетельствованный человеком, с цитатой и источником |
-| `src/replay.py` | офлайновый replay: интервалы цен и доходностей по данным на диске |
-| `src/global_market_writer_claim.py` | общий эксклюзивный claim писателя рыночных данных |
+| `src/project_config.py` | risk contract, paths, endpoint allow-list, write classes |
+| `src/risk_gate.py` | Plan/SHA/capability/gate preflight и capture token boundary |
+| `src/public_http.py` | HTTPS allow-list до DNS/connect, без redirects и скрытых retries |
+| `src/event_registry.py` | append-only registry v3, asset identity, lifecycle и lineage |
+| `src/official_attestation.py` | human-attested official spot `t0` с дословным evidence |
+| `src/registry_quarantine.py` | локальная CAS-bound quarantine повреждённого поколения |
+| `src/capture.py` | bounded collector implementation; активным планом не авторизован |
+| `src/replay.py` | строгий offline loader и causal gross BBO markout |
+| `src/frozen_plan_bindings.py` | внешний trust root PlanOnly lineage |
 
-## Replay
+## Registry v3
 
-Чистый офлайновый счёт по данным на диске: ни сети, ни claim, ни одного из классов записи.
+Раздельно хранятся:
 
-Главное решение: **между двумя выборками цена не наблюдалась**. Горизонт, попавший между
-снимками, имеет диапазон допустимых цен, а не значение — поэтому каждая цена и каждая
-доходность здесь интервал, и рядом стоит породивший его зазор.
-
-Выход считается по биду, вход по аску, только вершина стакана, видимый объём печатается
-рядом. Средняя цена — не та цена, по которой кто-либо торгует.
-
-```powershell
-$env:PYTHONPATH="src"
-& $py srceplay.py --list
-& $py srceplay.py --replay <каталог capture> --horizons 0,5,15,60
-```
-
-Что это меняет, на одном рынке при двух частотах опроса:
-
-| горизонт | каденция 0,5 с | каденция 20 с |
-|---|---|---|
-| `t0` | −0,10% .. +1,46% | −0,10% .. +22,88% |
-| `+5 с` | +15,50% .. +17,07% | −0,10% .. +22,88% |
-| `+15 с` | +23,78% .. +23,88% | −0,10% .. +22,88% |
-
-При 20 с все три ранних горизонта схлопываются в один интервал: данные не различают их
-вовсе. Точечная оценка выдала бы три разных уверенных числа, ни одно из которых не
-наблюдалось.
-
-Replay отказывается читать байты, за которые не ручается манифест, и не выносит
-ACCEPT/REJECT. См. `docs/decisions/011`.
-
-## Коллектор
-
-Это **опрос, а не лента**. REST отвечает в те моменты, когда мы спрашиваем; между двумя
-выборками рынок делал то, чего мы не видели. Для гипотезы про +5 / +15 / +60 с этот зазор
-и есть весь вопрос, поэтому каденция объявлена в плане, а достигнутая — измеряется и
-публикуется в манифесте.
-
-Фон 3 с (сделки, стакан) и 6 с (тикер); в бёрсте ±120 с вокруг `t0` — 0,5 с и 2 с. Каждая
-выборка несёт `request_ts`, `received_ts`, `latency_ms`, `offset_sec`.
-
-```powershell
-$env:PYTHONPATH="src"
-& $py src\capture.py --plan-echo          # границы и каденция, ничего не запускает
-```
-
-Запуск capture требует claim и одноразовый токен и здесь не документируется как рутина:
-это единственный код проекта, который выходит на живой рынок, пока рынок движется.
-
-### Метаданные площадки читаются, но якорем не становятся
-
-Измерено 2026-08-22: OKX для `JP225-USDT-SWAP` вернул `listTime` 2026-09-09 на запрос
-навалом и 2026-08-07 на запрос с `instId` — тот же эндпоинт, тот же момент, **33 суток
-разницы**.
-
-`observe_venue_metadata` читает эти величины перед стартом и кладёт в манифест и
-квитанцию. Она **не блокирует** capture и не поправляет его `t0`: заявленное площадкой
-время запуска и `official_spot_t0` — разные классы источника, и считать одно
-подтверждением другого значило бы смешивать ровно то, что реестр разделяет.
-
-### Статус цикла ≠ пригодность данных
-
-Capture, запущенный позже начала окна, доходит до конца окна и ставит `COMPLETED` при
-половине покрытого бёрста. Поэтому рядом со `status` стоит `replay_readiness`: сколько
-секунд покрыто до и после `t0`, покрыт ли бёрст целиком, и почему нет. Код возврата CLI
-ненулевой, если цикл завершился, но ответить на вопрос данные не могут.
-
-Human-attestation из анонса имеет точность `60 с`. Для доказательства выходов
-`t0`/+5с/+15с/+60с v9 требует `1 с`, поэтому такая запись может направить capture, но
-сама по себе **не делает его seconds-grade/replay-ready**. Это намеренный fail-closed:
-минутное объявление не превращается в секундный якорь постфактум.
-
-## Реестр событий и таксономия t0
-
-`t0` — главный датум проекта, поэтому за одной колонкой больше не прячутся разные по
-смыслу моменты. Эпизод листинга несёт именованные величины:
-
-| величина | что это |
+| Величина | Смысл |
 |---|---|
-| `premarket_contract_launch_ts` | заявленный запуск perpetual-контракта |
-| `official_spot_t0` | официальный момент spot-листинга |
+| `premarket_contract_launch_ts` | запуск pre-market контракта по метаданным venue |
+| `official_spot_t0` | официальный старт spot-торгов из анонса |
 | `first_trade_ts` | первая наблюдённая публичная сделка |
-| `transition_ts` | наблюдённый переход состояния инструмента |
-| `contract_created_ts` | создание контракта (Gate `create_time`) |
+| `transition_ts` | наблюдённый lifecycle transition |
+| `contract_created_ts` | создание контракта |
 
-Классы источника: `OFFICIAL_ANNOUNCEMENT`, `VENUE_INSTRUMENT_METADATA`,
-`OBSERVED_PUBLIC_TRADE`, `OBSERVED_LIFECYCLE`. Величина и класс связаны правилами и
-никогда не смешиваются.
+Только `official_spot_t0` класса `OFFICIAL_ANNOUNCEMENT` для известного
+`CRYPTO_TOKEN` может быть capture anchor. Metadata, observed trade/lifecycle и любой
+proxy остаются `DESCRIPTIVE_ONLY`.
 
-**Якорем capture может быть только `official_spot_t0` из официального анонса.**
-Метаданные площадок — descriptive-only.
+Asset identity не выводится из одного тикера. Registry хранит `asset_class`, issuer
+namespace/id и identity hash. Классы `EQUITY_ISSUER`, `TOKENIZED_EQUITY`,
+`TRADFI_OTHER` и `UNCLASSIFIED` не смешиваются с crypto acceptance universe.
 
-### Официальный t0 свидетельствуется, а не забирается запросом
+Для Gate crypto identity требуется явный и проверенный `contract_type`. Если поле
+отсутствует или его значение неизвестно, контракт остаётся `UNCLASSIFIED` и
+`DESCRIPTIVE_ONLY`; v17 не заявляет доступность Gate capture-кандидатов.
 
-Измерено 2026-08-23: **ни одна площадка не публикует момент spot-листинга машиночитаемым
-полем**. У Bybit `startDateTimestamp` листингового анонса равен моменту публикации (и
-равен `endDateTimestamp`); OKX отдаёт только `pTime`; у Gate публичного API анонсов нет.
+Discovery состоит из пяти независимых поверхностей:
 
-Парсер не спасает: статья про **один** листинг содержала **24 временных выражения** —
-депозиты, старт торгов, окно кампании, вывод. Регулярка взяла бы первое и назвала его
-`t0`.
+- Bybit Linear `PreLaunch`;
+- Bybit Linear `Trading` для terminal transition уже отслеживаемого контракта;
+- OKX SWAP;
+- OKX FUTURES;
+- Gate USDT Futures.
 
-Поэтому официальный `t0` записывает человек, и запись несёт то, что он прочитал:
+Каждая поверхность exact-bound к endpoint/query, `rows_path`, native ID, envelope,
+lifecycle fields и instrument type. Non-object row, missing/noncanonical или duplicate
+ID и malformed lifecycle field являются acquisition failure без mutation. Bybit
+дополнительно требует exact `category=linear`, integer/string zero `retCode` (не bool
+или float), канонический cursor без trim и совпадение строк с запрошенной
+`PreLaunch`/`Trading` поверхностью.
 
-```powershell
-$env:PYTHONPATH="src"
-& $py src\official_attestation.py --why      # измерение, а не политика
+Production completeness проверяется не только по venue aggregate: обязательные
+full-universe поверхности `Bybit Trading`, `OKX SWAP`, `OKX FUTURES` и `Gate USDT`
+должны быть непустыми и не могут потерять более 50% строк между complete refresh.
+Только `Bybit PreLaunch` может законно быть пустой.
 
-& $py src\official_attestation.py --attest `
-    --run-id <id> --venue bybit `
-    --spot-symbol KIIUSDT --premarket-contract-id KIIUSDT `
-    --lifecycle-generation 0 `
-    --announced-utc 2026-09-09T04:00:00Z `
-    --announcement-url https://announcements.bybit.com/en-US/article/... `
-    --quote "Spot trading for KII/USDT will start on Sep 9, 2026, 4:00AM UTC." `
-    --quoted-time "Sep 9, 2026, 4:00AM UTC" `
-    --quoted-symbol "KII/USDT" `
-    --attested-by <кто прочитал>
-```
+Полный relevant identity set и его hash фиксируются по каждой поверхности. Пропавший
+tracked ID без явного terminal evidence — acquisition failure без mutation. OKX
+`xperp` и `normal` для уже tracked поколения распознаются как cross-surface
+transition. Gate `launch_time` — срок действия контракта, не старт торговли;
+`create_time` — только создание, а `in_delisting=true` является явным terminal
+DELISTING.
 
-Источник обязан быть доменом анонсов самой площадки; время принимается только явным
-ISO-8601 UTC (никакого разбора прозы); цитата обязательна; точность `60 с`, потому что
-анонс говорит «4:00AM UTC»; момент ближе окна capture отвергается. Модуль **ничего не
-запрашивает** — новых эндпоинтов в allow-list ноль.
+Исторические terminal-строки не создают local episode: Closed/xperp/delisted evidence
+привязывается только к поколению, которое раньше наблюдалось active или scheduled.
+Untracked terminal row игнорируется без выделения high-water. Bybit v17 опрашивает
+только `PreLaunch` и `Trading`; отмена/закрытие, отсутствующие в обеих поверхностях,
+остаются acquisition failure, а не inferred terminal event. Отдельная terminal-status
+поверхность потребует нового immutable PlanOnly.
 
-```powershell
-$env:PYTHONPATH="src"
-& $py src\event_registry.py --refresh --run-id <metadata-refresh-id>
-& $py src\event_registry.py --verify
-& $py src\event_registry.py --upcoming --horizon-hours 48 --source-class OFFICIAL_ANNOUNCEMENT
-```
+Причина явного terminal lifecycle сохраняется отдельной append-only observation с
+`lifecycle_phase`. Terminal ids последнего complete refresh читаются на следующем
+refresh только как classification memory: они не входят в required/relevant/
+completeness/active/high-water authority. При одновременных OKX terminal-поверхностях
+exact `preMktSwTime` имеет приоритет над detection proxy, включая уже expired xperp.
 
-`--source-class` обязателен: какой класс считать основанием — решение вызывающего.
+Mutation receipt закрепляет полный pre-hash record: registry/summary lineage,
+`mutation_run_id`, active/high-water state, venue/surface counts, relevant IDs/hashes и
+terminal IDs. Валидатор PlanOnly сверяет этот словарь целиком.
 
-Реестр append-only и под блокировкой на время записи. Цепочка ревизий проверяется: она
-обязана начинаться с нуля, а `supersedes` — называть значение, которое предыдущая ревизия
-действительно держала. Цепочки разных классов не пересекаются.
+Текущий official-attestation producer фиксирует `t0` с точностью 60 секунд, тогда как
+секундная гипотеза требует не хуже одной секунды. Поэтому даже структурно полный
+capture этого поколения остаётся `DESCRIPTIVE_ONLY_PRECISION_GT_ONE_SECOND`; повышение
+authority требует нового producer и следующего immutable PlanOnly.
 
-Gate отдаёт `create_time` — создание контракта, не начало торгов, — и несёт caveat
-`CONTRACT_CREATION_NOT_TRADING_START`.
+REST books OKX не возвращает `instId`, поэтому инструмент привязан к exact URL/query и
+их hash, записанным рядом с payload. Gate orderbook поддерживает документированный
+формат уровней `{p,s}`. Gate futures ticker не содержит exchange timestamp; такой
+payload остаётся optional descriptive и не участвует в causal readiness, а не получает
+время приёма как подмену биржевого времени. Для Gate readiness требуются timestamped
+trades и orderbook.
+
+Legacy registry v2 остаётся byte-identical migration source и закреплён SHA/head/
+mutation receipt в PlanOnly. Production v3 имеет отдельный путь и не был наполнен.
+
+## Replay v2
+
+Replay не открывает сеть, не берёт writer claim и не пишет project artifacts.
+
+Причинные часы — `received_ts`. Для target выбирается первая валидная BBO-точка на
+target или после него, не позднее одной объявленной каденции. Pre-target fallback,
+интерполяция и bracket inference запрещены. `exchange_ts` используется только для
+staleness/future-skew checks.
+
+Вход маркируется по ask, выход — по bid. Результат — gross BBO markout, а не fill,
+очередь, slippage, fees, funding, liquidation или net PnL.
+
+Production evidence принимается только если одновременно проверены:
+
+- каталог — строгий потомок `capture_root` именно того исторического PlanOnly,
+  который авторизовал исходный capture;
+- immutable receipt в `docs/evidence/<capture_id>.json`;
+- raw manifest/samples SHA-256 и canonical receipt hash;
+- точные Plan identity и implementation hashes;
+- одинаковая manifest/receipt lineage;
+- исторический registry prefix и точная mutation receipt;
+- official unsuperseded crypto anchor.
+
+Synthetic fixture требует явного режима `SYNTHETIC_DESCRIPTIVE_ONLY`; production
+capture нельзя понизить до synthetic.
+
+## Registry quarantine
+
+Quarantine — отдельный локальный write class без сетевых запросов. Она требует initial
+и commit preflight, exact operator CAS по registry/summary/raw receipt bytes, registry
+O_EXCL lock и global market-writer claim. Архив публикуется same-volume durable move и
+полностью перечитывается вместе с PREPARED и exact entry set до source mutation.
+Receipts/summary (если присутствуют) и registry переводятся в retained `.deactivated`
+tombstones; registry — последним. Tombstone names/bytes закреплены в terminal state.
+После `SOURCE_DEACTIVATED` canonical registry, summary и receipt-directory обязаны
+отсутствовать независимо от того, существовали ли summary/receipts в исходном
+поколении; любое позднее появление означает fail-closed manual recovery и сохранение
+оставшихся locks.
+После двух exact status checks global claim снимается первым, а registry lock последним
+durable move превращается в terminal proof; после него нет fallible I/O. Automatic
+recovery запрещён — неоднозначное состояние и оставшиеся locks требуют manual recovery.
+
+Наличие реализации не означает, что production quarantine выполнялась в этом пакете.
 
 ## Проверки
 
 ```powershell
 $py = "C:\Users\koval\.cache\codex-runtimes\codex-primary-runtime\dependencies\python\python.exe"
+$env:PYTHONPATH = "src"
 
-& $py -m unittest discover -s tests
-$env:PYTHONPATH="src"; & $py src\risk_gate.py --plan-check
+& $py -m unittest discover -s tests -v
+& $py src\risk_gate.py --plan-check
 & $py src\risk_gate.py --capability-scan
-& $py src\risk_gate.py --print-config
 ```
 
-`--plan-check` сверяет план с trust-root и SHA-256 каждого связанного файла, затем
-прогоняет capability scan. Правка runtime без перевыпуска плана роняет его — это и
-есть требуемая дисциплина.
+Production replay (строгий loader используется по умолчанию):
+
+```powershell
+& $py src\replay.py --replay <capture-dir> --horizons 0,5,15,60
+```
+
+Synthetic mode доступен только программному тестовому API и используется offline-suite;
+CLI не позволяет случайно понизить production capture до fixture.
 
 ## Preflight
 
 ```powershell
-$env:PYTHONPATH="src"
 & $py src\risk_gate.py --preflight --write-class metadata_registry --run-id <id>
 & $py src\risk_gate.py --preflight --write-class official_attestation --run-id <id>
+& $py src\risk_gate.py --preflight --write-class registry_quarantine --run-id <id>
 ```
 
-Любой write-class проверяет immutable PlanOnly, capability scan, resolved paths и общий
-active-run gate. Только `market_data_capture` дополнительно проверяет writer claim и
-собственный run record и может получить одноразовый токен. В активном v9 этот класс
-намеренно не авторизован, поэтому прямой mint и capture-preflight закрываются fail-closed.
-Каждый блокер перечисляется отдельно — не только первый.
+Preflight не запускает writer автоматически. Реальные refresh, attestation и
+quarantine являются отдельными операциями. Capture требует будущего immutable PlanOnly,
+который явно добавит `market_data_capture`, плюс отдельное разрешение пользователя на
+видимый запуск.
 
-## Перевыпуск плана
+## Immutable lineage
 
-План неизменяем, и перевыпуск — это **новый файл**. Версия входит в имя и в `plan_id`,
-файл пишется через `O_EXCL` только для чтения, предыдущие версии остаются на диске, а
-trust-root перечисляет всю опубликованную родословную и проверяет её.
+Опубликованы v1–v17. Все прежние планы остаются на диске и проверяются по file SHA,
+canonical plan hash и identity. v15 сохранён byte-identical и непосредственно
+superseded v16; v16 byte-identical и непосредственно superseded v17. Ни один старый
+PlanOnly не переписывался.
 
-Опубликовано: v1–v9; v1–v8 сохранены побайтово, активный **v9**. v8 остался immutable
-промежуточным checkpoint и был superseded после финального независимого review. v1 и v2 делят один
-`plan_id` — это и был дефект, ради которого правило стало механическим; переписывать
-историю, чтобы его спрятать, не стали.
-
-Активный v9: `plan_hash`
-`513ecd6667fc2b5c1a1e66e5e8c9855f9cdb5a6404714b963cdb5ea0ec634296`, file SHA-256
-`6b6c88868ad49e73f557dbe47c56305222174e67142e5214eaf4120229f5a098`.
-
-```powershell
-& $py src\plan_builder.py --write-plan
-```
-
-См. `docs/decisions/004` и `005`.
-
-## Границы
-
-Публичные данные, без ключей и подписи. Никаких ордеров ни в каком режиме. Replay —
-симуляция по данным на диске. Ни одна цифра отсюда не поддерживает ACCEPT/REJECT
-стратегии: для этого нужен отдельный план с чекпоинтом пользователя.
-
-Mutation receipt chain обнаруживает рассогласование, но durable WAL пока отсутствует:
-авария процесса между append реестра, summary и receipt переводит состояние в
-fail-closed/manual recovery и не даёт права заявлять crash-atomic commit.
-
-Порог сохранения 50% предыдущего полного universe защищает от пустого или резко
-обрезанного ответа площадки. Это аварийный acquisition guard, а не доказательство того,
-что площадка вернула каждый отдельный active contract ID.
+См. `AGENTS.md` и `docs/decisions/014-v17-registry-replay-quarantine-remediation.md`.
