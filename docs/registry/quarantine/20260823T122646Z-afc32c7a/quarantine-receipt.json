@@ -1,0 +1,25 @@
+{
+  "schema": "premarket_perp_registry_quarantine_v1",
+  "quarantined_at_utc": "2026-08-23T12:26:46Z",
+  "run_id": "recovery_receipt_path_collapse",
+  "reason": "written under plan v14; superseded by v15 which collapses quarantined receipt trees so they can be checked out on Windows",
+  "moved": [
+    {
+      "name": "listing-events-v2.jsonl",
+      "sha256": "c7e138a7f66467230506cf4c0d395f58908964367c3d35ed0e7b37cc0c5f4cc8"
+    },
+    {
+      "name": "listing-events-v2.summary.json",
+      "sha256": "3f63c02f2f942ccaff67a7130cd64467b6d9b9df293bd2678b2a372152e43346"
+    },
+    {
+      "name": "listing-events-v2.jsonl.mutation-receipts",
+      "sha256": "3e6cc3179861d3956e6e39f28ac8171b8ee2a71e84314398023ab80330aab3f6",
+      "collapsed_into": "mutation-receipts.jsonl",
+      "receipts": 1
+    }
+  ],
+  "quarantine_dir": "C:\\Users\\koval\\Documents\\ZolotyayLopata-premarket-perp-capture\\docs\\registry\\quarantine\\20260823T122646Z-afc32c7a",
+  "active_plan_id": "premarket_perp_capture_20260822_v15",
+  "active_plan_hash": "41accb18028f6ccbee59264c8564d36ff9efd3d2c28aea9119e3a2d2741a062c"
+}

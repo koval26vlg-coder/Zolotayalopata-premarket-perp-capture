@@ -44,7 +44,9 @@ class QuarantineTests(unittest.TestCase):
         self.assertFalse(self.path.exists())
         self.assertTrue((destination / self.path.name).is_file())
         self.assertTrue((destination / self.summary.name).is_file())
-        self.assertTrue((destination / self.receipts.name).is_dir())
+        # The receipt tree is collapsed into one file rather than moved as a tree.
+        self.assertFalse((destination / self.receipts.name).exists())
+        self.assertTrue((destination / "mutation-receipts.jsonl").is_file())
 
     def test_the_moved_bytes_are_unchanged_and_recorded(self):
         original = hashlib.sha256(self.path.read_bytes()).hexdigest()
@@ -84,6 +86,31 @@ class QuarantineTests(unittest.TestCase):
         second = self._quarantine(run_id="recovery_2")
         self.assertNotEqual(first["quarantine_dir"], second["quarantine_dir"])
         self.assertTrue(Path(first["quarantine_dir"]).is_dir())
+
+    def test_collapsed_receipts_keep_every_byte_and_every_name(self):
+        import json as json_module
+        original = (self.receipts / "0.json").read_bytes()
+        receipt = self._quarantine()
+        collapsed = Path(receipt["quarantine_dir"]) / "mutation-receipts.jsonl"
+        rows = [json_module.loads(line) for line in
+                collapsed.read_text(encoding="utf-8").splitlines() if line.strip()]
+        self.assertEqual(len(rows), 1)
+        self.assertEqual(rows[0]["original_name"], "0.json")
+        self.assertEqual(rows[0]["sha256"], hashlib.sha256(original).hexdigest())
+        self.assertEqual(rows[0]["receipt"], json_module.loads(original.decode("utf-8")))
+
+    def test_quarantined_paths_stay_short_wherever_the_repo_is_checked_out(self):
+        # A mutation-receipt filename is twenty digits plus a 64-character hash. Nested
+        # under a quarantine directory it broke the 260-character Windows limit on a CI
+        # runner whose workspace root is longer than a developer checkout - measuring
+        # against one root and calling it fixed is how that shipped.
+        long_name = "00000000000000000000-" + "a" * 64 + ".json"
+        (self.receipts / long_name).write_text("{}", encoding="utf-8")
+        receipt = self._quarantine()
+        destination = Path(receipt["quarantine_dir"])
+        longest = max(len(str(item.relative_to(destination.parent.parent)))
+                      for item in destination.rglob("*") if item.is_file())
+        self.assertLess(longest, 100)
 
     def test_the_directory_name_stays_short_enough_to_commit(self):
         # Mutation-receipt filenames are already ~85 characters. A quarantine prefix

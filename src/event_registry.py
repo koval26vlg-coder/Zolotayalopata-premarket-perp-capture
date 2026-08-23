@@ -2526,16 +2526,41 @@ def quarantine_registry(
     destination.mkdir(parents=True, exist_ok=False)
 
     moved: list[dict[str, Any]] = []
-    for source in (target, summary, receipts):
+    for source in (target, summary):
         if not source.exists():
             continue
-        if source.is_dir():
-            digest = None
-            shutil.move(str(source), str(destination / source.name))
-        else:
-            digest = hashlib.sha256(source.read_bytes()).hexdigest()
-            shutil.move(str(source), str(destination / source.name))
+        digest = hashlib.sha256(source.read_bytes()).hexdigest()
+        shutil.move(str(source), str(destination / source.name))
         moved.append({"name": source.name, "sha256": digest})
+
+    # The receipt directory is collapsed into one file rather than moved as a tree.
+    # A mutation-receipt filename is a twenty-digit sequence plus a 64-character hash;
+    # nested under a quarantine directory the path exceeded the 260-character Windows
+    # limit on a CI runner whose workspace root is longer than a developer's checkout,
+    # and git could not create the files at all. Collapsing keeps every byte and every
+    # original name while making the path short wherever it is checked out.
+    if receipts.is_dir():
+        collapsed = destination / "mutation-receipts.jsonl"
+        lines: list[str] = []
+        for entry in sorted(receipts.iterdir()):
+            if not entry.is_file():
+                continue
+            raw = entry.read_bytes()
+            lines.append(json.dumps({
+                "original_name": entry.name,
+                "sha256": hashlib.sha256(raw).hexdigest(),
+                "receipt": json.loads(raw.decode("utf-8")),
+            }, ensure_ascii=False, sort_keys=True))
+        collapsed.write_text(
+            "\n".join(lines) + ("\n" if lines else ""), encoding="utf-8", newline="\n"
+        )
+        shutil.rmtree(receipts)
+        moved.append({
+            "name": receipts.name,
+            "sha256": hashlib.sha256(collapsed.read_bytes()).hexdigest(),
+            "collapsed_into": collapsed.name,
+            "receipts": len(lines),
+        })
 
     receipt = {
         "schema": "premarket_perp_registry_quarantine_v1",

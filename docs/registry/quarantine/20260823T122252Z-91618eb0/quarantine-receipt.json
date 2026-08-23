@@ -14,10 +14,13 @@
     },
     {
       "name": "listing-events-v2.jsonl.mutation-receipts",
-      "sha256": null
+      "sha256": "6c99d8bac9ebe4a8de602d56a1acaf3760eca9ec68ed43ab3e1d24af117cf0ab",
+      "collapsed_into": "mutation-receipts.jsonl",
+      "receipts": 1
     }
   ],
   "quarantine_dir": "C:\\Users\\koval\\Documents\\ZolotyayLopata-premarket-perp-capture\\docs\\registry\\quarantine\\20260823T122252Z-91618eb0",
   "active_plan_id": "premarket_perp_capture_20260822_v14",
-  "active_plan_hash": "b5b8b81facfbe3451b245f2d09f651215daee023190e202cba9b9670ab002a71"
+  "active_plan_hash": "b5b8b81facfbe3451b245f2d09f651215daee023190e202cba9b9670ab002a71",
+  "collapsed_because": "nested receipt filenames exceeded the 260-character Windows path limit on a CI runner and could not be checked out; every byte and original name is kept"
 }

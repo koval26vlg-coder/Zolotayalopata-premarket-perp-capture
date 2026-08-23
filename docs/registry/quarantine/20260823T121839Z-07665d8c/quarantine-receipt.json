@@ -14,12 +14,15 @@
     },
     {
       "name": "listing-events-v2.jsonl.mutation-receipts",
-      "sha256": null
+      "sha256": "45eb9cbfc72381327be12c17ab502cec2f0716b1f43b23096c741e946088c577",
+      "collapsed_into": "mutation-receipts.jsonl",
+      "receipts": 1
     }
   ],
   "quarantine_dir": "C:\\Users\\koval\\Documents\\ZolotyayLopata-premarket-perp-capture\\docs\\registry\\quarantine\\20260823T121839Z-07665d8c",
   "active_plan_id": "premarket_perp_capture_20260822_v13",
   "active_plan_hash": "aa06a8e81be185f5575eaa1c0e76b93541e4b9dbd76684b7d119e2b0e9004e0f",
   "renamed_from": "20260823T121839Z-recovery_gate_adapter_fix",
-  "renamed_because": "the original directory name used the full run_id and pushed receipt paths past the 260-character Windows limit, so git could not record the recovery"
+  "renamed_because": "the original directory name used the full run_id and pushed receipt paths past the 260-character Windows limit, so git could not record the recovery",
+  "collapsed_because": "nested receipt filenames exceeded the 260-character Windows path limit on a CI runner and could not be checked out; every byte and original name is kept"
 }

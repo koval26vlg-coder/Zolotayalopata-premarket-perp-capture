@@ -2,13 +2,13 @@
   "schema": "premarket_perp_event_registry_v2",
   "status": "REFRESH_COMPLETE",
   "mutation_type": "metadata_refresh",
-  "mutation_run_id": "metadata_refresh_20260823_v15",
-  "refresh_run_id": "metadata_refresh_20260823_v15",
-  "plan_id": "premarket_perp_capture_20260822_v15",
-  "plan_hash": "41accb18028f6ccbee59264c8564d36ff9efd3d2c28aea9119e3a2d2741a062c",
-  "resolved_paths_hash": "ba395dcf301df0bf1e6debbeadd9e5b570bdd47043f4bddda0e80802247d28a0",
-  "refreshed_at_utc": "2026-08-23T12:26:53Z",
-  "last_complete_metadata_refresh_received_at_utc": "2026-08-23T12:26:53Z",
+  "mutation_run_id": "metadata_refresh_20260823_v14",
+  "refresh_run_id": "metadata_refresh_20260823_v14",
+  "plan_id": "premarket_perp_capture_20260822_v14",
+  "plan_hash": "b5b8b81facfbe3451b245f2d09f651215daee023190e202cba9b9670ab002a71",
+  "resolved_paths_hash": "4bf3b08e48bc9718e1f73b078a78e08c2651619d62d02b10d19cbeeaef1bd9cb",
+  "refreshed_at_utc": "2026-08-23T12:22:59Z",
+  "last_complete_metadata_refresh_received_at_utc": "2026-08-23T12:22:59Z",
   "observed_events": 16,
   "observed_by_venue": {
     "bybit": 4,
@@ -110,8 +110,8 @@
     "entries": 16,
     "events": 16,
     "episodes": 16,
-    "head_record_hash": "7d3459943cf2122c0eb39a27452a4ab28eb41a08ceb61e19011730e14d6e8696",
-    "registry_sha256": "fd3b864bc4b1b311b49a904246edd8980008ab5f1830df9042087df9619bc9a4",
+    "head_record_hash": "7b17772021972ac977251d1b689429821c1e94e9ee7d8900329c784de756dd7d",
+    "registry_sha256": "c7e138a7f66467230506cf4c0d395f58908964367c3d35ed0e7b37cc0c5f4cc8",
     "registry_summary_sha256": null,
     "problems": [],
     "summary_required": true,
@@ -130,5 +130,5 @@
   "mutation_receipt_schema": "premarket_perp_registry_mutation_receipt_v1",
   "mutation_seq": 0,
   "previous_mutation_receipt_hash": null,
-  "mutation_receipt_hash": "d86913b6af93d3487ef3cdbe09a3b47f3519188eea65ebf2f18aaa8fd5976282"
+  "mutation_receipt_hash": "777ae6b9288efb1c4472759f14b579508a424fa8a68423c44828513adce9b2e4"
 }
