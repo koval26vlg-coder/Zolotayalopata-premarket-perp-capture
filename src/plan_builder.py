@@ -20,7 +20,7 @@ from canonical_hash import canonical_hash
 
 
 SCHEMA = "premarket_perp_capture_planonly_v1"
-PLAN_ID = "premarket_perp_capture_20260822"
+PLAN_ID = f"premarket_perp_capture_20260822_v{config.PLAN_VERSION}"
 HASH_METHOD = "sha256_canonical_json_excluding_plan_hash"
 
 
@@ -32,6 +32,27 @@ def _sha256_file(path: Path) -> str:
     if not path.is_file():
         raise PlanBuildError(f"bound file missing: {path}")
     return hashlib.sha256(path.read_bytes()).hexdigest()
+
+
+def superseded_plans() -> list[dict[str, Any]]:
+    """Every plan this one replaces, by identity and by the bytes still on disk.
+
+    Recorded rather than described: a superseded plan that has been deleted or edited
+    breaks verification, so the lineage cannot quietly lose a version."""
+    lineage: list[dict[str, Any]] = []
+    for path in config.SUPERSEDED_PLAN_PATHS:
+        if not path.is_file():
+            raise PlanBuildError(
+                f"superseded plan missing: {path}. A plan lineage cannot skip a version."
+            )
+        prior = json.loads(path.read_text(encoding="utf-8"))
+        lineage.append({
+            "plan_id": prior["plan_id"],
+            "plan_hash": prior["plan_hash"],
+            "plan_file": path.name,
+            "plan_file_sha256": _sha256_file(path),
+        })
+    return lineage
 
 
 def build_plan(generated_at_utc: str) -> dict[str, Any]:
@@ -47,6 +68,8 @@ def build_plan(generated_at_utc: str) -> dict[str, Any]:
     plan: dict[str, Any] = {
         "schema": SCHEMA,
         "plan_id": PLAN_ID,
+        "plan_version": config.PLAN_VERSION,
+        "supersedes": superseded_plans(),
         "project": "ZolotyayLopata-premarket-perp-capture",
         "strategy_branch": "premarket_perpetual_listing_impulse",
         "mode": "PlanOnly",
@@ -200,6 +223,10 @@ def write_plan(generated_at_utc: str) -> Path:
     plan = build_plan(generated_at_utc)
     content = json.dumps(plan, indent=2, ensure_ascii=False) + "\n"
     path = config.PLAN_PATH
+    if path in config.SUPERSEDED_PLAN_PATHS:
+        raise PlanBuildError(
+            f"refusing to write over a superseded plan: {path}. Raise PLAN_VERSION."
+        )
     if path.exists():
         if path.read_text(encoding="utf-8") != content:
             raise PlanBuildError(

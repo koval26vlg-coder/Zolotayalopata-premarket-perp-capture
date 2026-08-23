@@ -40,7 +40,19 @@ CAPTURE_ROOT = Path(
     )
 ).expanduser()
 
-PLAN_PATH = PROJECT_ROOT / "docs/plans/premarket-perp-capture-planonly-20260822.json"
+PLAN_DIR = PROJECT_ROOT / "docs/plans"
+
+# A plan is immutable, so a reissue is a NEW file, never the same path rewritten.
+# This was prose in AGENTS.md and prose is not a mechanism: the plan at this path was
+# regenerated in place three times, keeping one plan_id and leaving no record of what
+# it replaced. The version is part of the filename and part of the plan_id now, the
+# superseded files stay on disk, and the current plan names them.
+PLAN_VERSION = 3
+PLAN_PATH = PLAN_DIR / f"premarket-perp-capture-planonly-20260822-v{PLAN_VERSION}.json"
+SUPERSEDED_PLAN_PATHS: tuple[Path, ...] = (
+    PLAN_DIR / "premarket-perp-capture-planonly-20260822.json",
+    PLAN_DIR / "premarket-perp-capture-planonly-20260822-v2.json",
+)
 RUN_RECORD_PATH = PROJECT_ROOT / "docs/run/capture-run.json"
 STOP_REQUEST_PATH = PROJECT_ROOT / "docs/run/stop-request.json"
 CAPTURE_TOKEN_PATH = PROJECT_ROOT / "docs/run/capture-token.json"

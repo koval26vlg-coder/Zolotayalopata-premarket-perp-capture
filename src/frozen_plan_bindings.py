@@ -11,6 +11,6 @@ reviewable act in its own right.
 """
 
 PLAN_SCHEMA = "premarket_perp_capture_planonly_v1"
-PLAN_ID = "premarket_perp_capture_20260822"
-PLAN_HASH = "6e020bcd2a2f3ba83a9e17eaab1ac578fc72118bc014b27ff69a23a0cc8a2c77"
-PLAN_FILE_SHA256 = "cdb3f3b3b1f8c3b64133366a961c30567648395eab24dfb97d3105e94cf1a5ac"
+PLAN_ID = "premarket_perp_capture_20260822_v3"
+PLAN_HASH = "ef17f97b00faf1de53eecb16b3bd4355bfabd70fd887e1df0efd787149cdef92"
+PLAN_FILE_SHA256 = "60e2c64048091ea191ba40a60e69ba4916af2a13f22dcb0c089fca614d114192"

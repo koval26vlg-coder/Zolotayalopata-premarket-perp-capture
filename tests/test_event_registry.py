@@ -11,6 +11,7 @@ import json
 import sys
 import tempfile
 import unittest
+from unittest import mock
 from pathlib import Path
 
 
@@ -25,6 +26,23 @@ import public_http  # noqa: E402
 
 
 T0 = 1787400000  # 2026-08-22T12:00:00Z
+
+
+# One well-formed entry to vary: the lineage tests are about revision and supersedes,
+# so everything else stays constant and out of the way.
+BASE_ENTRY = {
+    "event_id": "bybit:CHAINUSDT",
+    "venue": "bybit",
+    "symbol": "CHAINUSDT",
+    "t0_ts": 1800000000,
+    "t0_source_class": registry.SOURCE_VENUE_INSTRUMENT_METADATA,
+    "t0_semantics": "launchTime: venue-declared contract launch time",
+    "t0_precision_sec": 1,
+    "revision": 0,
+    "observed_at_utc": "2026-08-22T00:00:00Z",
+    "caveats": [],
+    "supersedes": None,
+}
 
 
 def bybit_payload(symbol: str = "FOOUSDT", launch_ms: int = T0 * 1000) -> dict:
@@ -277,7 +295,9 @@ class CaptureSelectionTests(unittest.TestCase):
 
     def test_only_one_source_class_is_ever_returned(self) -> None:
         """Mixing classes is the defect the spot monitor's listed_ts column had."""
-        upcoming = registry.events_for_capture(self._entries(), now_ts=T0 - 3600)
+        upcoming = registry.events_for_capture(
+            self._entries(), now_ts=T0 - 3600, source_class=registry.SOURCE_VENUE_INSTRUMENT_METADATA
+        )
         self.assertEqual(
             {event["t0_source_class"] for event in upcoming},
             {registry.SOURCE_VENUE_INSTRUMENT_METADATA},
@@ -292,12 +312,15 @@ class CaptureSelectionTests(unittest.TestCase):
         self.assertEqual([event["symbol"] for event in upcoming], ["B"])
 
     def test_events_already_past_are_not_offered(self) -> None:
-        upcoming = registry.events_for_capture(self._entries(), now_ts=T0 + 1)
+        upcoming = registry.events_for_capture(
+            self._entries(), now_ts=T0 + 1, source_class=registry.SOURCE_VENUE_INSTRUMENT_METADATA
+        )
         self.assertEqual([event["symbol"] for event in upcoming], [])
 
     def test_the_horizon_is_respected(self) -> None:
         upcoming = registry.events_for_capture(
-            self._entries(), now_ts=T0 - 3600, horizon_sec=30
+            self._entries(), now_ts=T0 - 3600, horizon_sec=30,
+            source_class=registry.SOURCE_VENUE_INSTRUMENT_METADATA,
         )
         self.assertEqual([event["symbol"] for event in upcoming], [])
 
@@ -337,3 +360,92 @@ class WriteClassTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class RevisionLineageTests(unittest.TestCase):
+    """A revision chain that cannot be checked is decoration, not provenance."""
+
+    def _write(self, rows):
+        path = Path(tempfile.mkdtemp()) / "registry.jsonl"
+        lines = []
+        for row in rows:
+            entry = dict(BASE_ENTRY, **row)
+            entry.pop("entry_hash", None)
+            entry["entry_hash"] = registry._entry_hash(entry)
+            lines.append(json.dumps(entry))
+        path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+        return path
+
+    def test_a_chain_that_starts_above_zero_is_a_truncated_history(self):
+        # It verified clean before: six missing revisions looked exactly like none.
+        path = self._write([{"revision": 7, "supersedes": 1}])
+        report = registry.verify_registry(path)
+        self.assertEqual(report["status"], "REGISTRY_PROBLEMS")
+        self.assertTrue(any("must start at 0" in note for note in report["problems"]))
+
+    def test_revision_zero_cannot_claim_to_supersede_anything(self):
+        path = self._write([{"revision": 0, "supersedes": 12345}])
+        report = registry.verify_registry(path)
+        self.assertEqual(report["status"], "REGISTRY_PROBLEMS")
+
+    def test_supersedes_must_name_the_value_the_previous_revision_held(self):
+        path = self._write([
+            {"revision": 0, "t0_ts": 1800000000, "supersedes": None},
+            {"revision": 1, "t0_ts": 1800009999, "supersedes": 1777777777},
+        ])
+        report = registry.verify_registry(path)
+        self.assertEqual(report["status"], "REGISTRY_PROBLEMS")
+        self.assertTrue(any("supersedes says" in note for note in report["problems"]))
+
+    def test_a_truthful_chain_verifies(self):
+        path = self._write([
+            {"revision": 0, "t0_ts": 1800000000, "supersedes": None},
+            {"revision": 1, "t0_ts": 1800009999, "supersedes": 1800000000},
+        ])
+        self.assertEqual(registry.verify_registry(path)["status"], "REGISTRY_OK")
+
+    def test_two_source_classes_do_not_share_one_revision_chain(self):
+        # They used to: same event_id, so each overwrote the other and the revision
+        # numbers interleaved into a sequence neither class actually had.
+        path = self._write([
+            {"revision": 0, "t0_ts": 1800000000, "supersedes": None,
+             "t0_source_class": registry.SOURCE_VENUE_INSTRUMENT_METADATA},
+            {"revision": 0, "t0_ts": 1800004444, "supersedes": None,
+             "t0_source_class": registry.SOURCE_OFFICIAL_ANNOUNCEMENT},
+        ])
+        self.assertEqual(registry.verify_registry(path)["status"], "REGISTRY_OK")
+        entries = registry.load_registry(path)
+        by_class = registry.latest_by_event(
+            entries, source_class=registry.SOURCE_OFFICIAL_ANNOUNCEMENT
+        )
+        self.assertEqual(len(by_class), 1)
+        self.assertEqual(
+            list(by_class.values())[0]["t0_ts"], 1800004444
+        )
+
+
+class WriteClassEnforcementTests(unittest.TestCase):
+    """The write class was declared in the plan and enforced nowhere."""
+
+    def test_a_refresh_runs_the_checks_its_write_class_declares(self):
+        called = []
+        with mock.patch.object(registry, "enforce_metadata_write_class",
+                               side_effect=lambda: called.append("checked") or {}):
+            path = Path(tempfile.mkdtemp()) / "registry.jsonl"
+            registry.refresh(payloads={"bybit": bybit_payload()}, path=path,
+                             observed_at_utc="2026-08-22T00:00:00Z")
+        self.assertEqual(called, ["checked"])
+
+    def test_the_enforcement_actually_verifies_the_plan(self):
+        import risk_gate
+        with mock.patch.object(risk_gate, "load_and_verify_plan",
+                               side_effect=risk_gate.RiskGateError("plan is stale")):
+            with self.assertRaises(risk_gate.RiskGateError):
+                registry.enforce_metadata_write_class()
+
+    def test_the_refresh_summary_records_what_it_ran_under(self):
+        path = Path(tempfile.mkdtemp()) / "registry.jsonl"
+        summary = registry.refresh(payloads={"bybit": bybit_payload()}, path=path,
+                                   observed_at_utc="2026-08-22T00:00:00Z")
+        self.assertEqual(summary["preflight"]["write_class"], "metadata_registry")
+        self.assertTrue(summary["preflight"]["plan_hash"])

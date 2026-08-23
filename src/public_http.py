@@ -56,22 +56,40 @@ class VenueErrorPayload(PublicHttpError):
     """The venue answered with an error object where data was expected."""
 
 
-def split_endpoint(url: str) -> tuple[str, str]:
+ALLOWED_SCHEMES = ("https",)
+
+
+def split_endpoint(url: str) -> tuple[str, str, str]:
     parsed = urllib.parse.urlsplit(url)
-    return parsed.netloc.lower(), parsed.path or "/"
+    return parsed.scheme.lower(), parsed.netloc.lower(), parsed.path or "/"
 
 
 def endpoint_is_allowed(url: str, allowed: Sequence[tuple[str, str]] | None = None) -> bool:
+    """Exact host and exact path, over https, with no traversal.
+
+    Three holes closed here, each of which let an undeclared endpoint through a check
+    that reported success:
+
+    * str.startswith made every declared path a prefix, so /v5/market/tickers admitted
+      /v5/market/tickers-undeclared - and, worse, a path continuing with dot-dot
+      segments back up the tree and into a forbidden namespace, which also passed.
+      Paths are compared whole now, and dot-dot segments are refused outright.
+    * no scheme was checked, so http:// passed and the transport could be downgraded.
+    * see build_opener: the destination of a redirect was never checked at all."""
     allowed = config.ALLOWED_ENDPOINTS if allowed is None else allowed
-    host, path = split_endpoint(url)
-    return any(host == a_host and path.startswith(a_path) for a_host, a_path in allowed)
+    scheme, host, path = split_endpoint(url)
+    if scheme not in ALLOWED_SCHEMES:
+        return False
+    if ".." in path.split("/"):
+        return False
+    return any(host == a_host and path == a_path for a_host, a_path in allowed)
 
 
 def require_allowed_endpoint(url: str, allowed: Sequence[tuple[str, str]] | None = None) -> None:
     if not endpoint_is_allowed(url, allowed):
-        host, path = split_endpoint(url)
+        scheme, host, path = split_endpoint(url)
         raise EndpointNotAllowed(
-            f"endpoint not declared in the plan: {host}{path}. Declare it in "
+            f"endpoint not declared in the plan: {scheme}://{host}{path}. Declare it in "
             f"ALLOWED_ENDPOINTS, reissue the PlanOnly, and have the change reviewed.",
             url=url,
         )
@@ -111,8 +129,25 @@ def backoff_delay(attempt: int, *, rng: random.Random) -> float:
     return rng.uniform(0.0, min(MAX_BACKOFF_SEC, BASE_BACKOFF_SEC * (2 ** attempt)))
 
 
-def build_opener() -> Any:
-    return urllib.request.build_opener(urllib.request.ProxyHandler({}))
+class AllowListRedirectHandler(urllib.request.HTTPRedirectHandler):
+    """A redirect is a new request, so it faces the same rule as the first one.
+
+    Without this the allow-list checks only the URL we typed: an allow-listed host
+    answering 302 to anywhere at all would be followed without a further thought, which
+    makes the runtime half of the endpoint rule decorative."""
+
+    def __init__(self, allowed: Sequence[tuple[str, str]] | None = None) -> None:
+        self._allowed = allowed
+
+    def redirect_request(self, req, fp, code, msg, headers, newurl):  # noqa: ANN001
+        require_allowed_endpoint(newurl, self._allowed)
+        return super().redirect_request(req, fp, code, msg, headers, newurl)
+
+
+def build_opener(allowed: Sequence[tuple[str, str]] | None = None) -> Any:
+    return urllib.request.build_opener(
+        urllib.request.ProxyHandler({}), AllowListRedirectHandler(allowed)
+    )
 
 
 def get_json(
@@ -128,7 +163,7 @@ def get_json(
 ) -> Any:
     require_allowed_endpoint(url, allowed_endpoints)
     rng = rng or random.Random()
-    opener = opener or build_opener()
+    opener = opener or build_opener(allowed_endpoints)
     query = urllib.parse.urlencode(dict(params or {}))
     request_url = f"{url}?{query}" if query else url
 

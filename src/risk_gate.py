@@ -65,6 +65,37 @@ def _require(value: bool, message: str) -> None:
 # ------------------------------------------------------------------ plan identity
 
 
+def _verify_plan_lineage(plan: Mapping[str, Any]) -> None:
+    """Every plan this one replaces must still be on disk, unchanged.
+
+    A plan is immutable, so a reissue is a new file and the old one stays. Verifying
+    the lineage is what stops a version from being quietly dropped - which is exactly
+    what happened three times at this project's single plan path before the version
+    became part of the filename."""
+    recorded = plan.get("supersedes")
+    _require(isinstance(recorded, list), "plan does not record what it supersedes")
+    _require(
+        len(recorded) == len(config.SUPERSEDED_PLAN_PATHS),
+        f"plan claims {len(recorded)} superseded plans, the runtime expects "
+        f"{len(config.SUPERSEDED_PLAN_PATHS)}",
+    )
+    for entry, path in zip(recorded, config.SUPERSEDED_PLAN_PATHS):
+        _require(path.is_file(), f"superseded plan missing from the lineage: {path}")
+        _require(
+            entry.get("plan_file") == path.name,
+            f"lineage names {entry.get('plan_file')} where the runtime expects {path.name}",
+        )
+        _require(
+            entry.get("plan_file_sha256") == sha256_file(path),
+            f"superseded plan has been edited since it was superseded: {path}",
+        )
+        prior = json.loads(path.read_text(encoding="utf-8"))
+        _require(
+            entry.get("plan_hash") == prior.get("plan_hash"),
+            f"lineage records a different plan_hash than the file holds: {path}",
+        )
+
+
 def load_and_verify_plan(plan_path: Path | None = None) -> dict[str, Any]:
     """The plan must be internally consistent, approved by the trust root, and an
     accurate description of the files on disk.
@@ -78,6 +109,7 @@ def load_and_verify_plan(plan_path: Path | None = None) -> dict[str, Any]:
 
     _require(plan.get("schema") == trust_root.PLAN_SCHEMA, "plan schema mismatch")
     _require(plan.get("plan_id") == trust_root.PLAN_ID, "plan id mismatch")
+    _verify_plan_lineage(plan)
     without_hash = {k: v for k, v in plan.items() if k != "plan_hash"}
     _require(plan.get("plan_hash") == canonical_hash(without_hash), "plan hash mismatch")
     _require(plan.get("plan_hash") == trust_root.PLAN_HASH, "plan hash is not the approved one")

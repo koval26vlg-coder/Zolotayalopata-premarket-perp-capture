@@ -25,6 +25,7 @@ import public_http  # noqa: E402
 
 
 T0 = 1_800_000_000
+CLASS = "VENUE_INSTRUMENT_METADATA"
 
 
 class FakeClock:
@@ -461,7 +462,8 @@ class T0ConfirmationTests(CaptureHarness):
         with CTX_TOKEN(), CTX_REGISTRY(), MOCK_LATEST(), CLAIM_SPY(taken), UNCONFIRMED():
             with self.assertRaises(capture.CaptureError) as caught:
                 capture.capture_event(run_id="r1", capture_token="t",
-                                      event_id="bybit:NEWUSDT", capture_root=root)
+                                      event_id="bybit:NEWUSDT", source_class=CLASS,
+                                      capture_root=root)
         self.assertIn("the listing moved", str(caught.exception))
         self.assertEqual(taken, [])
 
@@ -544,14 +546,16 @@ class EntrypointTests(CaptureHarness):
             side_effect=capture.risk_gate.RiskGateError("no token"),
         ):
             with self.assertRaises(capture.risk_gate.RiskGateError):
-                capture.capture_event(run_id="r1", capture_token="t", event_id="bybit:X")
+                capture.capture_event(run_id="r1", capture_token="t", event_id="bybit:X",
+                                      source_class=CLASS)
 
     def test_an_event_outside_the_registry_cannot_be_captured(self):
         with mock.patch.object(capture.risk_gate, "consume_capture_token", return_value={}):
             with mock.patch.object(capture.registry, "load_registry", return_value=[]):
                 with self.assertRaises(capture.CaptureError):
                     capture.capture_event(
-                        run_id="r1", capture_token="t", event_id="bybit:X"
+                        run_id="r1", capture_token="t", event_id="bybit:X",
+                        source_class=CLASS,
                     )
 
     def test_an_existing_capture_directory_is_never_overwritten(self):
@@ -564,7 +568,7 @@ class EntrypointTests(CaptureHarness):
             with self.assertRaises(capture.CaptureError):
                 capture.capture_event(
                     run_id="r1", capture_token="t",
-                    event_id="bybit:NEWUSDT", capture_root=root,
+                    event_id="bybit:NEWUSDT", source_class=CLASS, capture_root=root,
                 )
 
     def test_the_claim_is_released_even_when_the_capture_fails(self):
@@ -586,7 +590,7 @@ class EntrypointTests(CaptureHarness):
             with self.assertRaises(RuntimeError):
                 capture.capture_event(
                     run_id="r1", capture_token="t",
-                    event_id="bybit:NEWUSDT", capture_root=root,
+                    event_id="bybit:NEWUSDT", source_class=CLASS, capture_root=root,
                 )
         self.assertEqual(released, ["released"])
 

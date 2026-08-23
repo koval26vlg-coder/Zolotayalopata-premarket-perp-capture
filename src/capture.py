@@ -514,6 +514,7 @@ def capture_event(
     run_id: str,
     capture_token: str,
     event_id: str,
+    source_class: str,
     capture_root: Path | None = None,
     accept_t0_disagreement: bool = False,
     confirm_fetch: Callable[[str, Mapping[str, Any]], Any] | None = None,
@@ -528,9 +529,14 @@ def capture_event(
     risk_gate.consume_capture_token(token=capture_token, run_id=run_id)
 
     entries = registry.load_registry()
-    event = registry.latest_by_event(entries).get(event_id)
+    # Within one t0 source class, always. Keyed by event id alone, an announcement t0
+    # and a metadata t0 for the same instrument collapse into whichever was written
+    # last, and the capture would aim at a moment from a class nobody chose.
+    event = registry.latest_by_event(entries, source_class=source_class).get(event_id)
     if event is None:
-        raise CaptureError(f"event not in the registry: {event_id}")
+        raise CaptureError(
+            f"event not in the registry for {source_class}: {event_id}"
+        )
 
     job = job_from_event(event, capture_id=run_id)
     capture_root = capture_root or config.CAPTURE_ROOT
@@ -580,6 +586,8 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--run-id", default="")
     parser.add_argument("--capture-token", default="")
     parser.add_argument("--event-id", default="")
+    parser.add_argument("--source-class", choices=sorted(registry.SOURCE_CLASSES),
+                        help="required with --capture: which t0 source class to trust")
     parser.add_argument("--accept-t0-disagreement", action="store_true",
                         help="capture even though the venue and the registry disagree "
                              "about t0; recorded in the manifest either way")
@@ -602,10 +610,13 @@ def main(argv: list[str] | None = None) -> int:
         return 0
     if not args.capture:
         raise SystemExit("no action requested")
-    if not (args.run_id and args.capture_token and args.event_id):
-        raise SystemExit("--capture requires --run-id, --capture-token and --event-id")
+    if not (args.run_id and args.capture_token and args.event_id and args.source_class):
+        raise SystemExit(
+            "--capture requires --run-id, --capture-token, --event-id and --source-class"
+        )
     manifest = capture_event(
         run_id=args.run_id, capture_token=args.capture_token, event_id=args.event_id,
+        source_class=args.source_class,
         accept_t0_disagreement=args.accept_t0_disagreement,
     )
     print(json.dumps({

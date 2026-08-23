@@ -232,10 +232,29 @@ def load_registry(path: Path | None = None) -> list[dict[str, Any]]:
     return entries
 
 
-def latest_by_event(entries: Iterable[Mapping[str, Any]]) -> dict[str, dict[str, Any]]:
-    """The current view: the most recent revision of each event."""
+def chain_key(entry: Mapping[str, Any]) -> tuple[str, str]:
+    """What a revision chain belongs to: an event AS SEEN BY one source class.
+
+    Keying on event_id alone put an announcement-derived t0 and a metadata-derived t0
+    for the same instrument into one chain, where each overwrote the other and the
+    revision numbers interleaved. The classes are meant never to mix; sharing an
+    identity was the one place they did."""
+    return (str(entry.get("event_id")), str(entry.get("t0_source_class")))
+
+
+def latest_by_event(
+    entries: Iterable[Mapping[str, Any]], *, source_class: str | None = None
+) -> dict[str, dict[str, Any]]:
+    """The current view: the most recent revision of each event, within one class.
+
+    Passing source_class is how a caller gets a view it can reason about. Without it
+    every class is returned, keyed by event id alone, and two classes for the same
+    instrument would collapse into whichever came last - so that form is only for
+    reporting, never for choosing what to capture."""
     current: dict[str, dict[str, Any]] = {}
     for entry in entries:
+        if source_class is not None and entry.get("t0_source_class") != source_class:
+            continue
         current[str(entry.get("event_id"))] = dict(entry)
     return current
 
@@ -304,18 +323,40 @@ def verify_registry(path: Path | None = None) -> dict[str, Any]:
     path = path or REGISTRY_PATH
     entries = load_registry(path)
     problems: list[str] = []
-    seen_revision: dict[str, int] = {}
+    seen_revision: dict[tuple[str, str], int] = {}
+    seen_t0: dict[tuple[str, str], int] = {}
     for number, entry in enumerate(entries, 1):
         if entry.get("entry_hash") != _entry_hash(entry):
             problems.append(f"line {number}: entry_hash does not match its content")
-        key = str(entry.get("event_id"))
+        key = chain_key(entry)
         revision = int(entry.get("revision") or 0)
-        if key in seen_revision and revision != seen_revision[key] + 1:
+        if key not in seen_revision:
+            # A chain that starts at 7 is a chain with six missing revisions. Accepting
+            # it meant a truncated history verified exactly like a complete one.
+            if revision != 0:
+                problems.append(
+                    f"line {number}: {key[0]} first appears at revision {revision}; "
+                    f"a chain with no history must start at 0"
+                )
+        elif revision != seen_revision[key] + 1:
             problems.append(
-                f"line {number}: {key} revision {revision} does not follow "
+                f"line {number}: {key[0]} revision {revision} does not follow "
                 f"{seen_revision[key]}"
             )
+        # supersedes is the whole point of appending instead of overwriting: it must
+        # name the value that was actually there, not merely be present.
+        superseded = entry.get("supersedes")
+        if revision == 0:
+            if superseded is not None:
+                problems.append(f"line {number}: revision 0 cannot supersede anything")
+        elif key in seen_t0 and superseded != seen_t0[key]:
+            problems.append(
+                f"line {number}: supersedes says {superseded!r} but the previous "
+                f"revision held {seen_t0[key]!r}"
+            )
         seen_revision[key] = revision
+        if entry.get("t0_ts") is not None:
+            seen_t0[key] = int(entry["t0_ts"])
         if entry.get("t0_source_class") not in SOURCE_CLASSES:
             problems.append(f"line {number}: unknown t0_source_class")
     current = latest_by_event(entries)
@@ -341,23 +382,43 @@ def events_for_capture(
     entries: Sequence[Mapping[str, Any]],
     *,
     now_ts: int,
-    source_class: str = SOURCE_VENUE_INSTRUMENT_METADATA,
+    source_class: str,
     horizon_sec: int = 24 * 3600,
 ) -> list[dict[str, Any]]:
     """Events whose t0 is still ahead, within one source class only.
 
     The source class is a required argument rather than a filter applied afterwards:
     mixing an announcement-derived t0 with a metadata-derived one in the same capture
-    set would reintroduce exactly the defect this registry exists to avoid."""
+    set would reintroduce exactly the defect this registry exists to avoid. It carried
+    a default until an audit pointed out that a documented requirement with a default
+    is a suggestion, and the CLI was quietly taking the default."""
     if source_class not in SOURCE_CLASSES:
         raise EventRegistryError(f"unknown source class: {source_class}")
     upcoming = [
-        entry for entry in latest_by_event(entries).values()
+        entry for entry in latest_by_event(entries, source_class=source_class).values()
         if entry.get("t0_source_class") == source_class
         and now_ts <= int(entry.get("t0_ts") or 0) <= now_ts + horizon_sec
     ]
     upcoming.sort(key=lambda item: (item["t0_ts"], item["venue"], item["symbol"]))
     return upcoming
+
+
+def enforce_metadata_write_class() -> dict[str, Any]:
+    """Run the checks WRITE_CLASSES["metadata_registry"] says this write requires.
+
+    They were declared in the plan and enforced nowhere: a refresh wrote to the
+    registry with no plan verification and no capability scan, which made the write
+    class a description of intent rather than a gate. The class asks for the plan and
+    the capability scan (not the exclusive claim, which belongs to a capture); this
+    runs exactly that, so the declaration and the behaviour cannot drift apart."""
+    import risk_gate  # local: keeps the module importable without the gate for tooling
+
+    rules = config.WRITE_CLASSES["metadata_registry"]
+    receipt: dict[str, Any] = {"write_class": "metadata_registry"}
+    if rules.get("plan_and_capability_scan"):
+        receipt["plan_hash"] = risk_gate.load_and_verify_plan()["plan_hash"]
+        receipt["capability_scan"] = risk_gate.run_capability_scan()["status"]
+    return receipt
 
 
 def refresh(
@@ -371,6 +432,7 @@ def refresh(
 
     `payloads` supplies responses directly, so tests and CI exercise the whole path
     without touching the network."""
+    preflight = enforce_metadata_write_class()
     observed_at_utc = observed_at_utc or utc_now_iso()
     observed: list[dict[str, Any]] = []
     per_venue: dict[str, int] = {}
@@ -408,6 +470,7 @@ def refresh(
     written = append_entries(appended, path)
     summary = {
         "schema": REGISTRY_SCHEMA,
+        "preflight": preflight,
         "refreshed_at_utc": observed_at_utc,
         "observed_events": len(observed),
         "observed_by_venue": per_venue,
@@ -435,6 +498,10 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--refresh", action="store_true",
                         help="read public instrument metadata and append what changed")
     parser.add_argument("--verify", action="store_true")
+    # No default: which class of t0 a capture set is drawn from is the caller's
+    # decision to state, and the CLI used to take it silently.
+    parser.add_argument("--source-class", choices=sorted(SOURCE_CLASSES),
+                        help="required with --upcoming: which t0 source class to draw from")
     parser.add_argument("--upcoming", action="store_true")
     parser.add_argument("--horizon-hours", type=int, default=24)
     parser.add_argument("--payloads", default="",
@@ -445,13 +512,17 @@ def main(argv: list[str] | None = None) -> int:
         report = verify_registry()
         print(json.dumps(report, ensure_ascii=False))
         return 0 if report["status"] == "REGISTRY_OK" else 1
+    if args.upcoming and not args.source_class:
+        raise SystemExit("--upcoming requires --source-class: see docs/decisions/002")
     if args.upcoming:
         upcoming = events_for_capture(
             load_registry(), now_ts=int(time.time()),
+            source_class=args.source_class,
             horizon_sec=args.horizon_hours * 3600,
         )
         print(json.dumps({
             "status": "UPCOMING",
+            "t0_source_class": args.source_class,
             "horizon_hours": args.horizon_hours,
             "count": len(upcoming),
             "events": upcoming,
