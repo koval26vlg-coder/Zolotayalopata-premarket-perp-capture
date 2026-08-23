@@ -44,7 +44,12 @@ V1_PLAN_PATH = PROJECT_ROOT / "docs/plans/premarket-perp-capture-planonly-202608
 V2_PLAN_PATH = PROJECT_ROOT / "docs/plans/premarket-perp-capture-planonly-20260822-v2.json"
 V3_PLAN_PATH = PROJECT_ROOT / "docs/plans/premarket-perp-capture-planonly-20260822-v3.json"
 V4_PLAN_PATH = PROJECT_ROOT / "docs/plans/premarket-perp-capture-planonly-20260822-v4.json"
-PLAN_PATH = PROJECT_ROOT / "docs/plans/premarket-perp-capture-planonly-20260822-v5.json"
+V5_PLAN_PATH = PROJECT_ROOT / "docs/plans/premarket-perp-capture-planonly-20260822-v5.json"
+V6_PLAN_PATH = PROJECT_ROOT / "docs/plans/premarket-perp-capture-planonly-20260822-v6.json"
+V7_PLAN_PATH = PROJECT_ROOT / "docs/plans/premarket-perp-capture-planonly-20260822-v7.json"
+V8_PLAN_PATH = PROJECT_ROOT / "docs/plans/premarket-perp-capture-planonly-20260822-v8.json"
+V9_PLAN_PATH = PROJECT_ROOT / "docs/plans/premarket-perp-capture-planonly-20260822-v9.json"
+PLAN_PATH = V9_PLAN_PATH
 RUN_RECORD_PATH = PROJECT_ROOT / "docs/run/capture-run.json"
 STOP_REQUEST_PATH = PROJECT_ROOT / "docs/run/stop-request.json"
 CAPTURE_TOKEN_PATH = PROJECT_ROOT / "docs/run/capture-token.json"
@@ -95,6 +100,16 @@ ALLOWED_ENDPOINTS: tuple[tuple[str, str], ...] = (
     ("api.gateio.ws", "/api/v4/futures/usdt/trades"),
 )
 
+# Provenance policy for human-attested official listing moments.  Registry validation
+# imports this policy rather than the attestation writer, so an arbitrary JSON row
+# cannot become official merely by spelling OFFICIAL_ANNOUNCEMENT correctly.
+OFFICIAL_ATTESTATION_SCHEMA = "premarket_perp_official_attestation_v1"
+OFFICIAL_ANNOUNCEMENT_HOSTS: dict[str, tuple[str, ...]] = {
+    "bybit": ("announcements.bybit.com", "www.bybit.com"),
+    "okx": ("www.okx.com",),
+    "gate": ("www.gate.com", "www.gate.io", "gate.io"),
+}
+
 # What this project does, as opposed to what it looks at. Every one of these is
 # asserted by tests and recorded in the PlanOnly; the capability scan enforces the
 # ones that can be enforced statically.
@@ -129,6 +144,14 @@ WRITE_CLASSES: dict[str, dict[str, object]] = {
         "plan_and_capability_scan": True,
         "endpoint_allow_list": True,
     },
+    "official_attestation": {
+        "what": "append one human-verified official spot t0 to the event registry",
+        "requests": "none; records already-read announcement evidence",
+        "exclusive_writer_claim": False,
+        "capture_token": False,
+        "plan_and_capability_scan": True,
+        "endpoint_allow_list": True,
+    },
     "market_data_capture": {
         "what": "continuous capture around a listing t0",
         "requests": "sustained, while a market is moving",
@@ -146,6 +169,14 @@ CAPTURE_WINDOW_AFTER_SEC = 15 * 60
 MAX_CAPTURE_RUNTIME_SEC = CAPTURE_WINDOW_BEFORE_SEC + CAPTURE_WINDOW_AFTER_SEC + 600
 MAX_REQUESTS_PER_CAPTURE = 20000
 MAX_EVENTS_PER_CAPTURE = 1
+CAPTURE_LAUNCH_EARLY_GRACE_SEC = 30
+CAPTURE_LAUNCH_LATE_GRACE_SEC = 5
+
+# A contract is current only when a complete, writer-timestamped venue-universe
+# refresh is recent.  A sharp universe collapse is acquisition failure rather than
+# evidence that every missing pre-market contract terminated.
+MAX_COMPLETE_METADATA_REFRESH_AGE_SEC = 300
+MIN_FULL_UNIVERSE_RETENTION_RATIO = 0.50
 
 
 # REST polling yields a sample at the instants we ask, not a tape of what happened.
@@ -156,3 +187,15 @@ PROBE_CADENCE_SEC: dict[str, float] = {"trades": 3.0, "orderbook": 3.0, "ticker"
 BURST_CADENCE_SEC: dict[str, float] = {"trades": 0.5, "orderbook": 0.5, "ticker": 2.0}
 BURST_HALF_WIDTH_SEC = 120
 ORDERBOOK_DEPTH = 50
+
+# Replay-readiness is stricter than process completion.  Every exit is fixed before
+# data exists, and the largest successful-sample gap in the burst may be only a small
+# multiple of the declared cadence for that probe.
+PRIMARY_EXIT_OFFSETS_SEC: tuple[int, ...] = (0, 5, 15, 60)
+MAX_BURST_GAP_CADENCE_MULTIPLIER = 3.0
+MAX_SAMPLE_STALENESS_SEC: dict[str, float] = {
+    "trades": 10.0,
+    "orderbook": 5.0,
+    "ticker": 10.0,
+}
+MAX_EXCHANGE_FUTURE_SKEW_SEC = 2.0

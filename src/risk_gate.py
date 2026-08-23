@@ -42,7 +42,7 @@ from canonical_hash import canonical_hash
 from capability_scan import assert_runtime_is_clean
 
 
-CAPTURE_TOKEN_SCHEMA = "premarket_capture_token_v1"
+CAPTURE_TOKEN_SCHEMA = "premarket_capture_token_v2"
 PREFLIGHT_RESULT_SCHEMA = "premarket_write_preflight_v2"
 GATE_OPEN_STATUSES = frozenset({"READY_FOR_POSTPROCESS"})
 RUN_RECORD_ACTIVE_STATUSES = frozenset({"LAUNCHING", "RUNNING"})
@@ -56,13 +56,31 @@ METADATA_REGISTRY_ACTION = (
 OFFLINE_DESCRIPTIVE_ACTION = (
     "verify and materialize descriptive proxy observations offline"
 )
+OFFICIAL_ATTESTATION_ACTION = (
+    "append one human-verified official spot t0 after attestation preflight"
+)
+CAPTURE_ACTION = "capture one official event in a bounded visible terminal"
+WRITE_CLASS_ACTION = {
+    "metadata_registry": METADATA_REGISTRY_ACTION,
+    "official_attestation": OFFICIAL_ATTESTATION_ACTION,
+    "market_data_capture": CAPTURE_ACTION,
+}
 PLAN_WRITE_AUTHORIZATION: dict[str, dict[str, frozenset[str]]] = {
     "AWAIT_CAPTURE_IMPLEMENTATION_AUDIT_NO_CAPTURE": {
         "authorized_actions": frozenset({
             METADATA_REGISTRY_ACTION,
             OFFLINE_DESCRIPTIVE_ACTION,
+            OFFICIAL_ATTESTATION_ACTION,
         }),
-        "write_classes": frozenset({"metadata_registry"}),
+        "write_classes": frozenset({"metadata_registry", "official_attestation"}),
+    },
+    "CAPTURE_IMPLEMENTATION_AUDIT_GREEN_NO_CAPTURE": {
+        "authorized_actions": frozenset({
+            METADATA_REGISTRY_ACTION,
+            OFFLINE_DESCRIPTIVE_ACTION,
+            OFFICIAL_ATTESTATION_ACTION,
+        }),
+        "write_classes": frozenset({"metadata_registry", "official_attestation"}),
     },
 }
 
@@ -134,14 +152,40 @@ def verify_plan_write_authorization(
         write_class in authorization["write_classes"],
         f"plan status {status!r} does not authorize write class {write_class!r}",
     )
+    action = WRITE_CLASS_ACTION.get(write_class)
+    _require(action is not None and action in actual_actions, "write class has no exact action")
     return {
         "status": status,
         "authorized_actions": sorted(actual_actions),
+        "authorized_action": action,
         "write_class": write_class,
     }
 
 
 # ------------------------------------------------------------------ plan identity
+
+
+def _verify_retired_plan_lineage() -> None:
+    for retired in trust_root.RETIRED_PLANS:
+        relative = str(retired.get("path") or "")
+        path = config.PROJECT_ROOT / relative
+        _require(path.is_file(), f"retired plan missing from lineage: {relative}")
+        _require(
+            sha256_file(path) == retired.get("plan_file_sha256"),
+            f"retired plan sha256 mismatch: {relative}",
+        )
+        try:
+            payload = json.loads(path.read_text(encoding="utf-8"))
+        except (OSError, ValueError) as exc:
+            raise RiskGateError(f"retired plan unreadable: {relative}: {exc}") from exc
+        _require(payload.get("schema") == retired.get("schema"), f"retired schema mismatch: {relative}")
+        _require(payload.get("plan_id") == retired.get("plan_id"), f"retired plan_id mismatch: {relative}")
+        _require(payload.get("plan_hash") == retired.get("plan_hash"), f"retired plan_hash mismatch: {relative}")
+        _require(
+            payload.get("plan_hash")
+            == canonical_hash({key: value for key, value in payload.items() if key != "plan_hash"}),
+            f"retired plan canonical hash mismatch: {relative}",
+        )
 
 
 def load_and_verify_plan(plan_path: Path | None = None) -> dict[str, Any]:
@@ -152,6 +196,7 @@ def load_and_verify_plan(plan_path: Path | None = None) -> dict[str, Any]:
     runtime and the runtime verifies the plan: without an outside anchor, editing both
     together closes the loop and proves nothing."""
     plan_path = plan_path or config.PLAN_PATH
+    _verify_retired_plan_lineage()
     _require(plan_path.is_file(), f"PlanOnly missing: {plan_path}")
     plan = json.loads(plan_path.read_text(encoding="utf-8"))
 
@@ -164,6 +209,11 @@ def load_and_verify_plan(plan_path: Path | None = None) -> dict[str, Any]:
         sha256_file(plan_path) == trust_root.PLAN_FILE_SHA256,
         "plan file sha256 is not the approved one",
     )
+    if trust_root.RETIRED_PLANS:
+        previous = trust_root.RETIRED_PLANS[-1]
+        _require(plan.get("supersedes_plan_id") == previous["plan_id"], "active plan lineage id mismatch")
+        _require(plan.get("supersedes_plan_hash") == previous["plan_hash"], "active plan lineage hash mismatch")
+        _require(plan.get("supersedes_plan_path") == previous["path"], "active plan lineage path mismatch")
 
     declared = {
         str(item.get("role")): str(item.get("sha256") or "")
@@ -203,11 +253,13 @@ def load_and_verify_plan(plan_path: Path | None = None) -> dict[str, Any]:
 
 
 def run_capability_scan() -> dict[str, Any]:
-    return assert_runtime_is_clean(
+    result = assert_runtime_is_clean(
         config.PROJECT_ROOT,
         markers_path=config.PROJECT_ROOT / "docs/risk/forbidden-capabilities.txt",
         allowed_endpoints=config.ALLOWED_ENDPOINTS,
     )
+    result["report_hash"] = canonical_hash(result)
+    return result
 
 
 # --------------------------------------------------------------- shared workspace
@@ -265,6 +317,12 @@ def read_shared_gate(gate_path: Path | None = None) -> dict[str, Any]:
             [shell, "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", str(gate_path), "-Json"],
             capture_output=True, text=True, timeout=GATE_TIMEOUT_SEC,
         )
+        if completed.returncode != 0:
+            stderr = (completed.stderr or "").strip()
+            detail = f"gate process exit code {completed.returncode}"
+            if stderr:
+                detail = f"{detail}: {stderr[:500]}"
+            return {"open": False, "status": "UNAVAILABLE", "detail": detail}
         payload = json.loads((completed.stdout or "").strip())
     except (OSError, subprocess.SubprocessError, ValueError) as exc:
         return {"open": False, "status": "UNAVAILABLE", "detail": f"{type(exc).__name__}: {exc}"}
@@ -344,48 +402,222 @@ def inspect_run_record(run_record_path: Path | None = None) -> dict[str, Any]:
 # ------------------------------------------------------------------ capture token
 
 
-def mint_capture_token(run_id: str, *, ttl_sec: int = CAPTURE_TOKEN_TTL_SEC) -> dict[str, Any]:
+def mint_capture_token(
+    run_id: str,
+    *,
+    event_id: str,
+    source_class: str,
+    verified_preflight: Mapping[str, Any],
+    ttl_sec: int = CAPTURE_TOKEN_TTL_SEC,
+) -> dict[str, Any]:
+    """Mint only from a complete capture preflight bound to one event and source."""
+    _require(bool(str(run_id).strip()), "capture token run_id is required")
+    _require(bool(str(event_id).strip()), "capture token event_id is required")
+    _require(source_class == "OFFICIAL_ANNOUNCEMENT", "capture token requires official source")
+    _require(0 < int(ttl_sec) <= CAPTURE_TOKEN_TTL_SEC, "capture token TTL exceeds policy")
+
+    plan = load_and_verify_plan()
+    authorization = verify_plan_write_authorization(plan, "market_data_capture")
+    verify_resolved_path_bindings(plan)
+    receipt = dict(verified_preflight)
+    _require(receipt.get("schema") == PREFLIGHT_RESULT_SCHEMA, "capture preflight schema mismatch")
+    _require(receipt.get("ok") is True and receipt.get("verified") is True, "capture preflight is not verified")
+    _require(receipt.get("decision") == "ALLOW_VISIBLE_CAPTURE", "capture preflight did not allow capture")
+    _require(receipt.get("write_class") == "market_data_capture", "capture preflight write class mismatch")
+    _require(receipt.get("action") == CAPTURE_ACTION, "capture preflight action mismatch")
+    _require(receipt.get("run_id") == run_id, "capture preflight run_id mismatch")
+    _require(receipt.get("event_id") == event_id, "capture preflight event mismatch")
+    _require(receipt.get("source_class") == source_class, "capture preflight source mismatch")
+    _require(receipt.get("plan_id") == plan.get("plan_id"), "capture preflight plan_id mismatch")
+    _require(receipt.get("plan_hash") == plan.get("plan_hash"), "capture preflight plan hash mismatch")
+    current_paths_hash = canonical_hash(resolved_config())
+    _require(
+        receipt.get("resolved_paths_hash") == current_paths_hash,
+        "capture preflight resolved paths do not match the current runtime",
+    )
+    capability = receipt.get("capability_scan")
+    _require(isinstance(capability, Mapping), "capture preflight capability receipt missing")
+    _require(capability.get("status") == "CAPABILITY_SCAN_CLEAN", "capture preflight capability scan not clean")
+    _require(len(str(capability.get("report_hash") or "")) == 64, "capture capability hash invalid")
+    _require(receipt.get("gate_status") in GATE_OPEN_STATUSES, "capture preflight gate not open")
+
     payload = {
         "schema": CAPTURE_TOKEN_SCHEMA,
         "token": secrets.token_hex(16),
         "run_id": run_id,
+        "write_class": "market_data_capture",
+        "action": CAPTURE_ACTION,
+        "event_id": event_id,
+        "source_class": source_class,
+        "plan_id": plan["plan_id"],
+        "plan_hash": plan["plan_hash"],
+        "resolved_paths_hash": receipt["resolved_paths_hash"],
+        "gate_status": receipt["gate_status"],
+        "capability_scan_status": capability["status"],
+        "capability_scan_hash": capability["report_hash"],
         "minted_at_utc": utc_now_iso(),
         "minted_by_pid": os.getpid(),
         "expires_at_ts": int(time.time()) + int(ttl_sec),
     }
+    payload["binding_hash"] = canonical_hash(
+        {key: value for key, value in payload.items() if key != "token"}
+    )
     path = config.CAPTURE_TOKEN_PATH
     path.parent.mkdir(parents=True, exist_ok=True)
-    temporary = path.with_name(f".{path.name}.{os.getpid()}.{time.time_ns()}.tmp")
+    descriptor: int | None = None
+    created = False
     try:
-        temporary.write_text(json.dumps(payload, indent=2) + "\n", encoding="utf-8")
-        os.replace(temporary, path)
-    finally:
-        temporary.unlink(missing_ok=True)
+        descriptor = os.open(path, os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o600)
+        created = True
+        with os.fdopen(descriptor, "w", encoding="utf-8", newline="\n") as handle:
+            descriptor = None
+            json.dump(payload, handle, indent=2)
+            handle.write("\n")
+            handle.flush()
+            os.fsync(handle.fileno())
+    except FileExistsError as exc:
+        raise RiskGateError(
+            "an outstanding capture token already exists; consume or explicitly "
+            "resolve it before minting another"
+        ) from exc
+    except Exception:
+        if descriptor is not None:
+            os.close(descriptor)
+        if created:
+            path.unlink(missing_ok=True)
+        raise
     return payload
 
 
-def consume_capture_token(*, token: str, run_id: str) -> dict[str, Any]:
-    """Taken exactly once: the rename is the claim, so a second caller finds nothing."""
+def _read_capture_token(path: Path) -> tuple[bytes, dict[str, Any]]:
+    try:
+        raw = path.read_bytes()
+    except FileNotFoundError as exc:
+        raise RiskGateError("no capture token: run --preflight first") from exc
+    except OSError as exc:
+        raise RiskGateError(f"capture token is unreadable: {exc}") from exc
+    if not raw or len(raw) > 64 * 1024:
+        raise RiskGateError("capture token bytes are empty or exceed the policy bound")
+    try:
+        text = raw.decode("utf-8")
+        payload = json.loads(text)
+    except (UnicodeDecodeError, json.JSONDecodeError) as exc:
+        raise RiskGateError(f"capture token JSON is unreadable: {exc}") from exc
+    _require(isinstance(payload, dict), "capture token JSON must be an object")
+    return raw, payload
+
+
+def _validate_capture_token_caller(
+    payload: Mapping[str, Any],
+    *,
+    token: str,
+    run_id: str,
+    event_id: str,
+    source_class: str,
+) -> None:
+    """Validate immutable bytes and caller authority before touching the token path."""
+    _require(payload.get("schema") == CAPTURE_TOKEN_SCHEMA, "capture token schema mismatch")
+    expected_binding_hash = canonical_hash(
+        {key: value for key, value in payload.items() if key not in {"token", "binding_hash"}}
+    )
+    _require(payload.get("binding_hash") == expected_binding_hash, "capture token binding hash mismatch")
+    _require(
+        secrets.compare_digest(str(payload.get("token") or ""), str(token)),
+        "capture token mismatch",
+    )
+    _require(
+        str(payload.get("run_id") or "") == str(run_id),
+        "capture token belongs to a different run_id",
+    )
+    _require(payload.get("event_id") == event_id, "capture token belongs to a different event")
+    _require(
+        payload.get("source_class") == source_class,
+        "capture token belongs to a different source class",
+    )
+    _require(payload.get("write_class") == "market_data_capture", "capture token write class mismatch")
+    _require(payload.get("action") == CAPTURE_ACTION, "capture token action mismatch")
+    try:
+        expires_at_ts = int(payload.get("expires_at_ts"))
+    except (TypeError, ValueError) as exc:
+        raise RiskGateError("capture token expiry is missing or malformed") from exc
+    _require(expires_at_ts >= int(time.time()),
+             "capture token expired: run --preflight again")
+    _require(bool(str(payload.get("plan_id") or "").strip()), "capture token plan_id is missing")
+    _require(len(str(payload.get("plan_hash") or "")) == 64, "capture token plan hash is invalid")
+    _require(
+        len(str(payload.get("resolved_paths_hash") or "")) == 64,
+        "capture token resolved paths hash is invalid",
+    )
+    _require(
+        payload.get("capability_scan_status") == "CAPABILITY_SCAN_CLEAN",
+        "capture token capability status is not clean",
+    )
+    _require(
+        len(str(payload.get("capability_scan_hash") or "")) == 64,
+        "capture token capability hash is invalid",
+    )
+
+
+def consume_capture_token(
+    *,
+    token: str,
+    run_id: str,
+    event_id: str,
+    source_class: str,
+) -> dict[str, Any]:
+    """Validate the caller without mutation, then atomically take and recheck live state."""
     path = config.CAPTURE_TOKEN_PATH
-    if not path.is_file():
-        raise RiskGateError("no capture token: run --preflight first")
+    raw, payload = _read_capture_token(path)
+    _validate_capture_token_caller(
+        payload,
+        token=token,
+        run_id=run_id,
+        event_id=event_id,
+        source_class=source_class,
+    )
+
     consumed = path.with_name(f".{path.name}.{os.getpid()}.{time.time_ns()}.consumed")
     try:
         os.replace(path, consumed)
     except OSError as exc:
         raise RiskGateError(f"capture token could not be taken: {exc}") from exc
     try:
-        payload = json.loads(consumed.read_text(encoding="utf-8"))
+        try:
+            claimed_raw = consumed.read_bytes()
+        except OSError as exc:
+            raise RiskGateError(f"consumed capture token is unreadable: {exc}") from exc
+        _require(
+            claimed_raw == raw,
+            "capture token changed between validation and atomic consume",
+        )
+
+        plan = load_and_verify_plan()
+        _require(payload.get("plan_id") == plan.get("plan_id"), "capture token plan_id is stale")
+        _require(payload.get("plan_hash") == plan.get("plan_hash"), "capture token plan hash is stale")
+        verify_plan_write_authorization(plan, "market_data_capture")
+        verify_resolved_path_bindings(plan)
+        _require(
+            payload.get("resolved_paths_hash") == canonical_hash(resolved_config()),
+            "current resolved paths differ from the capture token",
+        )
+        capability = run_capability_scan()
+        _require(capability.get("status") == "CAPABILITY_SCAN_CLEAN", "current capability scan is not clean")
+        _require(
+            capability.get("report_hash") == payload.get("capability_scan_hash"),
+            "current capability scan differs from token",
+        )
+        gate = read_shared_gate()
+        _require(
+            gate.get("open") is True and gate.get("status") in GATE_OPEN_STATUSES,
+            f"current shared gate is not open: {gate.get('status')}",
+        )
+        claim = inspect_claim()
+        _require(not claim.get("blocks"), str(claim.get("detail") or "shared writer claim blocks"))
+        run_record = inspect_run_record()
+        _require(not run_record.get("blocks"), str(run_record.get("detail") or "capture run record blocks"))
+        return payload
     finally:
         consumed.unlink(missing_ok=True)
-    _require(payload.get("schema") == CAPTURE_TOKEN_SCHEMA, "capture token schema mismatch")
-    _require(secrets.compare_digest(str(payload.get("token") or ""), str(token)),
-             "capture token mismatch")
-    _require(str(payload.get("run_id") or "") == str(run_id),
-             "capture token belongs to a different run_id")
-    _require(int(payload.get("expires_at_ts") or 0) >= int(time.time()),
-             "capture token expired: run --preflight again")
-    return payload
 
 
 # --------------------------------------------------------------------- preflight
@@ -423,10 +655,22 @@ def evaluate_risk_preflight(
     }
 
 
-def preflight(*, write_class: str, run_id: str) -> dict[str, Any]:
+def preflight(
+    *,
+    write_class: str,
+    run_id: str,
+    event_id: str = "",
+    source_class: str = "",
+) -> dict[str, Any]:
     _require(bool(str(run_id).strip()), "run_id is required")
     policy = config.WRITE_CLASSES.get(write_class)
     _require(policy is not None, f"unknown write class: {write_class}")
+    if write_class == "market_data_capture":
+        _require(bool(str(event_id).strip()), "event_id is required for capture preflight")
+        _require(
+            source_class == "OFFICIAL_ANNOUNCEMENT",
+            "capture preflight requires OFFICIAL_ANNOUNCEMENT",
+        )
 
     plan_error: str | None = None
     capability_error: str | None = None
@@ -477,6 +721,13 @@ def preflight(*, write_class: str, run_id: str) -> dict[str, Any]:
         "plan_id": plan.get("plan_id") if plan else None,
         "plan_hash": plan.get("plan_hash") if plan else None,
         "plan_authorization": plan_authorization,
+        "action": (
+            plan_authorization.get("authorized_action")
+            if plan_authorization is not None
+            else WRITE_CLASS_ACTION.get(write_class)
+        ),
+        "event_id": event_id or None,
+        "source_class": source_class or None,
         "capability_scan": capability_result,
     })
     resolved_paths = resolved_config()
@@ -484,8 +735,15 @@ def preflight(*, write_class: str, run_id: str) -> dict[str, Any]:
     decision["resolved_paths_hash"] = canonical_hash(resolved_paths)
     if decision["ok"] and write_class == "metadata_registry":
         decision["decision"] = "ALLOW_METADATA_REGISTRY"
+    if decision["ok"] and write_class == "official_attestation":
+        decision["decision"] = "ALLOW_OFFICIAL_ATTESTATION"
     if decision["ok"] and policy.get("capture_token"):
-        token = mint_capture_token(run_id)
+        token = mint_capture_token(
+            run_id,
+            event_id=event_id,
+            source_class=source_class,
+            verified_preflight=decision,
+        )
         decision["capture_token"] = token["token"]
         decision["capture_token_expires_at_ts"] = token["expires_at_ts"]
     return decision
@@ -515,6 +773,8 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--preflight", action="store_true")
     parser.add_argument("--write-class", choices=sorted(config.WRITE_CLASSES))
     parser.add_argument("--run-id", default="")
+    parser.add_argument("--event-id", default="")
+    parser.add_argument("--source-class", default="")
     args = parser.parse_args(argv)
 
     if args.print_config:
@@ -538,7 +798,16 @@ def main(argv: list[str] | None = None) -> int:
         if not args.write_class:
             parser.error("--write-class is required with --preflight")
         run_id = args.run_id or "capture_" + datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
-        decision = preflight(write_class=args.write_class, run_id=run_id)
+        preflight_args: dict[str, str] = {
+            "write_class": args.write_class,
+            "run_id": run_id,
+        }
+        if args.write_class == "market_data_capture":
+            preflight_args.update({
+                "event_id": args.event_id,
+                "source_class": args.source_class,
+            })
+        decision = preflight(**preflight_args)
         print(json.dumps(decision, ensure_ascii=False))
         return 0 if decision["ok"] else 1
     raise SystemExit("no action requested")

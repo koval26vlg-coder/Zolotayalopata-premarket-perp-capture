@@ -54,7 +54,7 @@ def job(**overrides):
         "symbol": "NEWUSDT",
         "t0_ts": T0,
         "t0_source_class": "VENUE_INSTRUMENT_METADATA",
-        "t0_precision_sec": 60,
+        "t0_precision_sec": 1,
         "caveats": [],
     }
     fields.update(overrides)
@@ -66,6 +66,26 @@ def rows_in(tmp: Path) -> list[dict]:
     return [json.loads(line) for line in text.splitlines() if line.strip()]
 
 
+def valid_payload(
+    probe: str, symbol: str = "NEWUSDT", timestamp: float = T0
+) -> dict:
+    milliseconds = int(timestamp * 1000)
+    if probe == "trades":
+        return {"retCode": 0, "result": {"list": [{
+            "execId": "1", "symbol": symbol, "price": "10", "size": "1",
+            "time": str(milliseconds),
+        }]}}
+    if probe == "orderbook":
+        return {"retCode": 0, "result": {
+            "s": symbol, "b": [["9.9", "1"]], "a": [["10.1", "1"]],
+            "ts": milliseconds,
+        }}
+    return {"retCode": 0, "time": milliseconds, "result": {"list": [{
+        "symbol": symbol, "bid1Price": "9.9", "ask1Price": "10.1",
+        "markPrice": "10", "indexPrice": "10",
+    }]}}
+
+
 class CaptureHarness(unittest.TestCase):
     """Helpers only - no tests here, so nothing below re-runs them."""
 
@@ -74,7 +94,7 @@ class CaptureHarness(unittest.TestCase):
         self.addCleanup(holder.cleanup)
         return Path(holder.name)
 
-    def narrow_window(self, before: int = 60, after: int = 30, burst: int = 10):
+    def narrow_window(self, before: int = 60, after: int = 65, burst: int = 10):
         patcher = mock.patch.multiple(
             config,
             CAPTURE_WINDOW_BEFORE_SEC=before,
@@ -91,11 +111,11 @@ class CaptureHarness(unittest.TestCase):
             clock.advance(latency)
             if fail is not None:
                 raise fail
-            return {"probe": probe.probe, "ts": clock.now}
+            return valid_payload(probe.probe, symbol, clock.time())
 
         kwargs.setdefault("fetch", fetch)
         kwargs.setdefault("should_stop", lambda: False)
-        manifest = capture.run_capture(
+        manifest = capture._run_capture_core(
             job(),
             capture_dir=tmp,
             clock=clock.time,
@@ -103,6 +123,16 @@ class CaptureHarness(unittest.TestCase):
             sleep_fn=clock.sleep,
             **kwargs,
         )
+        readiness = manifest["replay_readiness"]
+        readiness["structural_ready"] = bool(readiness.get("ready"))
+        readiness["ready"] = False
+        readiness["notes"] = [
+            *list(readiness.get("notes") or []),
+            "test harness is synthetic/offline-only and cannot support acceptance",
+        ]
+        manifest["evidence_class"] = "SYNTHETIC_OFFLINE_ONLY"
+        manifest["acceptance_capable"] = False
+        capture._write_json_exclusive(tmp / "manifest.json", manifest)
         return manifest, clock
 
 
@@ -254,7 +284,8 @@ class SampleRecordTests(CaptureHarness):
         rows = rows_in(tmp)
         self.assertTrue(rows)
         self.assertTrue(all("error" in row for row in rows))
-        self.assertEqual(manifest["stop_reason"], "window_complete")
+        self.assertEqual(manifest["stop_reason"], "no_successful_payloads")
+        self.assertEqual(manifest["status"], "STOPPED_INCOMPLETE")
         self.assertEqual(sum(manifest["errors_by_probe"].values()), len(rows))
 
     def test_every_sample_carries_its_capture_identity(self):
@@ -376,7 +407,9 @@ class ReplayReadinessTests(CaptureHarness):
         manifest, _ = self.run_loop(tmp)
         self.assertEqual(manifest["status"], "COMPLETED")
         self.assertIn("replay_readiness", manifest)
-        self.assertTrue(manifest["replay_readiness"]["ready"])
+        self.assertFalse(manifest["replay_readiness"]["ready"])
+        self.assertTrue(manifest["replay_readiness"]["structural_ready"])
+        self.assertEqual(manifest["evidence_class"], "SYNTHETIC_OFFLINE_ONLY")
 
     def test_a_capture_launched_too_late_completes_its_loop_but_is_not_ready(self):
         # The defect this exists to catch: the loop ends normally, the status says
@@ -385,10 +418,12 @@ class ReplayReadinessTests(CaptureHarness):
         tmp = self.tmpdir()
         clock = FakeClock(T0 - 3)  # launched three seconds before t0
 
-        manifest = capture.run_capture(
+        manifest = capture._run_capture_core(
             job(), capture_dir=tmp, clock=clock.time, monotonic=clock.monotonic,
             sleep_fn=clock.sleep, should_stop=lambda: False,
-            fetch=lambda probe, symbol, timeout: {"ok": True},
+            fetch=lambda probe, symbol, timeout: valid_payload(
+                probe.probe, symbol, clock.time()
+            ),
         )
         self.assertEqual(manifest["status"], "COMPLETED")
         self.assertFalse(manifest["replay_readiness"]["ready"])
@@ -480,6 +515,18 @@ class CaptureEligibilityTests(CaptureHarness):
         "t0_precision_sec": 1,
         "capture_eligible": True,
         "evidence_use": "ACCEPTANCE_ANCHOR",
+        "official_record_hash": "a" * 64,
+        "official_source_url": "https://announcements.bybit.com/en/article/new-listing",
+        "official_source_identity": "human_attestation:test",
+        "registry_sha256": "b" * 64,
+        "registry_summary_sha256": "c" * 64,
+        "registry_tail_record_hash": "d" * 64,
+        "mutation_receipt_seq": 0,
+        "mutation_receipt_hash": "1" * 64,
+        "summary_content_sha256": "2" * 64,
+        "registry_authority_state_hash": "3" * 64,
+        "plan_id": "plan-test",
+        "plan_hash": "e" * 64,
     }
 
     def test_metadata_derived_events_are_refused_as_capture_anchors(self):
@@ -490,7 +537,9 @@ class CaptureEligibilityTests(CaptureHarness):
             )
 
     def test_an_event_that_is_not_eligible_cannot_be_captured(self):
-        with mock.patch.object(capture.risk_gate, "consume_capture_token", return_value={}), \
+        with mock.patch.object(capture.risk_gate, "load_and_verify_plan",
+                               return_value={"plan_id": "plan-test",
+                                             "plan_hash": "e" * 64}), \
              mock.patch.object(capture.registry, "events_for_capture", return_value=[]):
             with self.assertRaisesRegex(capture.CaptureError, "capture-eligible"):
                 capture.capture_event(
@@ -500,36 +549,61 @@ class CaptureEligibilityTests(CaptureHarness):
 
     def test_an_existing_capture_directory_is_never_overwritten(self):
         root = self.tmpdir()
+        run_record = self.tmpdir() / "capture-run.json"
         (root / "r1").mkdir()
-        with mock.patch.object(capture.risk_gate, "consume_capture_token", return_value={}), \
+        with mock.patch.object(config, "CAPTURE_ROOT", root), \
+             mock.patch.object(config, "RUN_RECORD_PATH", run_record), \
+             mock.patch.object(capture.risk_gate, "consume_capture_token", return_value={}), \
+             mock.patch.object(capture.risk_gate, "load_and_verify_plan",
+                               return_value={"plan_id": "plan-test",
+                                             "plan_hash": "e" * 64}), \
+             mock.patch.object(capture.risk_gate, "read_shared_gate",
+                               return_value={"open": True,
+                                             "status": "READY_FOR_POSTPROCESS"}), \
              mock.patch.object(capture.registry, "events_for_capture",
-                               return_value=[self.EPISODE]):
+                               return_value=[self.EPISODE]), \
+             mock.patch.object(capture, "claim_global_market_writer",
+                               return_value={"owner_pid": 1,
+                                             "ownership_token": "x"}), \
+             mock.patch.object(capture, "release_global_market_writer",
+                               return_value=None):
             with self.assertRaisesRegex(capture.CaptureError, "already exists"):
                 capture.capture_event(
                     run_id="r1", capture_token="t", event_id="bybit:NEWUSDT",
-                    source_class="OFFICIAL_ANNOUNCEMENT", capture_root=root,
+                    source_class="OFFICIAL_ANNOUNCEMENT",
                 )
 
     def test_the_capture_anchors_on_the_official_spot_t0(self):
         seen = {}
         root = self.tmpdir()
-        with mock.patch.object(capture.risk_gate, "consume_capture_token", return_value={}), \
+        run_record = self.tmpdir() / "capture-run.json"
+        with mock.patch.object(config, "CAPTURE_ROOT", root), \
+             mock.patch.object(config, "RUN_RECORD_PATH", run_record), \
+             mock.patch.object(capture.risk_gate, "consume_capture_token", return_value={}), \
              mock.patch.object(capture.risk_gate, "load_and_verify_plan",
-                               return_value={"plan_hash": "abc"}), \
+                               return_value={"plan_id": "plan-test", "plan_hash": "e" * 64}), \
+             mock.patch.object(capture.risk_gate, "read_shared_gate",
+                               return_value={"open": True,
+                                             "status": "READY_FOR_POSTPROCESS"}), \
              mock.patch.object(capture.registry, "events_for_capture",
                                return_value=[self.EPISODE]), \
              mock.patch.object(capture, "observe_venue_metadata", return_value={}), \
              mock.patch.object(capture, "claim_global_market_writer",
                                return_value={"owner_pid": 1, "ownership_token": "x"}), \
              mock.patch.object(capture, "release_global_market_writer", return_value=None), \
-             mock.patch.object(capture, "write_capture_receipt", return_value=None), \
-             mock.patch.object(capture, "run_capture",
+             mock.patch.object(config, "EVIDENCE_DIR", self.tmpdir()), \
+             mock.patch.object(
+                 capture,
+                 "_build_capture_receipt_from_committed_manifest",
+                 return_value={"capture_id": "r1", "receipt_hash": "a" * 64},
+             ), \
+             mock.patch.object(capture, "_run_capture_core",
                                side_effect=lambda job_, **k: seen.update(
                                    {"t0": job_.t0_ts, "class": job_.t0_source_class}
-                               ) or {"ok": True}):
+                               ) or {"capture_id": "r1", "status": "COMPLETED"}):
             capture.capture_event(
                 run_id="r1", capture_token="t", event_id="bybit:NEWUSDT",
-                source_class="OFFICIAL_ANNOUNCEMENT", capture_root=root,
+                source_class="OFFICIAL_ANNOUNCEMENT",
             )
         self.assertEqual(seen["t0"], T0)
         self.assertEqual(seen["class"], "OFFICIAL_ANNOUNCEMENT")
@@ -537,9 +611,15 @@ class CaptureEligibilityTests(CaptureHarness):
     def test_the_claim_is_released_even_when_the_capture_fails(self):
         released = []
         root = self.tmpdir()
-        with mock.patch.object(capture.risk_gate, "consume_capture_token", return_value={}), \
+        run_record = self.tmpdir() / "capture-run.json"
+        with mock.patch.object(config, "CAPTURE_ROOT", root), \
+             mock.patch.object(config, "RUN_RECORD_PATH", run_record), \
+             mock.patch.object(capture.risk_gate, "consume_capture_token", return_value={}), \
              mock.patch.object(capture.risk_gate, "load_and_verify_plan",
-                               return_value={"plan_hash": "abc"}), \
+                               return_value={"plan_id": "plan-test", "plan_hash": "e" * 64}), \
+             mock.patch.object(capture.risk_gate, "read_shared_gate",
+                               return_value={"open": True,
+                                             "status": "READY_FOR_POSTPROCESS"}), \
              mock.patch.object(capture.registry, "events_for_capture",
                                return_value=[self.EPISODE]), \
              mock.patch.object(capture, "observe_venue_metadata", return_value={}), \
@@ -547,11 +627,11 @@ class CaptureEligibilityTests(CaptureHarness):
                                return_value={"owner_pid": 1, "ownership_token": "x"}), \
              mock.patch.object(capture, "release_global_market_writer",
                                side_effect=lambda *a, **k: released.append("released")), \
-             mock.patch.object(capture, "run_capture", side_effect=RuntimeError("boom")):
+             mock.patch.object(capture, "_run_capture_core", side_effect=RuntimeError("boom")):
             with self.assertRaises(RuntimeError):
                 capture.capture_event(
                     run_id="r1", capture_token="t", event_id="bybit:NEWUSDT",
-                    source_class="OFFICIAL_ANNOUNCEMENT", capture_root=root,
+                    source_class="OFFICIAL_ANNOUNCEMENT",
                 )
         self.assertEqual(released, ["released"])
 
@@ -561,9 +641,7 @@ class EvidenceTests(CaptureHarness):
         self.narrow_window()
         tmp = self.tmpdir()
         manifest, _ = self.run_loop(tmp)
-        with mock.patch.object(config, "EVIDENCE_DIR", self.tmpdir()):
-            path = capture.write_capture_receipt(manifest, tmp)
-        receipt = json.loads(path.read_text(encoding="utf-8"))
+        receipt = capture._build_capture_receipt_from_committed_manifest(manifest, tmp)
         self.assertEqual(receipt["output_sha256"], manifest["output_sha256"])
         self.assertTrue(receipt["manifest_sha256"])
         self.assertTrue(receipt["receipt_hash"])
@@ -574,12 +652,12 @@ class EvidenceTests(CaptureHarness):
         self.narrow_window()
         tmp = self.tmpdir()
         manifest, _ = self.run_loop(tmp)
-        with mock.patch.object(config, "EVIDENCE_DIR", self.tmpdir()):
-            capture.write_capture_receipt(manifest, tmp)
-            capture.write_capture_receipt(manifest, tmp)  # identical: fine
-            altered = dict(manifest, rows_written=manifest["rows_written"] + 1)
-            with self.assertRaises(capture.CaptureError):
-                capture.write_capture_receipt(altered, tmp)
+        first = capture._build_capture_receipt_from_committed_manifest(manifest, tmp)
+        second = capture._build_capture_receipt_from_committed_manifest(manifest, tmp)
+        self.assertEqual(first, second)
+        altered = dict(manifest, rows_written=manifest["rows_written"] + 1)
+        with self.assertRaises(capture.CaptureError):
+            capture._build_capture_receipt_from_committed_manifest(altered, tmp)
 
 
 class EntrypointTests(CaptureHarness):
@@ -592,11 +670,15 @@ class EntrypointTests(CaptureHarness):
     }
 
     def test_capture_requires_a_token(self):
-        with mock.patch.object(
-            capture.risk_gate,
-            "consume_capture_token",
-            side_effect=capture.risk_gate.RiskGateError("no token"),
-        ):
+        with mock.patch.object(capture.risk_gate, "load_and_verify_plan",
+                               return_value={"plan_id": "plan-test",
+                                             "plan_hash": "e" * 64}), \
+             mock.patch.object(capture, "_select_capture_job", return_value=job()), \
+             mock.patch.object(
+                 capture.risk_gate,
+                 "consume_capture_token",
+                 side_effect=capture.risk_gate.RiskGateError("no token"),
+             ):
             with self.assertRaises(capture.risk_gate.RiskGateError):
                 capture.capture_event(run_id="r1", capture_token="t", event_id="bybit:X",
                                       source_class=CLASS)

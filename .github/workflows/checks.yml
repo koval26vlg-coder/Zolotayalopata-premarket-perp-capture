@@ -57,3 +57,43 @@ jobs:
         run: python src/risk_gate.py --plan-check
         env:
           PYTHONPATH: src
+
+  windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+
+      - name: Confirm the runtime stays dependency-free
+        shell: pwsh
+        run: |
+          $packages = Get-Content -LiteralPath requirements.txt |
+            Where-Object { $_ -notmatch '^\s*(#.*)?$' }
+          if ($packages) {
+            Write-Error "requirements.txt is no longer empty of packages"
+          }
+
+      - name: Checkout is byte-identical to the committed tree
+        shell: pwsh
+        run: |
+          git diff --exit-code
+          if (git status --porcelain) {
+            git status --short
+            throw "checkout differs from the committed tree"
+          }
+
+      - name: Unit tests
+        run: python -m unittest discover -s tests
+
+      - name: Capability scan
+        run: python src/risk_gate.py --capability-scan
+        env:
+          PYTHONPATH: src
+
+      - name: Plan identity and bindings
+        run: python src/risk_gate.py --plan-check
+        env:
+          PYTHONPATH: src
