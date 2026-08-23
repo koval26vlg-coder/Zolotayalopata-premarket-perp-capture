@@ -8,7 +8,7 @@ than described in prose: observing a leveraged market must never become using le
 from __future__ import annotations
 
 import os
-from pathlib import Path
+from pathlib import Path, PurePosixPath, PureWindowsPath
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
@@ -56,7 +56,8 @@ V13_PLAN_PATH = PROJECT_ROOT / "docs/plans/premarket-perp-capture-planonly-20260
 V14_PLAN_PATH = PROJECT_ROOT / "docs/plans/premarket-perp-capture-planonly-20260822-v14.json"
 V15_PLAN_PATH = PROJECT_ROOT / "docs/plans/premarket-perp-capture-planonly-20260822-v15.json"
 V16_PLAN_PATH = PROJECT_ROOT / "docs/plans/premarket-perp-capture-planonly-20260822-v16.json"
-PLAN_PATH = PROJECT_ROOT / "docs/plans/premarket-perp-capture-planonly-20260822-v17.json"
+V17_PLAN_PATH = PROJECT_ROOT / "docs/plans/premarket-perp-capture-planonly-20260822-v17.json"
+PLAN_PATH = PROJECT_ROOT / "docs/plans/premarket-perp-capture-planonly-20260822-v18.json"
 RUN_RECORD_PATH = PROJECT_ROOT / "docs/run/capture-run.json"
 STOP_REQUEST_PATH = PROJECT_ROOT / "docs/run/stop-request.json"
 CAPTURE_TOKEN_PATH = PROJECT_ROOT / "docs/run/capture-token.json"
@@ -261,3 +262,20 @@ MAX_SAMPLE_STALENESS_SEC: dict[str, float] = {
     "ticker": 10.0,
 }
 MAX_EXCHANGE_FUTURE_SKEW_SEC = 2.0
+
+
+def path_is_absolute(value: object) -> bool:
+    """Absolute in the semantics of the path itself, not of the OS reading it.
+
+    The PlanOnly records a Windows capture root. Under PurePosixPath "E:/captures" is
+    a relative path, so a check that used the running platform's flavour passed on
+    Windows and failed on Linux for the same, correct plan - which is how a gate ends
+    up refusing a valid plan on CI while approving it at home.
+
+    Judging by the path's own flavour keeps the protection intact: "captures/x" is
+    relative under both flavours and is still refused.
+    """
+    text = str(value or "")
+    if not text:
+        return False
+    return PurePosixPath(text).is_absolute() or PureWindowsPath(text).is_absolute()

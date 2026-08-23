@@ -473,9 +473,11 @@ def _validate_production_authority(
     origin_root_raw = plan_report.get("evidence_origin_capture_root")
     if not isinstance(origin_root_raw, str) or not origin_root_raw.strip():
         raise ReplayError("selected historical PlanOnly carries no capture root")
-    origin_root = Path(origin_root_raw).resolve(strict=False)
-    if not origin_root.is_absolute():
+    # Judged before resolve(): on a foreign OS resolve() would silently prepend the
+    # working directory to a Windows path and call the result absolute.
+    if not config.path_is_absolute(origin_root_raw):
         raise ReplayError("selected historical PlanOnly capture root is not absolute")
+    origin_root = Path(origin_root_raw).resolve(strict=False)
     try:
         relative_to_origin = capture_dir.resolve(strict=False).relative_to(origin_root)
     except ValueError as exc:

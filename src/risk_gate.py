@@ -342,9 +342,10 @@ def verify_plan_identity(
             isinstance(bindings, Mapping),
             "selected PlanOnly has no resolved path bindings",
         )
-        capture_root = Path(str(bindings.get("capture_root") or ""))
+        capture_root_raw = str(bindings.get("capture_root") or "")
+        capture_root = Path(capture_root_raw)
         _require(
-            capture_root.is_absolute(),
+            config.path_is_absolute(capture_root_raw),
             "selected PlanOnly capture root is missing or not absolute",
         )
         evidence_origin_capture_root = str(capture_root.resolve(strict=False))

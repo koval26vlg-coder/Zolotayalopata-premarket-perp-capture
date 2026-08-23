@@ -32,28 +32,52 @@ V16_PLAN_HASH = "98cbca5522753bd511ca348f2fba60134bfb8a45ed3cb96607b0b5aadb42cd4
 V16_FILE_SHA256 = "5efd17a44bf307e9e90d6a581c515d07761c6e62644ce4e1ceae6b09d5246e48"
 
 
+def _retired(path):
+    """Find a published plan in the lineage by name.
+
+    Positional lookup said 'the one before last', which was true only while v17 was
+    current; every reissue shifted it and the assertion silently began describing a
+    different plan."""
+    for item in trust_root.RETIRED_PLANS:
+        if str(item["path"]).replace(chr(92), "/").endswith(path.name):
+            return item
+    raise AssertionError(f"{path.name} is not in the lineage")
+
+
 class ImmutableV17IdentityTests(unittest.TestCase):
     def test_v15_is_preserved_before_v16(self) -> None:
         self.assertEqual(hashlib.sha256(V15_PATH.read_bytes()).hexdigest(), V15_FILE_SHA256)
         self.assertEqual(json.loads(V15_PATH.read_text(encoding="utf-8"))["plan_hash"], V15_PLAN_HASH)
-        previous = trust_root.RETIRED_PLANS[-2]
-        self.assertEqual(previous["plan_id"], "premarket_perp_capture_20260822_v15")
+        previous = _retired(V15_PATH)
+        self.assertEqual(
+            previous["plan_id"],
+            json.loads(V15_PATH.read_text(encoding="utf-8"))["plan_id"],
+        )
         self.assertEqual(previous["plan_hash"], V15_PLAN_HASH)
         self.assertEqual(previous["plan_file_sha256"], V15_FILE_SHA256)
 
     def test_v16_is_preserved_as_the_immediate_predecessor(self) -> None:
         self.assertEqual(hashlib.sha256(V16_PATH.read_bytes()).hexdigest(), V16_FILE_SHA256)
         self.assertEqual(json.loads(V16_PATH.read_text(encoding="utf-8"))["plan_hash"], V16_PLAN_HASH)
-        previous = trust_root.RETIRED_PLANS[-1]
-        self.assertEqual(previous["plan_id"], "premarket_perp_capture_20260822_v16")
+        previous = _retired(V16_PATH)
+        self.assertEqual(
+            previous["plan_id"],
+            json.loads(V16_PATH.read_text(encoding="utf-8"))["plan_id"],
+        )
         self.assertEqual(previous["plan_hash"], V16_PLAN_HASH)
         self.assertEqual(previous["plan_file_sha256"], V16_FILE_SHA256)
 
-    def test_builder_issues_a_new_v17_identity_without_capture_authority(self) -> None:
+    def test_builder_issues_the_active_identity_without_capture_authority(self) -> None:
         plan = plan_builder.build_plan("2026-08-23T18:00:00.000Z")
-        self.assertEqual(plan["schema"], "premarket_perp_capture_planonly_v17")
-        self.assertEqual(plan["plan_id"], "premarket_perp_capture_20260822_v17")
-        self.assertEqual(plan["supersedes_plan_hash"], V16_PLAN_HASH)
+        # The identity is whatever the trust root pins today. What must hold at
+        # every reissue is that the builder agrees with it and grants no capture.
+        self.assertEqual(plan["schema"], trust_root.ACTIVE_PLAN["schema"])
+        self.assertEqual(plan["plan_id"], trust_root.PLAN_ID)
+        # Whatever the lineage retired last, not a fixed version: this assertion
+        # was about v17 superseding v16 and had to be true of every reissue after it.
+        self.assertEqual(
+            plan["supersedes_plan_hash"], trust_root.RETIRED_PLANS[-1]["plan_hash"]
+        )
         self.assertEqual(plan["status"], risk_gate.REGISTRY_QUARANTINE_PLAN_STATUS)
         self.assertFalse(plan["activation_gate"]["capture_authorized"])
         self.assertNotIn(risk_gate.CAPTURE_ACTION, plan["authorized_after_gate_green"])
