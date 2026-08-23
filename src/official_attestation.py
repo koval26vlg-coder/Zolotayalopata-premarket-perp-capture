@@ -97,10 +97,12 @@ def parse_announced_utc(value: str) -> int:
     return int(moment.timestamp())
 
 
-def require_official_source(venue: str, url: str) -> str:
-    hosts = OFFICIAL_ANNOUNCEMENT_HOSTS.get(venue)
+def require_official_source(listing_venue: str, url: str) -> str:
+    hosts = OFFICIAL_ANNOUNCEMENT_HOSTS.get(listing_venue)
     if not hosts:
-        raise AttestationError(f"no official announcement host declared for {venue}")
+        raise AttestationError(
+            f"no official announcement host declared for {listing_venue}"
+        )
     canonical_url = _canonical_text(
         url, field="announcement URL", allow_internal_space=False
     )
@@ -121,7 +123,8 @@ def require_official_source(venue: str, url: str) -> str:
         or explicit_port is not None
     ):
         raise AttestationError(
-            f"{host or url} is not an official announcement host for {venue}; "
+            f"{host or url} is not an official announcement host for "
+            f"{listing_venue}; "
             f"expected one of {', '.join(hosts)}"
         )
     return urllib.parse.urlunsplit(
@@ -199,6 +202,7 @@ def require_quotation(
 def _build_attestation(
     *,
     venue: str,
+    listing_venue: str | None = None,
     spot_symbol: str,
     premarket_contract_id: str,
     lifecycle_generation: int,
@@ -236,11 +240,14 @@ def _build_attestation(
         or lifecycle_generation < 0
     ):
         raise AttestationError("lifecycle_generation must be an explicit non-negative integer")
-    if venue not in OFFICIAL_ANNOUNCEMENT_HOSTS:
-        raise AttestationError(f"unknown venue: {venue}")
+    if venue not in config.PERP_VENUES:
+        raise AttestationError(f"unknown perpetual venue: {venue}")
+    listing_venue = str(listing_venue or venue)
+    if listing_venue not in OFFICIAL_ANNOUNCEMENT_HOSTS:
+        raise AttestationError(f"unknown listing venue: {listing_venue}")
 
     t0_ts = parse_announced_utc(announced_utc)
-    url = require_official_source(venue, announcement_url)
+    url = require_official_source(listing_venue, announcement_url)
     quote = require_quotation(
         quoted_sentence,
         announced_utc,
@@ -280,9 +287,14 @@ def _build_attestation(
         asset_identity=asset_identity,
     )
     # The evidence rides with the record, not in a commit message someone has to find.
+    # Which exchange listed the underlying is provenance in its own right: the
+    # catalyst may come from a venue this project never trades on.
+    observation["listing_venue"] = listing_venue
     observation["attestation"] = {
         "schema": ATTESTATION_SCHEMA,
         "attested_by": attested_by,
+        "listing_venue": listing_venue,
+        "perpetual_venue": venue,
         "announced_utc": datetime.fromtimestamp(t0_ts, timezone.utc).isoformat(
             timespec="seconds"
         ).replace("+00:00", "Z"),
@@ -298,6 +310,7 @@ def _build_attestation(
 def build_attestation(
     *,
     venue: str,
+    listing_venue: str | None = None,
     spot_symbol: str,
     premarket_contract_id: str,
     lifecycle_generation: int,
@@ -313,6 +326,7 @@ def build_attestation(
     """Build a new acceptance anchor and enforce usable causal lead."""
     return _build_attestation(
         venue=venue,
+        listing_venue=listing_venue,
         spot_symbol=spot_symbol,
         premarket_contract_id=premarket_contract_id,
         lifecycle_generation=lifecycle_generation,
@@ -332,6 +346,7 @@ def attest(
     *,
     run_id: str,
     venue: str,
+    listing_venue: str | None = None,
     spot_symbol: str,
     premarket_contract_id: str,
     lifecycle_generation: int,
@@ -361,6 +376,7 @@ def attest(
     prelock_now_ts = int(time.time())
     observation = _build_attestation(
         venue=venue,
+        listing_venue=listing_venue,
         spot_symbol=spot_symbol,
         premarket_contract_id=premarket_contract_id,
         lifecycle_generation=lifecycle_generation,
@@ -688,7 +704,11 @@ def main(argv: list[str] | None = None) -> int:
     )
     parser.add_argument("--attest", action="store_true")
     parser.add_argument("--run-id", default="")
-    parser.add_argument("--venue", choices=sorted(OFFICIAL_ANNOUNCEMENT_HOSTS))
+    parser.add_argument("--venue", choices=sorted(config.PERP_VENUES),
+                        help="the venue trading the pre-market perpetual")
+    parser.add_argument("--listing-venue", choices=sorted(OFFICIAL_ANNOUNCEMENT_HOSTS),
+                        help="the venue whose announcement schedules the spot listing; "
+                             "defaults to --venue when the same exchange does both")
     parser.add_argument("--spot-symbol", default="")
     parser.add_argument("--premarket-contract-id", default="")
     parser.add_argument("--lifecycle-generation", type=int, default=None)
@@ -747,6 +767,7 @@ def main(argv: list[str] | None = None) -> int:
     result = attest(
         run_id=args.run_id,
         venue=args.venue,
+        listing_venue=args.listing_venue or args.venue,
         spot_symbol=args.spot_symbol,
         premarket_contract_id=args.premarket_contract_id,
         lifecycle_generation=args.lifecycle_generation,

@@ -2730,7 +2730,11 @@ def _official_record_problems(
         source_port: int | str | None = parsed.port
     except ValueError:
         source_port = "INVALID"
-    official_hosts = config.OFFICIAL_ANNOUNCEMENT_HOSTS.get(venue, ())
+    # The announcement comes from whoever listed the underlying on spot, which need
+    # not be the venue trading the perpetual. Falling back to the perpetual venue keeps
+    # a same-venue announcement valid without letting an unnamed listing venue through.
+    listing_venue = str(entry.get("listing_venue") or venue)
+    official_hosts = config.OFFICIAL_ANNOUNCEMENT_HOSTS.get(listing_venue, ())
     if (
         parsed.scheme.lower() != "https"
         or (parsed.hostname or "").lower() not in official_hosts

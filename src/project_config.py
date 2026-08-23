@@ -58,7 +58,8 @@ V15_PLAN_PATH = PROJECT_ROOT / "docs/plans/premarket-perp-capture-planonly-20260
 V16_PLAN_PATH = PROJECT_ROOT / "docs/plans/premarket-perp-capture-planonly-20260822-v16.json"
 V17_PLAN_PATH = PROJECT_ROOT / "docs/plans/premarket-perp-capture-planonly-20260822-v17.json"
 V18_PLAN_PATH = PROJECT_ROOT / "docs/plans/premarket-perp-capture-planonly-20260822-v18.json"
-PLAN_PATH = PROJECT_ROOT / "docs/plans/premarket-perp-capture-planonly-20260822-v19.json"
+V19_PLAN_PATH = PROJECT_ROOT / "docs/plans/premarket-perp-capture-planonly-20260822-v19.json"
+PLAN_PATH = PROJECT_ROOT / "docs/plans/premarket-perp-capture-planonly-20260822-v20.json"
 RUN_RECORD_PATH = PROJECT_ROOT / "docs/run/capture-run.json"
 STOP_REQUEST_PATH = PROJECT_ROOT / "docs/run/stop-request.json"
 CAPTURE_TOKEN_PATH = PROJECT_ROOT / "docs/run/capture-token.json"
@@ -144,11 +145,35 @@ ALLOWED_ENDPOINTS: tuple[tuple[str, str], ...] = (
 # imports this policy rather than the attestation writer, so an arbitrary JSON row
 # cannot become official merely by spelling OFFICIAL_ANNOUNCEMENT correctly.
 OFFICIAL_ATTESTATION_SCHEMA = "premarket_perp_official_attestation_v1"
+# Whose announcement counts as official, keyed by the venue that LISTS the underlying
+# on spot. That is not necessarily the venue trading the pre-market perpetual: a token
+# whose perp sits on Bybit may be spot-listed on Binance or Upbit, and that listing is
+# the catalyst the hypothesis is about. Tying the two together - as this list did until
+# 2026-08-24 - would refuse the very announcement that matters.
+#
+# Every host here was measured against the venue's own announcement index rather than
+# guessed: bybit 30/30 articles on announcements.bybit.com, okx 20/20 on www.okx.com,
+# bitget 10/10 on www.bitget.com, binance articles under
+# www.binance.com/en/support/announcement/<code>, kucoin relative paths under
+# www.kucoin.com.
+#
+# What this list is NOT: an aggregator, a social account, or a news site. An "official"
+# t0 taken from those is a different datum wearing the same word, and the point of
+# naming hosts is to keep that distinction mechanical.
 OFFICIAL_ANNOUNCEMENT_HOSTS: dict[str, tuple[str, ...]] = {
     "bybit": ("announcements.bybit.com", "www.bybit.com"),
     "okx": ("www.okx.com",),
     "gate": ("www.gate.com", "www.gate.io", "gate.io"),
+    "binance": ("www.binance.com",),
+    "bitget": ("www.bitget.com",),
+    "kucoin": ("www.kucoin.com",),
+    "upbit": ("upbit.com", "www.upbit.com"),
 }
+
+# The venues whose pre-market perpetuals this project captures. Deliberately a subset
+# of the announcement list above and deliberately a separate name: widening who may
+# announce a listing must never widen where this project reaches for market data.
+PERP_VENUES: tuple[str, ...] = ("bybit", "okx", "gate")
 
 # What this project does, as opposed to what it looks at. Every one of these is
 # asserted by tests and recorded in the PlanOnly; the capability scan enforces the
