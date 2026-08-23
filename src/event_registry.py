@@ -28,6 +28,7 @@ import json
 import os
 import re
 import secrets
+import shutil
 import socket
 import time
 import unicodedata
@@ -241,6 +242,10 @@ class VenueAdapter:
     t0_field: str
     t0_unit: str                 # "ms" or "s"
     t0_semantics: str
+    # Which named timestamp this field actually is. Declared here, beside the field,
+    # because it was previously inferred from the venue name in the normaliser - so
+    # changing which field a venue reads left the kind quietly saying the old thing.
+    t0_kind: str
     t0_precision_sec: int
     caveats: tuple[str, ...] = ()
     rows_path: tuple[str, ...] = ()
@@ -279,6 +284,7 @@ ADAPTERS: tuple[VenueAdapter, ...] = (
         t0_field="launchTime",
         t0_unit="ms",
         t0_semantics="venue-declared contract launch time",
+        t0_kind=TIMESTAMP_PREMARKET_CONTRACT_LAUNCH,
         t0_precision_sec=1,
         rows_path=("result", "list"),
         cursor_path=("result", "nextPageCursor"),
@@ -287,11 +293,18 @@ ADAPTERS: tuple[VenueAdapter, ...] = (
     VenueAdapter(
         venue="okx",
         url="https://www.okx.com/api/v5/public/instruments",
-        params={"instType": "FUTURES"},
+        # SWAP, because this project observes perpetuals and OKX carries its
+        # pre-market perpetuals there. Measured 2026-08-23: instType=SWAP holds three
+        # rows with ruleType=pre_market (ANTHROPIC, MOONSHOT, OPENAI - the same
+        # underlyings Bybit lists), while instType=FUTURES holds none at all. The
+        # dated xperp contracts under FUTURES are a different instrument class and
+        # carry an expTime.
+        params={"instType": "SWAP"},
         symbol_field="instId",
         t0_field="listTime",
         t0_unit="ms",
         t0_semantics="venue-declared instrument listing time",
+        t0_kind=TIMESTAMP_PREMARKET_CONTRACT_LAUNCH,
         t0_precision_sec=1,
         rows_path=("data",),
     ),
@@ -300,14 +313,17 @@ ADAPTERS: tuple[VenueAdapter, ...] = (
         url="https://api.gateio.ws/api/v4/futures/usdt/contracts",
         params={},
         symbol_field="name",
-        t0_field="create_time",
+        # launch_time, not create_time. Measured 2026-08-23: the two differ on 419 of
+        # 935 contracts, and on ANTHROPIC_USDT by more than two hours - created
+        # 09:54:33, launched 12:00:00. create_time was carried with a
+        # CONTRACT_CREATION_NOT_TRADING_START caveat since the registry was built,
+        # while the venue was publishing the launch instant in a field beside it.
+        t0_field="launch_time",
         t0_unit="s",
-        # Gate publishes when the contract object was created, which is not necessarily
-        # when trading opened. Recording that here is the difference between a caveat
-        # a reader can act on and a number that quietly means something else.
-        t0_semantics="contract creation time, not necessarily trading start",
-        t0_precision_sec=60,
-        caveats=("CONTRACT_CREATION_NOT_TRADING_START",),
+        t0_semantics="venue-declared contract launch time",
+        t0_kind=TIMESTAMP_PREMARKET_CONTRACT_LAUNCH,
+        t0_precision_sec=1,
+        caveats=(),
         rows_path=(),
     ),
 )
@@ -344,15 +360,25 @@ def _is_premarket_row(adapter: VenueAdapter, row: Mapping[str, Any]) -> bool:
         )
     if adapter.venue == "okx":
         rule_type = str(row.get("ruleType") or "")
-        return str(row.get("instType") or "") == "FUTURES" and (
-            rule_type == "pre_market"
-            or (
-                rule_type == "xperp"
-                and _to_seconds(row.get("preMktSwTime"), "ms") is not None
-            )
+        instrument_type = str(row.get("instType") or "")
+        # A pre-market perpetual. This is the row this project is about.
+        if instrument_type == "SWAP" and rule_type == "pre_market":
+            return True
+        # A dated pre-market future that OKX will switch to a perpetual. Kept because
+        # the flow is real, but it matched nothing on 2026-08-23: none of the 142
+        # xperp rows carried preMktSwTime, so requiring it here means this branch is
+        # dormant rather than silently wrong.
+        return (
+            instrument_type == "FUTURES"
+            and rule_type == "xperp"
+            and _to_seconds(row.get("preMktSwTime"), "ms") is not None
         )
     if adapter.venue == "gate":
-        return str(row.get("status") or "").lower() == "prelaunch"
+        # is_pre_market, not status. Measured 2026-08-23: all 935 contracts report
+        # status "trading" and none ever reports "prelaunch", so the old predicate
+        # could not match a single row - while nine contracts carried
+        # is_pre_market true, among them the same underlyings Bybit and OKX list.
+        return row.get("is_pre_market") is True
     return False
 
 
@@ -362,7 +388,7 @@ def _is_currently_active_premarket_row(
     """Return only contracts currently advertised as an active pre-market market."""
     if adapter.venue == "okx":
         return (
-            str(row.get("instType") or "") == "FUTURES"
+            str(row.get("instType") or "") == "SWAP"
             and str(row.get("ruleType") or "") == "pre_market"
             and str(row.get("state") or "").lower() == "live"
         )
@@ -581,12 +607,7 @@ def normalise_rows(
             # A missing launch time is not a zero: the event is simply not usable yet.
             continue
         lifecycle_generation = int(lifecycle_generations.get(symbol, 0))
-        is_contract_creation = adapter.venue == "gate"
-        timestamp_kind = (
-            TIMESTAMP_CONTRACT_CREATED
-            if is_contract_creation
-            else TIMESTAMP_PREMARKET_CONTRACT_LAUNCH
-        )
+        timestamp_kind = adapter.t0_kind
         observation = make_timestamp_observation(
             episode_id=make_episode_id(
                 adapter.venue, symbol, lifecycle_generation
@@ -2463,6 +2484,77 @@ def _rollback_uncommitted_mutation(path: Path, snapshot: Mapping[str, Any]) -> b
     return True
 
 
+
+def quarantine_registry(
+    *,
+    run_id: str,
+    reason: str,
+    path: Path | None = None,
+    now_utc: str | None = None,
+) -> dict[str, Any]:
+    """Move a registry generation aside, intact, so a new one can be bootstrapped.
+
+    verify_registry has always been able to name this recovery action; until now it was
+    only a string in a report, which left the operator to improvise exactly the step
+    where improvising is worst. Nothing is deleted: the files are moved under
+    docs/registry/quarantine/<timestamp>-<run_id>/ with a receipt recording why, what
+    was moved and the SHA-256 of each file as it was moved.
+
+    A registry is quarantined, not discarded, because the reason it stopped verifying -
+    a superseded plan, a broken lineage - is itself evidence about how this project
+    behaved, and evidence is the one thing here that is never thrown away.
+    """
+    if not str(run_id).strip():
+        raise EventRegistryError("quarantine run_id is required")
+    if not str(reason).strip():
+        raise EventRegistryError("quarantine reason is required")
+
+    target = path or REGISTRY_PATH
+    summary = target.with_suffix(".summary.json")
+    receipts = target.with_name(target.name + ".mutation-receipts")
+    if not target.is_file():
+        raise EventRegistryError(f"no registry to quarantine at {target}")
+
+    # The directory name stays short on purpose. Mutation-receipt filenames are
+    # already ~85 characters, and a quarantine prefix built from a full run_id pushed
+    # the total past the 260-character Windows path limit - git refused to add the
+    # files, which would have made the recovery unrecordable. The full run_id and the
+    # reason live in the receipt, where length costs nothing.
+    stamp = (now_utc or utc_now_iso()).replace(":", "").replace("-", "")
+    tag = hashlib.sha256(run_id.encode("utf-8")).hexdigest()[:8]
+    destination = target.parent / "quarantine" / f"{stamp}-{tag}"
+    destination.mkdir(parents=True, exist_ok=False)
+
+    moved: list[dict[str, Any]] = []
+    for source in (target, summary, receipts):
+        if not source.exists():
+            continue
+        if source.is_dir():
+            digest = None
+            shutil.move(str(source), str(destination / source.name))
+        else:
+            digest = hashlib.sha256(source.read_bytes()).hexdigest()
+            shutil.move(str(source), str(destination / source.name))
+        moved.append({"name": source.name, "sha256": digest})
+
+    receipt = {
+        "schema": "premarket_perp_registry_quarantine_v1",
+        "quarantined_at_utc": now_utc or utc_now_iso(),
+        "run_id": run_id,
+        "reason": reason,
+        "moved": moved,
+        "quarantine_dir": str(destination),
+        "active_plan_id": trust_root.PLAN_ID,
+        "active_plan_hash": trust_root.PLAN_HASH,
+    }
+    (destination / "quarantine-receipt.json").write_text(
+        json.dumps(receipt, indent=2, ensure_ascii=False) + "\n",
+        encoding="utf-8",
+        newline="\n",
+    )
+    return receipt
+
+
 def refresh(
     *,
     payloads: Mapping[str, Any] | None = None,
@@ -2765,6 +2857,11 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--horizon-hours", type=int, default=24)
     parser.add_argument("--source-class", choices=SOURCE_CLASSES)
     parser.add_argument("--run-id", default="")
+    parser.add_argument("--quarantine-registry", action="store_true",
+                        help="move the current registry generation aside, intact, "
+                             "when verify names that recovery action")
+    parser.add_argument("--reason", default="",
+                        help="why this generation is being quarantined")
     parser.add_argument("--payloads", default="",
                         help="JSON file of {venue: payload}; refreshes offline")
     args = parser.parse_args(argv)
@@ -2792,6 +2889,14 @@ def main(argv: list[str] | None = None) -> int:
             "count": len(upcoming),
             "events": upcoming,
         }, ensure_ascii=False))
+        return 0
+    if args.quarantine_registry:
+        if not args.run_id or not args.reason:
+            raise SystemExit("--quarantine-registry requires --run-id and --reason")
+        print(json.dumps(
+            quarantine_registry(run_id=args.run_id, reason=args.reason),
+            ensure_ascii=False,
+        ))
         return 0
     if args.refresh:
         payloads = None

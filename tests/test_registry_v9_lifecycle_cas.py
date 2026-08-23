@@ -424,7 +424,10 @@ class OkxTerminalLifecycleTests(unittest.TestCase):
                 "data": [
                     {
                         "instId": cls.CONTRACT,
-                        "instType": "FUTURES",
+                        # The phases are different instrument types on OKX: a
+                        # pre-market perpetual is a SWAP, and the dated contract it
+                        # transitions into is a FUTURES.
+                        "instType": "SWAP" if rule_type == "pre_market" else "FUTURES",
                         "ruleType": rule_type,
                         "state": state,
                         "listTime": str((v6._t0_ts() - 8 * 24 * 3600) * 1000),

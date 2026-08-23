@@ -388,16 +388,23 @@ class CaptureSelectionContractTests(unittest.TestCase):
         self.assertEqual(event.get("evidence_use"), "DESCRIPTIVE_ONLY")
         self.assertIs(event.get("capture_eligible"), False)
 
-    def test_gate_create_time_is_not_promoted_to_contract_launch(self) -> None:
+    def test_gate_records_the_launch_instant_and_never_the_spot_t0(self) -> None:
         adapter = next(item for item in registry.ADAPTERS if item.venue == "gate")
         event = registry.normalise_rows(
             adapter,
-            [{"name": "NEW_USDT", "create_time": "1800000000", "status": "prelaunch"}],
+            [{
+                "name": "NEW_USDT",
+                "create_time": "1799992800",
+                "launch_time": "1800000000",
+                "status": "trading",
+                "is_pre_market": True,
+            }],
             observed_at_utc="2026-08-22T20:00:00Z",
         )[0]
 
-        self.assertIsNone(event["premarket_contract_launch_ts"])
-        self.assertEqual(event["contract_created_ts"], 1_800_000_000)
+        # launch_time is a contract launch, so it lands in that named timestamp -
+        # and it is still not an official spot t0, which no venue publishes.
+        self.assertEqual(event["premarket_contract_launch_ts"], 1_800_000_000)
         self.assertIsNone(event["official_spot_t0"])
 
 
@@ -651,7 +658,7 @@ class MetadataRefreshContractTests(unittest.TestCase):
                 "data": [
                     {
                         "instId": "NEW-USDT-250101",
-                        "instType": "FUTURES",
+                        "instType": "SWAP",
                         "ruleType": "pre_market",
                         "state": "live",
                         "listTime": "1800000000000",
@@ -661,8 +668,10 @@ class MetadataRefreshContractTests(unittest.TestCase):
             "gate": [
                 {
                     "name": "NEW_USDT",
-                    "status": "prelaunch",
-                    "create_time": "1800000000",
+                    "status": "trading",
+                    "is_pre_market": True,
+                    "create_time": "1799992800",
+                    "launch_time": "1800000000",
                 }
             ],
         }

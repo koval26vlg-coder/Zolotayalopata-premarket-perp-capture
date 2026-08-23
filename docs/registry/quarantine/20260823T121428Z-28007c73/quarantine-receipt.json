@@ -1,0 +1,25 @@
+{
+  "schema": "premarket_perp_registry_quarantine_v1",
+  "quarantined_at_utc": "2026-08-23T12:14:28Z",
+  "run_id": "recovery_okx_adapter_fix",
+  "reason": "written under plan v10 with an OKX adapter that queried instType=FUTURES and could match no pre-market perpetual",
+  "moved": [
+    {
+      "name": "listing-events-v2.jsonl",
+      "sha256": "d371af99c34961ed2ddba9bd3e0882211e7fb3fe31a26d4d1994f132587dab7b"
+    },
+    {
+      "name": "listing-events-v2.summary.json",
+      "sha256": "b483b4c7e39436db4c3b052845dc28d3e353cb944ed3aa15b8e1fdc61e468c1e"
+    },
+    {
+      "name": "listing-events-v2.jsonl.mutation-receipts",
+      "sha256": null
+    }
+  ],
+  "quarantine_dir": "C:\\Users\\koval\\Documents\\ZolotyayLopata-premarket-perp-capture\\docs\\registry\\quarantine\\20260823T121428Z-28007c73",
+  "active_plan_id": "premarket_perp_capture_20260822_v12",
+  "active_plan_hash": "2bde6e7e9216bde3bbf4baa2ca9acc46b752a6589d485a0284b48873860ebf70",
+  "renamed_from": "20260823T121428Z-recovery_okx_adapter_fix",
+  "renamed_because": "the original directory name used the full run_id and pushed receipt paths past the 260-character Windows limit, so git could not record the recovery"
+}

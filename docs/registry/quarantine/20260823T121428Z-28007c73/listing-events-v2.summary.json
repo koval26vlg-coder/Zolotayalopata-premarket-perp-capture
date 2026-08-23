@@ -1,0 +1,90 @@
+{
+  "schema": "premarket_perp_event_registry_v2",
+  "status": "REFRESH_COMPLETE",
+  "mutation_type": "metadata_refresh",
+  "mutation_run_id": "metadata_refresh_20260823_first",
+  "refresh_run_id": "metadata_refresh_20260823_first",
+  "plan_id": "premarket_perp_capture_20260822_v10",
+  "plan_hash": "44c9b38829fa92841f240158dbd91677d5c8332f709905cc19ca6e215fbb0b8c",
+  "resolved_paths_hash": "e99c57a2b0fb69508598f84eb437440d5df184385beb07cc530783ff3bb56f83",
+  "refreshed_at_utc": "2026-08-23T12:07:12Z",
+  "last_complete_metadata_refresh_received_at_utc": "2026-08-23T12:07:12Z",
+  "observed_events": 4,
+  "observed_by_venue": {
+    "bybit": 4,
+    "okx": 0,
+    "gate": 0
+  },
+  "pages_by_venue": {
+    "bybit": 1,
+    "okx": 1,
+    "gate": 1
+  },
+  "truncated_venues": [],
+  "venue_errors": {},
+  "complete": true,
+  "active_contract_ids_by_venue": {
+    "bybit": [
+      "ANTHROPICUSDT",
+      "BPUSDT",
+      "MOONSHOTUSDT",
+      "OPENAIUSDT"
+    ],
+    "gate": [],
+    "okx": []
+  },
+  "active_lifecycle_generations_by_venue": {
+    "bybit": {
+      "ANTHROPICUSDT": 0,
+      "BPUSDT": 0,
+      "MOONSHOTUSDT": 0,
+      "OPENAIUSDT": 0
+    },
+    "gate": {},
+    "okx": {}
+  },
+  "lifecycle_generation_high_water_by_venue": {
+    "bybit": {
+      "ANTHROPICUSDT": 0,
+      "BPUSDT": 0,
+      "MOONSHOTUSDT": 0,
+      "OPENAIUSDT": 0
+    },
+    "gate": {},
+    "okx": {}
+  },
+  "refresh_evidence_class": "PUBLIC_VENUE_METADATA_LIVE",
+  "production_eligible": true,
+  "raw_universe_rows_by_venue": {
+    "bybit": 4,
+    "gate": 935,
+    "okx": 174
+  },
+  "appended_entries": 4,
+  "new_streams": 4,
+  "revisions": 0,
+  "registry": {
+    "status": "REGISTRY_OK",
+    "entries": 4,
+    "events": 4,
+    "episodes": 4,
+    "head_record_hash": "2dbcbab8e3bacc38cdbf13a6cd5a403feebbdbee304d70a715a95d328a8a62d7",
+    "registry_sha256": "d371af99c34961ed2ddba9bd3e0882211e7fb3fe31a26d4d1994f132587dab7b",
+    "registry_summary_sha256": null,
+    "problems": [],
+    "summary_required": true,
+    "summary_verified": false,
+    "recovery_action": null,
+    "bootstrap_state": "SUMMARY_PENDING_UNDER_LOCK",
+    "by_source_class": {
+      "VENUE_INSTRUMENT_METADATA": 4
+    },
+    "by_venue": {
+      "bybit": 4
+    }
+  },
+  "mutation_receipt_schema": "premarket_perp_registry_mutation_receipt_v1",
+  "mutation_seq": 0,
+  "previous_mutation_receipt_hash": null,
+  "mutation_receipt_hash": "b6b9e03a43ea095642d5c933078c86900e1c2c883ceba8f22af47078ed15dbc7"
+}

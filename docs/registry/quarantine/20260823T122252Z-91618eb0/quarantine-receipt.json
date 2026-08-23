@@ -1,0 +1,23 @@
+{
+  "schema": "premarket_perp_registry_quarantine_v1",
+  "quarantined_at_utc": "2026-08-23T12:22:52Z",
+  "run_id": "recovery_quarantine_path_length",
+  "reason": "written under plan v13; superseded by v14 which shortened quarantine directory names so recoveries can be committed on Windows",
+  "moved": [
+    {
+      "name": "listing-events-v2.jsonl",
+      "sha256": "31231dddc293949a93200c019d1dc31feac34221cad2367d926354bf79cb3585"
+    },
+    {
+      "name": "listing-events-v2.summary.json",
+      "sha256": "f3deb63b536f0ba4d3aed9bec31cd40977299444db89e9159ab23e6ed00c156e"
+    },
+    {
+      "name": "listing-events-v2.jsonl.mutation-receipts",
+      "sha256": null
+    }
+  ],
+  "quarantine_dir": "C:\\Users\\koval\\Documents\\ZolotyayLopata-premarket-perp-capture\\docs\\registry\\quarantine\\20260823T122252Z-91618eb0",
+  "active_plan_id": "premarket_perp_capture_20260822_v14",
+  "active_plan_hash": "b5b8b81facfbe3451b245f2d09f651215daee023190e202cba9b9670ab002a71"
+}

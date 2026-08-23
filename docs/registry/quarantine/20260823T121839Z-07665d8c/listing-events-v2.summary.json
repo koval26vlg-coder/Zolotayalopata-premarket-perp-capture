@@ -1,0 +1,103 @@
+{
+  "schema": "premarket_perp_event_registry_v2",
+  "status": "REFRESH_COMPLETE",
+  "mutation_type": "metadata_refresh",
+  "mutation_run_id": "metadata_refresh_20260823_v12",
+  "refresh_run_id": "metadata_refresh_20260823_v12",
+  "plan_id": "premarket_perp_capture_20260822_v12",
+  "plan_hash": "2bde6e7e9216bde3bbf4baa2ca9acc46b752a6589d485a0284b48873860ebf70",
+  "resolved_paths_hash": "fef793c0bb756a1dce3b217bbd665dd47690bc2c7bee67ebe7e3fcf9640024bc",
+  "refreshed_at_utc": "2026-08-23T12:14:35Z",
+  "last_complete_metadata_refresh_received_at_utc": "2026-08-23T12:14:35Z",
+  "observed_events": 7,
+  "observed_by_venue": {
+    "bybit": 4,
+    "okx": 3,
+    "gate": 0
+  },
+  "pages_by_venue": {
+    "bybit": 1,
+    "okx": 1,
+    "gate": 1
+  },
+  "truncated_venues": [],
+  "venue_errors": {},
+  "complete": true,
+  "active_contract_ids_by_venue": {
+    "bybit": [
+      "ANTHROPICUSDT",
+      "BPUSDT",
+      "MOONSHOTUSDT",
+      "OPENAIUSDT"
+    ],
+    "gate": [],
+    "okx": [
+      "ANTHROPIC-USDT-SWAP",
+      "MOONSHOT-USDT-SWAP",
+      "OPENAI-USDT-SWAP"
+    ]
+  },
+  "active_lifecycle_generations_by_venue": {
+    "bybit": {
+      "ANTHROPICUSDT": 0,
+      "BPUSDT": 0,
+      "MOONSHOTUSDT": 0,
+      "OPENAIUSDT": 0
+    },
+    "gate": {},
+    "okx": {
+      "ANTHROPIC-USDT-SWAP": 0,
+      "MOONSHOT-USDT-SWAP": 0,
+      "OPENAI-USDT-SWAP": 0
+    }
+  },
+  "lifecycle_generation_high_water_by_venue": {
+    "bybit": {
+      "ANTHROPICUSDT": 0,
+      "BPUSDT": 0,
+      "MOONSHOTUSDT": 0,
+      "OPENAIUSDT": 0
+    },
+    "gate": {},
+    "okx": {
+      "ANTHROPIC-USDT-SWAP": 0,
+      "MOONSHOT-USDT-SWAP": 0,
+      "OPENAI-USDT-SWAP": 0
+    }
+  },
+  "refresh_evidence_class": "PUBLIC_VENUE_METADATA_LIVE",
+  "production_eligible": true,
+  "raw_universe_rows_by_venue": {
+    "bybit": 4,
+    "gate": 935,
+    "okx": 454
+  },
+  "appended_entries": 7,
+  "new_streams": 7,
+  "revisions": 0,
+  "registry": {
+    "status": "REGISTRY_OK",
+    "entries": 7,
+    "events": 7,
+    "episodes": 7,
+    "head_record_hash": "578ae3cb558bdab38068a91e66bdf52a8fda755f5703f6e998eee1356e143cb8",
+    "registry_sha256": "0ef434a52e7fa9ae295d5c4126c20afa511461001b8629b94c789165cb16101f",
+    "registry_summary_sha256": null,
+    "problems": [],
+    "summary_required": true,
+    "summary_verified": false,
+    "recovery_action": null,
+    "bootstrap_state": "SUMMARY_PENDING_UNDER_LOCK",
+    "by_source_class": {
+      "VENUE_INSTRUMENT_METADATA": 7
+    },
+    "by_venue": {
+      "bybit": 4,
+      "okx": 3
+    }
+  },
+  "mutation_receipt_schema": "premarket_perp_registry_mutation_receipt_v1",
+  "mutation_seq": 0,
+  "previous_mutation_receipt_hash": null,
+  "mutation_receipt_hash": "592323dbb6986ad55e276360f16ed9cb081f06e6f13519b1ba3807bdc3f5d98e"
+}

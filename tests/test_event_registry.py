@@ -48,7 +48,7 @@ def bybit_payload(symbol: str = "FOOUSDT", launch_ms: int = T0 * 1000) -> dict:
 def okx_payload(inst: str = "BAR-USDT-SWAP", list_ms: int = T0 * 1000) -> dict:
     return {"code": "0", "data": [{
         "instId": inst,
-        "instType": "FUTURES",
+        "instType": "SWAP",
         "ruleType": "pre_market",
         "state": "live",
         "listTime": str(list_ms),
@@ -56,7 +56,16 @@ def okx_payload(inst: str = "BAR-USDT-SWAP", list_ms: int = T0 * 1000) -> dict:
 
 
 def gate_payload(name: str = "BAZ_USDT", create_s: int = T0) -> list:
-    return [{"name": name, "create_time": float(create_s), "status": "prelaunch"}]
+    # Measured 2026-08-23: every Gate contract reports status "trading"; the
+    # pre-market ones are marked by is_pre_market, and launch_time is a separate
+    # field from create_time on 419 of 935 contracts.
+    return [{
+        "name": name,
+        "create_time": float(create_s) - 7200,
+        "launch_time": float(create_s),
+        "status": "trading",
+        "is_pre_market": True,
+    }]
 
 
 def all_payloads(*, bybit: dict | None = None) -> dict:
@@ -140,11 +149,14 @@ class NormalisationTests(unittest.TestCase):
     def test_gate_seconds_stay_seconds(self) -> None:
         self.assertEqual(self._one("gate", gate_payload())["t0_ts"], T0)
 
-    def test_gate_carries_its_caveat_rather_than_pretending(self) -> None:
-        """create_time is contract creation, which is not necessarily trading start."""
+    def test_gate_reads_the_launch_field_rather_than_the_creation_field(self) -> None:
+        """The caveat existed because create_time is not trading start. Gate publishes
+        launch_time beside it, and the two differ on 419 of 935 contracts."""
         event = self._one("gate", gate_payload())
-        self.assertIn("CONTRACT_CREATION_NOT_TRADING_START", event["caveats"])
-        self.assertGreater(event["t0_precision_sec"], 1)
+        self.assertEqual(event["t0_ts"], T0)          # launch_time
+        self.assertNotEqual(event["t0_ts"], T0 - 7200)  # not create_time
+        self.assertEqual(event["t0_source_field"], "launch_time")
+        self.assertNotIn("CONTRACT_CREATION_NOT_TRADING_START", event["caveats"])
 
     def test_every_event_declares_where_its_t0_came_from(self) -> None:
         for venue, payload in (("bybit", bybit_payload()), ("okx", okx_payload()),

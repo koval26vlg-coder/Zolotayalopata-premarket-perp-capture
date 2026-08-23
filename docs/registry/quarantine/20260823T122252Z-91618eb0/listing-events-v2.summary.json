@@ -1,0 +1,134 @@
+{
+  "schema": "premarket_perp_event_registry_v2",
+  "status": "REFRESH_COMPLETE",
+  "mutation_type": "metadata_refresh",
+  "mutation_run_id": "metadata_refresh_20260823_v13",
+  "refresh_run_id": "metadata_refresh_20260823_v13",
+  "plan_id": "premarket_perp_capture_20260822_v13",
+  "plan_hash": "aa06a8e81be185f5575eaa1c0e76b93541e4b9dbd76684b7d119e2b0e9004e0f",
+  "resolved_paths_hash": "e3870e474df16c8c286ff393d252305b04578890a6bd9f687a85dd4f974dc96b",
+  "refreshed_at_utc": "2026-08-23T12:18:59Z",
+  "last_complete_metadata_refresh_received_at_utc": "2026-08-23T12:18:59Z",
+  "observed_events": 16,
+  "observed_by_venue": {
+    "bybit": 4,
+    "okx": 3,
+    "gate": 9
+  },
+  "pages_by_venue": {
+    "bybit": 1,
+    "okx": 1,
+    "gate": 1
+  },
+  "truncated_venues": [],
+  "venue_errors": {},
+  "complete": true,
+  "active_contract_ids_by_venue": {
+    "bybit": [
+      "ANTHROPICUSDT",
+      "BPUSDT",
+      "MOONSHOTUSDT",
+      "OPENAIUSDT"
+    ],
+    "gate": [
+      "ANDURIL_USDT",
+      "ANTHROPIC_USDT",
+      "BP_USDT",
+      "KALSHI_USDT",
+      "KIMI_USDT",
+      "NEURALINK_USDT",
+      "OPENAI_USDT",
+      "POLYMARKET_USDT",
+      "QNTX_USDT"
+    ],
+    "okx": [
+      "ANTHROPIC-USDT-SWAP",
+      "MOONSHOT-USDT-SWAP",
+      "OPENAI-USDT-SWAP"
+    ]
+  },
+  "active_lifecycle_generations_by_venue": {
+    "bybit": {
+      "ANTHROPICUSDT": 0,
+      "BPUSDT": 0,
+      "MOONSHOTUSDT": 0,
+      "OPENAIUSDT": 0
+    },
+    "gate": {
+      "ANDURIL_USDT": 0,
+      "ANTHROPIC_USDT": 0,
+      "BP_USDT": 0,
+      "KALSHI_USDT": 0,
+      "KIMI_USDT": 0,
+      "NEURALINK_USDT": 0,
+      "OPENAI_USDT": 0,
+      "POLYMARKET_USDT": 0,
+      "QNTX_USDT": 0
+    },
+    "okx": {
+      "ANTHROPIC-USDT-SWAP": 0,
+      "MOONSHOT-USDT-SWAP": 0,
+      "OPENAI-USDT-SWAP": 0
+    }
+  },
+  "lifecycle_generation_high_water_by_venue": {
+    "bybit": {
+      "ANTHROPICUSDT": 0,
+      "BPUSDT": 0,
+      "MOONSHOTUSDT": 0,
+      "OPENAIUSDT": 0
+    },
+    "gate": {
+      "ANDURIL_USDT": 0,
+      "ANTHROPIC_USDT": 0,
+      "BP_USDT": 0,
+      "KALSHI_USDT": 0,
+      "KIMI_USDT": 0,
+      "NEURALINK_USDT": 0,
+      "OPENAI_USDT": 0,
+      "POLYMARKET_USDT": 0,
+      "QNTX_USDT": 0
+    },
+    "okx": {
+      "ANTHROPIC-USDT-SWAP": 0,
+      "MOONSHOT-USDT-SWAP": 0,
+      "OPENAI-USDT-SWAP": 0
+    }
+  },
+  "refresh_evidence_class": "PUBLIC_VENUE_METADATA_LIVE",
+  "production_eligible": true,
+  "raw_universe_rows_by_venue": {
+    "bybit": 4,
+    "gate": 935,
+    "okx": 454
+  },
+  "appended_entries": 16,
+  "new_streams": 16,
+  "revisions": 0,
+  "registry": {
+    "status": "REGISTRY_OK",
+    "entries": 16,
+    "events": 16,
+    "episodes": 16,
+    "head_record_hash": "21cf2cce27f0493eaa4527c7b0c1ba8eba46e82150ce93c7c6200b0e917fedb9",
+    "registry_sha256": "31231dddc293949a93200c019d1dc31feac34221cad2367d926354bf79cb3585",
+    "registry_summary_sha256": null,
+    "problems": [],
+    "summary_required": true,
+    "summary_verified": false,
+    "recovery_action": null,
+    "bootstrap_state": "SUMMARY_PENDING_UNDER_LOCK",
+    "by_source_class": {
+      "VENUE_INSTRUMENT_METADATA": 16
+    },
+    "by_venue": {
+      "bybit": 4,
+      "gate": 9,
+      "okx": 3
+    }
+  },
+  "mutation_receipt_schema": "premarket_perp_registry_mutation_receipt_v1",
+  "mutation_seq": 0,
+  "previous_mutation_receipt_hash": null,
+  "mutation_receipt_hash": "ab408346fa4f7d6b1a9fead62691200979f9960d352c1b605ed9e28df73e085f"
+}

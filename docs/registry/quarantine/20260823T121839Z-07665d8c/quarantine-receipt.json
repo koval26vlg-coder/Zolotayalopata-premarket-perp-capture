@@ -1,0 +1,25 @@
+{
+  "schema": "premarket_perp_registry_quarantine_v1",
+  "quarantined_at_utc": "2026-08-23T12:18:39Z",
+  "run_id": "recovery_gate_adapter_fix",
+  "reason": "written under plan v12 with a Gate adapter that filtered on a status the venue never reports and read create_time instead of launch_time",
+  "moved": [
+    {
+      "name": "listing-events-v2.jsonl",
+      "sha256": "0ef434a52e7fa9ae295d5c4126c20afa511461001b8629b94c789165cb16101f"
+    },
+    {
+      "name": "listing-events-v2.summary.json",
+      "sha256": "2176d6a5cb862888502d6988777fdfcaed349e107a995409b4146f977599e671"
+    },
+    {
+      "name": "listing-events-v2.jsonl.mutation-receipts",
+      "sha256": null
+    }
+  ],
+  "quarantine_dir": "C:\\Users\\koval\\Documents\\ZolotyayLopata-premarket-perp-capture\\docs\\registry\\quarantine\\20260823T121839Z-07665d8c",
+  "active_plan_id": "premarket_perp_capture_20260822_v13",
+  "active_plan_hash": "aa06a8e81be185f5575eaa1c0e76b93541e4b9dbd76684b7d119e2b0e9004e0f",
+  "renamed_from": "20260823T121839Z-recovery_gate_adapter_fix",
+  "renamed_because": "the original directory name used the full run_id and pushed receipt paths past the 260-character Windows limit, so git could not record the recovery"
+}
