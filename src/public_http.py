@@ -281,7 +281,7 @@ def _looks_like_error_payload(payload: Any) -> str | None:
     if ret_code not in (None, 0, "0"):
         return f"retCode={ret_code} retMsg={payload.get('retMsg')}"
     code = payload.get("code")
-    if code not in (None, 0, "0") and "data" in payload:
+    if code not in (None, 0, "0"):
         return f"code={code} msg={payload.get('msg')}"
     if "label" in payload and "message" in payload:
         return f"label={payload.get('label')} message={payload.get('message')}"

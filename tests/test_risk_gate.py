@@ -179,6 +179,24 @@ class SharedWorkspaceTests(unittest.TestCase):
         self.assertFalse(result["open"])
         self.assertEqual(result["status"], "UNAVAILABLE")
 
+    def test_a_nonzero_gate_process_cannot_open_from_stdout_json(self) -> None:
+        gate = self.tmp / "gate.ps1"
+        gate.write_text("# fixture only\n", encoding="utf-8")
+        completed = subprocess.CompletedProcess(
+            args=["pwsh"],
+            returncode=1,
+            stdout='{"status":"READY_FOR_POSTPROCESS"}',
+            stderr="gate process failed",
+        )
+        with mock.patch.object(risk_gate.shutil, "which", return_value="pwsh"), \
+             mock.patch.object(risk_gate.subprocess, "run", return_value=completed):
+            result = risk_gate.read_shared_gate(gate)
+
+        self.assertFalse(result["open"])
+        self.assertEqual(result["status"], "UNAVAILABLE")
+        self.assertIn("exit code 1", result["detail"])
+        self.assertIn("gate process failed", result["detail"])
+
     def test_an_absent_claim_does_not_block(self) -> None:
         self.assertFalse(risk_gate.inspect_claim(self.tmp / "none.json")["blocks"])
 
@@ -224,36 +242,98 @@ class SharedWorkspaceTests(unittest.TestCase):
 
 
 class CaptureTokenTests(unittest.TestCase):
+    EVENT_ID = "episode-token-test"
+    SOURCE_CLASS = "OFFICIAL_ANNOUNCEMENT"
+    PLAN = {
+        "plan_id": "capture-token-test-plan",
+        "plan_hash": "a" * 64,
+        "status": "CAPTURE_IMPLEMENTATION_AUDIT_GREEN",
+    }
+
     def setUp(self) -> None:
         self.tmp = Path(tempfile.mkdtemp())
         patch = mock.patch.object(config, "CAPTURE_TOKEN_PATH", self.tmp / "token.json")
         patch.start()
         self.addCleanup(patch.stop)
 
+    def _preflight(self, run_id: str) -> dict[str, object]:
+        return {
+            "schema": risk_gate.PREFLIGHT_RESULT_SCHEMA,
+            "ok": True,
+            "verified": True,
+            "decision": "ALLOW_VISIBLE_CAPTURE",
+            "write_class": "market_data_capture",
+            "action": risk_gate.CAPTURE_ACTION,
+            "run_id": run_id,
+            "event_id": self.EVENT_ID,
+            "source_class": self.SOURCE_CLASS,
+            "plan_id": self.PLAN["plan_id"],
+            "plan_hash": self.PLAN["plan_hash"],
+            "resolved_paths": risk_gate.resolved_config(),
+            "resolved_paths_hash": canonical_hash(risk_gate.resolved_config()),
+            "gate_status": "READY_FOR_POSTPROCESS",
+            "capability_scan": {
+                "status": "CAPABILITY_SCAN_CLEAN",
+                "report_hash": "c" * 64,
+            },
+        }
+
+    def _mint(self, run_id: str, *, ttl_sec: int = risk_gate.CAPTURE_TOKEN_TTL_SEC):
+        with mock.patch.object(risk_gate, "load_and_verify_plan", return_value=self.PLAN), \
+             mock.patch.object(risk_gate, "verify_plan_write_authorization", return_value={}), \
+             mock.patch.object(risk_gate, "verify_resolved_path_bindings", return_value={}):
+            return risk_gate.mint_capture_token(
+                run_id,
+                event_id=self.EVENT_ID,
+                source_class=self.SOURCE_CLASS,
+                verified_preflight=self._preflight(run_id),
+                ttl_sec=ttl_sec,
+            )
+
+    def _consume(self, token: str, run_id: str):
+        with mock.patch.object(risk_gate, "load_and_verify_plan", return_value=self.PLAN), \
+             mock.patch.object(risk_gate, "verify_plan_write_authorization", return_value={}), \
+             mock.patch.object(risk_gate, "verify_resolved_path_bindings", return_value={}), \
+             mock.patch.object(risk_gate, "run_capability_scan", return_value={
+                 "status": "CAPABILITY_SCAN_CLEAN", "report_hash": "c" * 64,
+             }), \
+             mock.patch.object(risk_gate, "read_shared_gate", return_value={
+                 "open": True, "status": "READY_FOR_POSTPROCESS",
+             }), \
+             mock.patch.object(risk_gate, "inspect_claim", return_value={"blocks": False}), \
+             mock.patch.object(risk_gate, "inspect_run_record", return_value={"blocks": False}):
+            return risk_gate.consume_capture_token(
+                token=token,
+                run_id=run_id,
+                event_id=self.EVENT_ID,
+                source_class=self.SOURCE_CLASS,
+            )
+
     def test_mint_then_consume(self) -> None:
-        token = risk_gate.mint_capture_token("run_a")
-        taken = risk_gate.consume_capture_token(token=token["token"], run_id="run_a")
+        token = self._mint("run_a")
+        taken = self._consume(token["token"], "run_a")
         self.assertEqual(taken["run_id"], "run_a")
 
     def test_a_token_is_consumed_exactly_once(self) -> None:
-        token = risk_gate.mint_capture_token("run_a")
-        risk_gate.consume_capture_token(token=token["token"], run_id="run_a")
+        token = self._mint("run_a")
+        self._consume(token["token"], "run_a")
         with self.assertRaisesRegex(risk_gate.RiskGateError, "no capture token"):
-            risk_gate.consume_capture_token(token=token["token"], run_id="run_a")
+            self._consume(token["token"], "run_a")
 
     def test_a_capture_without_a_token_is_refused(self) -> None:
         with self.assertRaisesRegex(risk_gate.RiskGateError, "preflight"):
-            risk_gate.consume_capture_token(token="x" * 32, run_id="run_a")
+            self._consume("x" * 32, "run_a")
 
     def test_a_token_for_another_run_is_refused(self) -> None:
-        token = risk_gate.mint_capture_token("run_a")
+        token = self._mint("run_a")
         with self.assertRaisesRegex(risk_gate.RiskGateError, "different run_id"):
-            risk_gate.consume_capture_token(token=token["token"], run_id="run_b")
+            self._consume(token["token"], "run_b")
 
     def test_an_expired_token_is_refused(self) -> None:
-        token = risk_gate.mint_capture_token("run_a", ttl_sec=-1)
-        with self.assertRaisesRegex(risk_gate.RiskGateError, "expired"):
-            risk_gate.consume_capture_token(token=token["token"], run_id="run_a")
+        token = self._mint("run_a", ttl_sec=1)
+        with mock.patch.object(risk_gate.time, "time", return_value=token["expires_at_ts"] + 1):
+            with self.assertRaisesRegex(risk_gate.RiskGateError, "expired"):
+                self._consume(token["token"], "run_a")
 
 
 class CaptureBoundsTests(unittest.TestCase):

@@ -11,6 +11,7 @@ import json
 import sys
 import tempfile
 import unittest
+from datetime import datetime, timezone
 from pathlib import Path
 from unittest import mock
 
@@ -21,8 +22,10 @@ if str(SRC) not in sys.path:
     sys.path.insert(0, str(SRC))
 
 import event_registry as registry  # noqa: E402
+import frozen_plan_bindings as trust_root  # noqa: E402
 import project_config as config  # noqa: E402
 import public_http  # noqa: E402
+import risk_gate  # noqa: E402
 
 
 T0 = 1787400000  # 2026-08-22T12:00:00Z
@@ -47,6 +50,7 @@ def okx_payload(inst: str = "BAR-USDT-SWAP", list_ms: int = T0 * 1000) -> dict:
         "instId": inst,
         "instType": "FUTURES",
         "ruleType": "pre_market",
+        "state": "live",
         "listTime": str(list_ms),
     }]}
 
@@ -71,8 +75,9 @@ def preflight_receipt(run_id: str) -> dict:
         "decision": "ALLOW_METADATA_REGISTRY",
         "write_class": "metadata_registry",
         "run_id": run_id,
-        "plan_id": "premarket_perp_capture_20260822_v2",
-        "plan_hash": "a" * 64,
+        "action": risk_gate.METADATA_REGISTRY_ACTION,
+        "plan_id": trust_root.PLAN_ID,
+        "plan_hash": trust_root.PLAN_HASH,
         "resolved_paths_hash": "b" * 64,
     }
 
@@ -331,22 +336,37 @@ class VerificationTests(unittest.TestCase):
 
 class CaptureSelectionTests(unittest.TestCase):
     def _entries(self) -> list[dict]:
+        episode = registry.make_episode_id("bybit", "B")
         proxy = registry.make_timestamp_observation(
-            episode_id="a", venue="bybit", premarket_contract_id="A",
-            spot_symbol="A", timestamp_kind=registry.TIMESTAMP_PREMARKET_CONTRACT_LAUNCH,
+            episode_id=episode, venue="bybit", premarket_contract_id="B",
+            spot_symbol="B", timestamp_kind=registry.TIMESTAMP_PREMARKET_CONTRACT_LAUNCH,
             timestamp_ts=T0, instrument_role="premarket_perp",
             source_class=registry.SOURCE_VENUE_INSTRUMENT_METADATA,
-            source_identity="bybit:metadata", source_url="https://api.bybit.com/example",
+            source_identity="bybit:metadata",
+            source_url="https://api.bybit.com/v5/market/instruments-info",
             received_at_utc="2026-08-22T00:00:00Z",
         )
         official = registry.make_timestamp_observation(
-            episode_id="b", venue="okx", premarket_contract_id="B",
+            episode_id=episode, venue="bybit", premarket_contract_id="B",
             spot_symbol="B", timestamp_kind=registry.TIMESTAMP_OFFICIAL_SPOT_T0,
             timestamp_ts=T0 + 60, instrument_role="spot",
             source_class=registry.SOURCE_OFFICIAL_ANNOUNCEMENT,
-            source_identity="okx:announcement", source_url="https://okx.com/example",
+            source_identity="human_attestation:test",
+            source_url="https://announcements.bybit.com/example",
             received_at_utc="2026-08-22T00:00:00Z",
+            precision_sec=60,
+            caveats=("OFFICIAL_T0_READ_BY_A_PERSON_FROM_ANNOUNCEMENT_PROSE",),
         )
+        official["attestation"] = {
+            "schema": config.OFFICIAL_ATTESTATION_SCHEMA,
+            "attested_by": "test",
+            "announced_utc": "2026-08-22T12:01:00Z",
+            "quoted_sentence": "Spot trading for B starts at 2026-08-22T12:01:00Z.",
+            "quoted_time_text": "2026-08-22T12:01:00Z",
+            "quoted_symbol_text": "B",
+            "announcement_url": "https://announcements.bybit.com/example",
+            "lead_sec_at_attestation": 12 * 3600 + 60,
+        }
         return registry.build_stream_revisions([], [proxy, official])
 
     def _select(
@@ -362,18 +382,29 @@ class CaptureSelectionTests(unittest.TestCase):
             encoding="utf-8",
         )
         receipt = registry.verify_registry(path)
+        refresh_at = datetime.fromtimestamp(now_ts, timezone.utc).isoformat(
+            timespec="seconds"
+        ).replace("+00:00", "Z")
         summary = {
             "schema": registry.REGISTRY_SCHEMA,
             "status": "REFRESH_COMPLETE",
+            "mutation_type": "metadata_refresh",
             "complete": True,
+            "plan_id": registry.trust_root.PLAN_ID,
             "plan_hash": registry.trust_root.PLAN_HASH,
             "refresh_run_id": "legacy-selector-fixture",
             "resolved_paths_hash": "a" * 64,
+            "refreshed_at_utc": refresh_at,
+            registry.LAST_COMPLETE_METADATA_REFRESH_RECEIVED_AT_FIELD: refresh_at,
+            registry.ACTIVE_CONTRACTS_FIELD: registry._active_contract_ids(
+                self._entries()
+            ),
             "registry": receipt,
         }
-        path.with_suffix(".summary.json").write_text(
-            json.dumps(summary, sort_keys=True) + "\n",
-            encoding="utf-8",
+        registry._write_summary_with_mutation_receipt(
+            path,
+            summary,
+            lock_owner=None,
         )
         with mock.patch.object(registry, "REGISTRY_PATH", path):
             return registry.events_for_capture(
@@ -393,14 +424,14 @@ class CaptureSelectionTests(unittest.TestCase):
 
     def test_the_other_class_is_selectable_but_separate(self) -> None:
         upcoming = self._select(
-            now_ts=T0 - 3600,
+            now_ts=T0 + 60 - config.CAPTURE_WINDOW_BEFORE_SEC,
             source_class=registry.SOURCE_OFFICIAL_ANNOUNCEMENT,
         )
         self.assertEqual([event["symbol"] for event in upcoming], ["B"])
 
     def test_events_already_past_are_not_offered(self) -> None:
         upcoming = self._select(
-            now_ts=T0 + 61,
+            now_ts=T0 + 60 + config.CAPTURE_LAUNCH_LATE_GRACE_SEC + 1,
             source_class=registry.SOURCE_OFFICIAL_ANNOUNCEMENT,
         )
         self.assertEqual([event["symbol"] for event in upcoming], [])

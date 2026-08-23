@@ -8,7 +8,7 @@ Bybit, OKX и Gate. Цель — переиграть офлайн гипоте�
 репозиторий существует именно ради этой границы; она проверяется механически. См.
 `AGENTS.md` и `docs/decisions/001-separate-repository-and-risk-gate.md`.
 
-Capture ещё не запускался.
+Capture ещё не запускался и текущим PlanOnly не разрешён.
 
 ## Что уже есть
 
@@ -64,6 +64,11 @@ Capture, запущенный позже начала окна, доходит �
 секунд покрыто до и после `t0`, покрыт ли бёрст целиком, и почему нет. Код возврата CLI
 ненулевой, если цикл завершился, но ответить на вопрос данные не могут.
 
+Human-attestation из анонса имеет точность `60 с`. Для доказательства выходов
+`t0`/+5с/+15с/+60с v9 требует `1 с`, поэтому такая запись может направить capture, но
+сама по себе **не делает его seconds-grade/replay-ready**. Это намеренный fail-closed:
+минутное объявление не превращается в секундный якорь постфактум.
+
 ## Реестр событий и таксономия t0
 
 `t0` — главный датум проекта, поэтому за одной колонкой больше не прячутся разные по
@@ -103,9 +108,12 @@ $env:PYTHONPATH="src"
 & $py src\official_attestation.py --attest `
     --run-id <id> --venue bybit `
     --spot-symbol KIIUSDT --premarket-contract-id KIIUSDT `
+    --lifecycle-generation 0 `
     --announced-utc 2026-09-09T04:00:00Z `
     --announcement-url https://announcements.bybit.com/en-US/article/... `
     --quote "Spot trading for KII/USDT will start on Sep 9, 2026, 4:00AM UTC." `
+    --quoted-time "Sep 9, 2026, 4:00AM UTC" `
+    --quoted-symbol "KII/USDT" `
     --attested-by <кто прочитал>
 ```
 
@@ -116,7 +124,7 @@ ISO-8601 UTC (никакого разбора прозы); цитата обяз
 
 ```powershell
 $env:PYTHONPATH="src"
-& $py src\event_registry.py --refresh
+& $py src\event_registry.py --refresh --run-id <metadata-refresh-id>
 & $py src\event_registry.py --verify
 & $py src\event_registry.py --upcoming --horizon-hours 48 --source-class OFFICIAL_ANNOUNCEMENT
 ```
@@ -148,12 +156,16 @@ $env:PYTHONPATH="src"; & $py src\risk_gate.py --plan-check
 ## Preflight
 
 ```powershell
-$env:PYTHONPATH="src"; & $py src\risk_gate.py --preflight
+$env:PYTHONPATH="src"
+& $py src\risk_gate.py --preflight --write-class metadata_registry --run-id <id>
+& $py src\risk_gate.py --preflight --write-class official_attestation --run-id <id>
 ```
 
-Читает общий active-run gate и общий writer claim, ничего не пишет кроме токена, и
-возвращает ненулевой код при любой блокировке. Каждый блокер перечисляется отдельно —
-не только первый.
+Любой write-class проверяет immutable PlanOnly, capability scan, resolved paths и общий
+active-run gate. Только `market_data_capture` дополнительно проверяет writer claim и
+собственный run record и может получить одноразовый токен. В активном v9 этот класс
+намеренно не авторизован, поэтому прямой mint и capture-preflight закрываются fail-closed.
+Каждый блокер перечисляется отдельно — не только первый.
 
 ## Перевыпуск плана
 
@@ -161,9 +173,14 @@ $env:PYTHONPATH="src"; & $py src\risk_gate.py --preflight
 файл пишется через `O_EXCL` только для чтения, предыдущие версии остаются на диске, а
 trust-root перечисляет всю опубликованную родословную и проверяет её.
 
-Опубликовано: v1, v2, v3 (сохранены побайтово) и активный **v4**. v1 и v2 делят один
+Опубликовано: v1–v9; v1–v8 сохранены побайтово, активный **v9**. v8 остался immutable
+промежуточным checkpoint и был superseded после финального независимого review. v1 и v2 делят один
 `plan_id` — это и был дефект, ради которого правило стало механическим; переписывать
 историю, чтобы его спрятать, не стали.
+
+Активный v9: `plan_hash`
+`513ecd6667fc2b5c1a1e66e5e8c9855f9cdb5a6404714b963cdb5ea0ec634296`, file SHA-256
+`6b6c88868ad49e73f557dbe47c56305222174e67142e5214eaf4120229f5a098`.
 
 ```powershell
 & $py src\plan_builder.py --write-plan
@@ -176,3 +193,11 @@ trust-root перечисляет всю опубликованную родос
 Публичные данные, без ключей и подписи. Никаких ордеров ни в каком режиме. Replay —
 симуляция по данным на диске. Ни одна цифра отсюда не поддерживает ACCEPT/REJECT
 стратегии: для этого нужен отдельный план с чекпоинтом пользователя.
+
+Mutation receipt chain обнаруживает рассогласование, но durable WAL пока отсутствует:
+авария процесса между append реестра, summary и receipt переводит состояние в
+fail-closed/manual recovery и не даёт права заявлять crash-atomic commit.
+
+Порог сохранения 50% предыдущего полного universe защищает от пустого или резко
+обрезанного ответа площадки. Это аварийный acquisition guard, а не доказательство того,
+что площадка вернула каждый отдельный active contract ID.

@@ -29,19 +29,21 @@
 
 ## Risk gate
 
-Запуск чего-либо, что пишет данные, проходит только через
-`python src/risk_gate.py --preflight`. Он блокирует, если хоть что-то из этого не так:
+Запуск чего-либо, что пишет данные, проходит только через явный write-class:
+`python src/risk_gate.py --preflight --write-class <class> --run-id <id>`. Он
+блокирует, если хоть что-то из этого не так:
 
 - runtime не совпадает с immutable PlanOnly, или план не тот, что одобрен внешним
   trust-root `src/frozen_plan_bindings.py`;
 - capability scan нашёл в `src/` или `tools/` запрещённую возможность или URL вне
   allow-list;
 - общий active-run gate закрыт или недоступен;
-- общий market-data writer claim занят;
-- собственный предыдущий capture не завершён.
+- для `market_data_capture`: общий market-data writer claim занят либо собственный
+  предыдущий capture не завершён.
 
-Только после этого выдаётся одноразовый capture-токен. Capture без токена невозможен —
-флага «я подтверждаю» здесь нет по замыслу.
+Только `market_data_capture` может получить одноразовый capture-токен. Metadata refresh
+и human official attestation имеют отдельные действия и не заимствуют capture-authority.
+Capture без токена невозможен — флага «я подтверждаю» здесь нет по замыслу.
 
 ## Общий writer
 
@@ -80,5 +82,6 @@ Workspace общий с `ZolotyayLopata`. Этот проект — второй
 ## Статус
 
 Capture ещё **не запускался**. PlanOnly в статусе
-`AWAIT_RISK_GATE_GREEN_NO_CAPTURE_YET`. Первый capture — только с отдельного
-разрешения пользователя.
+`CAPTURE_IMPLEMENTATION_AUDIT_GREEN_NO_CAPTURE`; активный immutable план — v9.
+`market_data_capture` этим статусом не авторизован. Первый capture требует отдельного
+нового PlanOnly/checkpoint и отдельного разрешения пользователя на видимый запуск.

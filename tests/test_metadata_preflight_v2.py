@@ -24,6 +24,9 @@ METADATA_REGISTRY_ACTION = (
 OFFLINE_DESCRIPTIVE_ACTION = (
     "verify and materialize descriptive proxy observations offline"
 )
+OFFICIAL_ATTESTATION_ACTION = (
+    "append one human-verified official spot t0 after attestation preflight"
+)
 
 
 def no_capture_plan() -> dict[str, object]:
@@ -34,6 +37,7 @@ def no_capture_plan() -> dict[str, object]:
         "authorized_after_gate_green": [
             METADATA_REGISTRY_ACTION,
             OFFLINE_DESCRIPTIVE_ACTION,
+            OFFICIAL_ATTESTATION_ACTION,
         ],
         "resolved_path_bindings": risk_gate.resolved_path_bindings(),
     }
@@ -367,6 +371,8 @@ class MarketDataCapturePreflightTests(unittest.TestCase):
         result = risk_gate.preflight(
             write_class="market_data_capture",
             run_id="capture_1",
+            event_id="episode-capture-1",
+            source_class="OFFICIAL_ANNOUNCEMENT",
         )
 
         self.assertFalse(result["verified"])

@@ -24,7 +24,9 @@ import project_config as config  # noqa: E402
 NOW = 1_800_000_000
 T0 = NOW + 7 * 24 * 3600
 ANNOUNCED = "2027-01-15T04:00:00Z"
-QUOTE = "Spot trading for KII/USDT will start on Sep 9, 2026, 4:00AM UTC."
+QUOTED_TIME = "Jan 15, 2027, 4:00AM UTC"
+QUOTED_SYMBOL = "KII/USDT"
+QUOTE = f"Spot trading for {QUOTED_SYMBOL} will start on {QUOTED_TIME}."
 URL = "https://announcements.bybit.com/en-US/article/bybit-to-list-kii-on-spot/"
 
 
@@ -33,9 +35,12 @@ def build(**overrides):
         "venue": "bybit",
         "spot_symbol": "KIIUSDT",
         "premarket_contract_id": "KIIUSDT",
+        "lifecycle_generation": 0,
         "announced_utc": ANNOUNCED,
         "announcement_url": URL,
         "quoted_sentence": QUOTE,
+        "quoted_time_text": QUOTED_TIME,
+        "quoted_symbol_text": QUOTED_SYMBOL,
         "attested_by": "koval",
         "now_ts": attestation.parse_announced_utc(ANNOUNCED) - 7 * 24 * 3600,
     }
@@ -92,6 +97,16 @@ class SourceTests(unittest.TestCase):
         cleaned = attestation.require_official_source("bybit", URL + "#section-2")
         self.assertNotIn("#", cleaned)
 
+    def test_explicit_port_backslash_or_unicode_control_is_refused(self):
+        for url in (
+            "https://announcements.bybit.com:444/en-US/article/x",
+            "https://announcements.bybit.com\\evil.example/article/x",
+            "https://announcements.bybit.com/en-US/\u202earticle/x",
+        ):
+            with self.subTest(url=url):
+                with self.assertRaises(attestation.AttestationError):
+                    attestation.require_official_source("bybit", url)
+
 
 class QuotationTests(unittest.TestCase):
     def test_the_sentence_is_required(self):
@@ -111,6 +126,20 @@ class QuotationTests(unittest.TestCase):
         observation = build()
         self.assertEqual(observation["attestation"]["quoted_sentence"], QUOTE)
         self.assertEqual(observation["attestation"]["announcement_url"], URL)
+
+    def test_unicode_control_and_format_characters_are_refused(self):
+        cases = {
+            "escape_in_author": {"attested_by": "koval\x1b"},
+            "bidi_override_in_quote": {
+                "quoted_sentence": QUOTE.replace("will", "\u202ewill")
+            },
+        }
+        for name, overrides in cases.items():
+            with self.subTest(name=name):
+                with self.assertRaisesRegex(
+                    attestation.AttestationError, "control|format|canonical"
+                ):
+                    build(**overrides)
 
 
 class ObservationTests(unittest.TestCase):
@@ -177,8 +206,10 @@ class WritePathTests(unittest.TestCase):
             with self.assertRaisesRegex(attestation.AttestationError, "PREFLIGHT_BLOCKED"):
                 attestation.attest(
                     run_id="r1", venue="bybit", spot_symbol="KIIUSDT",
-                    premarket_contract_id="KIIUSDT", announced_utc=ANNOUNCED,
-                    announcement_url=URL, quoted_sentence=QUOTE, attested_by="koval",
+                    premarket_contract_id="KIIUSDT", lifecycle_generation=0,
+                    announced_utc=ANNOUNCED, announcement_url=URL,
+                    quoted_sentence=QUOTE, quoted_time_text=QUOTED_TIME,
+                    quoted_symbol_text=QUOTED_SYMBOL, attested_by="koval",
                 )
 
     def test_a_blocked_preflight_never_reaches_the_registry(self):
@@ -188,8 +219,10 @@ class WritePathTests(unittest.TestCase):
             with self.assertRaises(attestation.AttestationError):
                 attestation.attest(
                     run_id="r1", venue="bybit", spot_symbol="KIIUSDT",
-                    premarket_contract_id="KIIUSDT", announced_utc=ANNOUNCED,
-                    announcement_url=URL, quoted_sentence=QUOTE, attested_by="koval",
+                    premarket_contract_id="KIIUSDT", lifecycle_generation=0,
+                    announced_utc=ANNOUNCED, announcement_url=URL,
+                    quoted_sentence=QUOTE, quoted_time_text=QUOTED_TIME,
+                    quoted_symbol_text=QUOTED_SYMBOL, attested_by="koval",
                 )
         appended.assert_not_called()
 
@@ -197,8 +230,10 @@ class WritePathTests(unittest.TestCase):
         with self.assertRaises(attestation.AttestationError):
             attestation.attest(
                 run_id="", venue="bybit", spot_symbol="KIIUSDT",
-                premarket_contract_id="KIIUSDT", announced_utc=ANNOUNCED,
-                announcement_url=URL, quoted_sentence=QUOTE, attested_by="koval",
+                premarket_contract_id="KIIUSDT", lifecycle_generation=0,
+                announced_utc=ANNOUNCED, announcement_url=URL,
+                quoted_sentence=QUOTE, quoted_time_text=QUOTED_TIME,
+                quoted_symbol_text=QUOTED_SYMBOL, attested_by="koval",
             )
 
 
