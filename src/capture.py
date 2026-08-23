@@ -101,13 +101,16 @@ def cadence_for(probe: str, offset_sec: float) -> float:
 
 # ------------------------------------------------------------------- t0 confirmation
 
-# The registry's t0 was true when it was written. A pre-market listing can be moved,
-# and a venue can disagree with itself: measured on 2026-08-22, OKX returned
-# listTime 2026-09-09 for JP225-USDT-SWAP when asked for every SWAP instrument and
-# listTime 2026-08-07 for the same instrument at the same moment when asked with
-# instId - a 33-day spread in this project's primary datum. So t0 is re-read from the
-# venue immediately before the loop, in every query shape known to differ, and a
-# disagreement stops the capture instead of aiming it at a moment nothing happens at.
+# What the venue's own metadata says about this instrument, read immediately before
+# the loop. It is NOT the capture's t0 and cannot become it: an official_spot_t0 and a
+# venue-declared contract launch are different source classes, and comparing them as
+# though one confirmed the other is precisely the class-mixing this registry forbids.
+#
+# It is recorded because the venues are demonstrably unreliable here. Measured on
+# 2026-08-22: OKX returned listTime 2026-09-09 for JP225-USDT-SWAP when asked for
+# every SWAP instrument and listTime 2026-08-07 for the same instrument at the same
+# moment when asked with instId - a 33-day spread from one endpoint. A capture that
+# runs while the venue metadata is self-contradictory should say so in its manifest.
 @dataclass(frozen=True)
 class T0Source:
     label: str
@@ -151,13 +154,16 @@ def _dig(payload: Any, path: Sequence[str]) -> Any:
     return payload
 
 
-def confirm_t0(
+def observe_venue_metadata(
     job: CaptureJob,
     *,
     fetch: Callable[[str, Mapping[str, Any]], Any] | None = None,
     tolerance_sec: int = T0_DISAGREEMENT_TOLERANCE_SEC,
 ) -> dict[str, Any]:
-    """Re-read t0 from the venue in every query shape, and compare with the registry."""
+    """Read the venue's declared instrument times, in every query shape known to differ.
+
+    Descriptive only. The findings ride in the manifest; they never move the capture's
+    t0, which comes from the official-announcement class alone."""
     fetch = fetch or (lambda url, params: public_http.get_json(url, params=params))
     observations: list[dict[str, Any]] = []
     for source in T0_SOURCES.get(job.venue, ()):
@@ -182,27 +188,28 @@ def confirm_t0(
     drift = min((abs(value - job.t0_ts) for value in seen), default=None)
     tolerance = max(tolerance_sec, job.t0_precision_sec)
 
-    blockers: list[str] = []
+    notes: list[str] = []
     if not seen:
-        blockers.append("the venue did not report a t0 for this instrument")
+        notes.append("the venue did not report an instrument time at all")
     if spread > tolerance:
-        blockers.append(
-            f"the venue reports t0 values {spread}s apart across query shapes; "
-            "capturing would aim at a moment one of them says is wrong"
+        notes.append(
+            f"the venue reports instrument times {spread}s apart across query shapes"
         )
     if drift is not None and drift > tolerance:
-        blockers.append(
-            f"the venue's t0 has moved {drift}s from the registry value; "
-            "refresh the registry before capturing"
+        notes.append(
+            f"the venue's declared instrument time is {drift}s from the official t0 "
+            "this capture is aimed at; a different source class, not a correction"
         )
     return {
-        "registry_t0_ts": job.t0_ts,
+        "role": "descriptive_only",
+        "capture_t0_ts": job.t0_ts,
+        "capture_t0_source_class": job.t0_source_class,
         "observations": observations,
         "venue_spread_sec": spread,
-        "drift_from_registry_sec": drift,
+        "distance_from_capture_t0_sec": drift,
         "tolerance_sec": tolerance,
-        "confirmed": not blockers,
-        "blockers": blockers,
+        "venue_metadata_is_self_consistent": not notes,
+        "notes": notes,
     }
 
 
@@ -225,7 +232,8 @@ def job_from_event(event: Mapping[str, Any], *, capture_id: str) -> CaptureJob:
         capture_id=capture_id,
         venue=str(event["venue"]),
         symbol=str(event["symbol"]),
-        t0_ts=int(event["t0_ts"]),
+        # The official spot t0 is the only timestamp a capture may aim at.
+        t0_ts=int(event["official_spot_t0"]),
         t0_source_class=str(event["t0_source_class"]),
         t0_precision_sec=int(event.get("t0_precision_sec") or 0),
         caveats=list(event.get("caveats") or []),
@@ -259,7 +267,7 @@ def run_capture(
     timeout_sec: int = 10,
     max_requests: int | None = None,
     max_runtime_sec: int | None = None,
-    t0_confirmation: Mapping[str, Any] | None = None,
+    venue_metadata: Mapping[str, Any] | None = None,
 ) -> dict[str, Any]:
     """Sample one instrument across the window around its t0.
 
@@ -375,7 +383,7 @@ def run_capture(
         "t0_source_class": job.t0_source_class,
         "t0_precision_sec": job.t0_precision_sec,
         "t0_caveats": job.caveats,
-        "t0_confirmation": dict(t0_confirmation) if t0_confirmation else None,
+        "venue_metadata_observed": dict(venue_metadata) if venue_metadata else None,
         "window": {"start_ts": window_start, "end_ts": window_end,
                    "before_sec": config.CAPTURE_WINDOW_BEFORE_SEC,
                    "after_sec": config.CAPTURE_WINDOW_AFTER_SEC},
@@ -492,7 +500,7 @@ def write_capture_receipt(manifest: Mapping[str, Any], capture_dir: Path) -> Pat
         "manifest_sha256": _sha256_file(capture_dir / "manifest.json"),
         "sampling": manifest["sampling"],
         "replay_readiness": manifest["replay_readiness"],
-        "t0_confirmation": manifest.get("t0_confirmation"),
+        "venue_metadata_observed": manifest.get("venue_metadata_observed"),
     }
     receipt["receipt_hash"] = canonical_hash(receipt)
     path = config.EVIDENCE_DIR / f"{manifest['capture_id']}.json"
@@ -515,9 +523,9 @@ def capture_event(
     capture_token: str,
     event_id: str,
     source_class: str,
+    horizon_sec: int = 24 * 3600,
     capture_root: Path | None = None,
-    accept_t0_disagreement: bool = False,
-    confirm_fetch: Callable[[str, Mapping[str, Any]], Any] | None = None,
+    observe_fetch: Callable[[str, Mapping[str, Any]], Any] | None = None,
     **run_kwargs: Any,
 ) -> dict[str, Any]:
     """Take the token, take the claim, capture, release. In that order.
@@ -528,14 +536,22 @@ def capture_event(
     while it is moving."""
     risk_gate.consume_capture_token(token=capture_token, run_id=run_id)
 
-    entries = registry.load_registry()
-    # Within one t0 source class, always. Keyed by event id alone, an announcement t0
-    # and a metadata t0 for the same instrument collapse into whichever was written
-    # last, and the capture would aim at a moment from a class nobody chose.
-    event = registry.latest_by_event(entries, source_class=source_class).get(event_id)
+    # events_for_capture is the only door: it reads the verified production registry,
+    # refuses anything that is not an official announcement, and refuses an episode
+    # whose official heads conflict. Venue metadata is descriptive and never eligible,
+    # so today this correctly returns nothing and no capture can be selected at all.
+    eligible = registry.events_for_capture(
+        now_ts=int(time.time()), source_class=source_class, horizon_sec=horizon_sec
+    )
+    event = next(
+        (item for item in eligible
+         if event_id in (item.get("episode_id"), item.get("event_id"))),
+        None,
+    )
     if event is None:
         raise CaptureError(
-            f"event not in the registry for {source_class}: {event_id}"
+            f"{event_id} is not capture-eligible under {source_class}: it must be an "
+            "official announcement in the verified production registry"
         )
 
     job = job_from_event(event, capture_id=run_id)
@@ -544,14 +560,8 @@ def capture_event(
     if capture_dir.exists():
         raise CaptureError(f"capture directory already exists: {capture_dir}")
 
-    # Before the claim, because a capture aimed at the wrong moment should not hold the
-    # workspace's single writer slot while it collects nothing.
-    confirmation = confirm_t0(job, fetch=confirm_fetch)
-    if not confirmation["confirmed"] and not accept_t0_disagreement:
-        raise CaptureError(
-            "t0 not confirmed: " + "; ".join(confirmation["blockers"])
-            + " (pass accept_t0_disagreement to capture anyway)"
-        )
+    # Before the claim, so a long read does not hold the workspace's single writer slot.
+    venue_metadata = observe_venue_metadata(job, fetch=observe_fetch)
 
     claim = claim_global_market_writer(
         config.SHARED_WRITER_CLAIM_PATH,
@@ -563,7 +573,7 @@ def capture_event(
     )
     try:
         manifest = run_capture(
-            job, capture_dir=capture_dir, t0_confirmation=confirmation, **run_kwargs
+            job, capture_dir=capture_dir, venue_metadata=venue_metadata, **run_kwargs
         )
     finally:
         release_global_market_writer(
@@ -588,9 +598,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--event-id", default="")
     parser.add_argument("--source-class", choices=sorted(registry.SOURCE_CLASSES),
                         help="required with --capture: which t0 source class to trust")
-    parser.add_argument("--accept-t0-disagreement", action="store_true",
-                        help="capture even though the venue and the registry disagree "
-                             "about t0; recorded in the manifest either way")
+    parser.add_argument("--horizon-hours", type=int, default=24)
     parser.add_argument("--plan-echo", action="store_true",
                         help="print the capture bounds this build would honour")
     args = parser.parse_args(argv)
@@ -617,7 +625,7 @@ def main(argv: list[str] | None = None) -> int:
     manifest = capture_event(
         run_id=args.run_id, capture_token=args.capture_token, event_id=args.event_id,
         source_class=args.source_class,
-        accept_t0_disagreement=args.accept_t0_disagreement,
+        horizon_sec=args.horizon_hours * 3600,
     )
     print(json.dumps({
         "status": manifest["status"],
@@ -626,6 +634,7 @@ def main(argv: list[str] | None = None) -> int:
         "rows_written": manifest["rows_written"],
         "requests_made": manifest["requests_made"],
         "replay_readiness": manifest["replay_readiness"],
+        "venue_metadata_observed": manifest["venue_metadata_observed"],
         "sampling": manifest["sampling"],
     }, ensure_ascii=False))
     # A capture that finished its loop but cannot answer the question is not a success,

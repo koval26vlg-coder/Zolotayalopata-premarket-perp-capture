@@ -398,14 +398,13 @@ class ReplayReadinessTests(CaptureHarness):
         )
 
 
-class T0ConfirmationTests(CaptureHarness):
-    """t0 is re-read from the venue before the loop, because it moves and venues differ.
+class VenueMetadataTests(CaptureHarness):
+    """The venue's own instrument times are recorded, and never promoted to t0.
 
     Measured on 2026-08-22: OKX reported listTime 2026-09-09 for JP225-USDT-SWAP when
     asked for every SWAP instrument, and 2026-08-07 for the same instrument at the same
-    moment when asked with instId. Thirty-three days apart, in the one number the whole
-    project is built around.
-    """
+    moment when asked with instId. Thirty-three days apart from one endpoint. That is
+    worth recording in a manifest and worth never trusting as the capture's anchor."""
 
     def _fetch(self, values):
         calls = iter(values)
@@ -423,85 +422,138 @@ class T0ConfirmationTests(CaptureHarness):
 
         return fetch
 
-    def test_agreement_with_the_registry_confirms_the_capture(self):
-        verdict = capture.confirm_t0(job(), fetch=self._fetch([T0]))
-        self.assertTrue(verdict["confirmed"])
-        self.assertEqual(verdict["blockers"], [])
-        self.assertEqual(verdict["drift_from_registry_sec"], 0)
+    def test_the_observation_is_marked_descriptive_and_never_gates(self):
+        verdict = capture.observe_venue_metadata(job(), fetch=self._fetch([T0]))
+        self.assertEqual(verdict["role"], "descriptive_only")
+        self.assertNotIn("blockers", verdict)
 
-    def test_two_query_shapes_that_disagree_block_the_capture(self):
-        # The OKX case, reproduced: same endpoint, same instant, different answers.
-        verdict = capture.confirm_t0(
+    def test_a_venue_consistent_with_the_capture_anchor_reads_clean(self):
+        verdict = capture.observe_venue_metadata(job(), fetch=self._fetch([T0]))
+        self.assertTrue(verdict["venue_metadata_is_self_consistent"])
+        self.assertEqual(verdict["distance_from_capture_t0_sec"], 0)
+
+    def test_two_query_shapes_that_disagree_are_recorded(self):
+        # The live OKX case, reproduced.
+        verdict = capture.observe_venue_metadata(
             job(venue="okx"), fetch=self._fetch([T0, T0 + 33 * 24 * 3600])
         )
-        self.assertFalse(verdict["confirmed"])
+        self.assertFalse(verdict["venue_metadata_is_self_consistent"])
         self.assertEqual(verdict["venue_spread_sec"], 33 * 24 * 3600)
-        self.assertTrue(any("query shapes" in note for note in verdict["blockers"]))
+        self.assertTrue(any("query shapes" in note for note in verdict["notes"]))
 
-    def test_a_listing_moved_since_the_registry_was_written_blocks_the_capture(self):
-        verdict = capture.confirm_t0(job(), fetch=self._fetch([T0 + 7200]))
-        self.assertFalse(verdict["confirmed"])
-        self.assertEqual(verdict["drift_from_registry_sec"], 7200)
-        self.assertTrue(any("registry" in note for note in verdict["blockers"]))
-
-    def test_a_venue_that_reports_nothing_blocks_the_capture(self):
-        verdict = capture.confirm_t0(job(), fetch=self._fetch([RuntimeError("down")]))
-        self.assertFalse(verdict["confirmed"])
-        self.assertIsNone(verdict["drift_from_registry_sec"])
-
-    def test_small_drift_inside_the_declared_precision_is_tolerated(self):
-        verdict = capture.confirm_t0(
-            job(t0_precision_sec=300), fetch=self._fetch([T0 + 120])
+    def test_distance_from_the_anchor_is_reported_as_a_different_class_not_a_fix(self):
+        verdict = capture.observe_venue_metadata(job(), fetch=self._fetch([T0 + 7200]))
+        self.assertEqual(verdict["distance_from_capture_t0_sec"], 7200)
+        self.assertTrue(
+            any("different source class" in note for note in verdict["notes"])
         )
-        self.assertTrue(verdict["confirmed"])
 
-    def test_an_unconfirmed_t0_stops_the_capture_before_the_claim_is_taken(self):
-        # A capture aimed at the wrong moment must not hold the workspace writer slot.
-        taken = []
-        root = self.tmpdir()
-        with CTX_TOKEN(), CTX_REGISTRY(), MOCK_LATEST(), CLAIM_SPY(taken), UNCONFIRMED():
-            with self.assertRaises(capture.CaptureError) as caught:
-                capture.capture_event(run_id="r1", capture_token="t",
-                                      event_id="bybit:NEWUSDT", source_class=CLASS,
-                                      capture_root=root)
-        self.assertIn("the listing moved", str(caught.exception))
-        self.assertEqual(taken, [])
+    def test_a_venue_that_reports_nothing_is_recorded_rather_than_fatal(self):
+        verdict = capture.observe_venue_metadata(
+            job(), fetch=self._fetch([RuntimeError("down")])
+        )
+        self.assertIsNone(verdict["distance_from_capture_t0_sec"])
+        self.assertFalse(verdict["venue_metadata_is_self_consistent"])
 
-    def test_the_manifest_carries_the_confirmation_it_ran_under(self):
+    def test_the_manifest_carries_what_the_venue_said(self):
         self.narrow_window()
         tmp = self.tmpdir()
-        verdict = {"confirmed": True, "blockers": [], "venue_spread_sec": 0}
-        manifest, _ = self.run_loop(tmp, t0_confirmation=verdict)
-        self.assertEqual(manifest["t0_confirmation"], verdict)
+        observed = {"role": "descriptive_only", "venue_spread_sec": 0}
+        manifest, _ = self.run_loop(tmp, venue_metadata=observed)
+        self.assertEqual(manifest["venue_metadata_observed"], observed)
 
 
-def CTX_TOKEN():
-    return mock.patch.object(capture.risk_gate, "consume_capture_token", return_value={})
+class CaptureEligibilityTests(CaptureHarness):
+    """Only an official announcement can anchor a capture, and nothing populates one.
 
+    That is the point rather than a gap: venue metadata is a proxy, and a proxy that
+    can silently become the anchor is how a capture ends up aimed at a moment the
+    market never had."""
 
-def CTX_REGISTRY():
-    return mock.patch.object(capture.registry, "load_registry", return_value=[])
+    EPISODE = {
+        "episode_id": "bybit:NEWUSDT",
+        "event_id": "bybit:NEWUSDT",
+        "venue": "bybit",
+        "symbol": "NEWUSDT",
+        "official_spot_t0": T0,
+        "t0_source_class": "OFFICIAL_ANNOUNCEMENT",
+        "t0_precision_sec": 1,
+        "capture_eligible": True,
+        "evidence_use": "ACCEPTANCE_ANCHOR",
+    }
 
+    def test_metadata_derived_events_are_refused_as_capture_anchors(self):
+        with self.assertRaises(capture.registry.EventRegistryError):
+            capture.registry.events_for_capture(
+                now_ts=T0 - 60,
+                source_class=capture.registry.SOURCE_VENUE_INSTRUMENT_METADATA,
+            )
 
-def MOCK_LATEST():
-    return mock.patch.object(
-        capture.registry, "latest_by_event",
-        return_value={"bybit:NEWUSDT": EntrypointTests.EVENT},
-    )
+    def test_an_event_that_is_not_eligible_cannot_be_captured(self):
+        with mock.patch.object(capture.risk_gate, "consume_capture_token", return_value={}), \
+             mock.patch.object(capture.registry, "events_for_capture", return_value=[]):
+            with self.assertRaisesRegex(capture.CaptureError, "capture-eligible"):
+                capture.capture_event(
+                    run_id="r1", capture_token="t", event_id="bybit:X",
+                    source_class="OFFICIAL_ANNOUNCEMENT",
+                )
 
+    def test_an_existing_capture_directory_is_never_overwritten(self):
+        root = self.tmpdir()
+        (root / "r1").mkdir()
+        with mock.patch.object(capture.risk_gate, "consume_capture_token", return_value={}), \
+             mock.patch.object(capture.registry, "events_for_capture",
+                               return_value=[self.EPISODE]):
+            with self.assertRaisesRegex(capture.CaptureError, "already exists"):
+                capture.capture_event(
+                    run_id="r1", capture_token="t", event_id="bybit:NEWUSDT",
+                    source_class="OFFICIAL_ANNOUNCEMENT", capture_root=root,
+                )
 
-def CLAIM_SPY(sink):
-    return mock.patch.object(
-        capture, "claim_global_market_writer",
-        side_effect=lambda *a, **k: sink.append("claimed"),
-    )
+    def test_the_capture_anchors_on_the_official_spot_t0(self):
+        seen = {}
+        root = self.tmpdir()
+        with mock.patch.object(capture.risk_gate, "consume_capture_token", return_value={}), \
+             mock.patch.object(capture.risk_gate, "load_and_verify_plan",
+                               return_value={"plan_hash": "abc"}), \
+             mock.patch.object(capture.registry, "events_for_capture",
+                               return_value=[self.EPISODE]), \
+             mock.patch.object(capture, "observe_venue_metadata", return_value={}), \
+             mock.patch.object(capture, "claim_global_market_writer",
+                               return_value={"owner_pid": 1, "ownership_token": "x"}), \
+             mock.patch.object(capture, "release_global_market_writer", return_value=None), \
+             mock.patch.object(capture, "write_capture_receipt", return_value=None), \
+             mock.patch.object(capture, "run_capture",
+                               side_effect=lambda job_, **k: seen.update(
+                                   {"t0": job_.t0_ts, "class": job_.t0_source_class}
+                               ) or {"ok": True}):
+            capture.capture_event(
+                run_id="r1", capture_token="t", event_id="bybit:NEWUSDT",
+                source_class="OFFICIAL_ANNOUNCEMENT", capture_root=root,
+            )
+        self.assertEqual(seen["t0"], T0)
+        self.assertEqual(seen["class"], "OFFICIAL_ANNOUNCEMENT")
 
-
-def UNCONFIRMED():
-    return mock.patch.object(
-        capture, "confirm_t0",
-        return_value={"confirmed": False, "blockers": ["the listing moved"]},
-    )
+    def test_the_claim_is_released_even_when_the_capture_fails(self):
+        released = []
+        root = self.tmpdir()
+        with mock.patch.object(capture.risk_gate, "consume_capture_token", return_value={}), \
+             mock.patch.object(capture.risk_gate, "load_and_verify_plan",
+                               return_value={"plan_hash": "abc"}), \
+             mock.patch.object(capture.registry, "events_for_capture",
+                               return_value=[self.EPISODE]), \
+             mock.patch.object(capture, "observe_venue_metadata", return_value={}), \
+             mock.patch.object(capture, "claim_global_market_writer",
+                               return_value={"owner_pid": 1, "ownership_token": "x"}), \
+             mock.patch.object(capture, "release_global_market_writer",
+                               side_effect=lambda *a, **k: released.append("released")), \
+             mock.patch.object(capture, "run_capture", side_effect=RuntimeError("boom")):
+            with self.assertRaises(RuntimeError):
+                capture.capture_event(
+                    run_id="r1", capture_token="t", event_id="bybit:NEWUSDT",
+                    source_class="OFFICIAL_ANNOUNCEMENT", capture_root=root,
+                )
+        self.assertEqual(released, ["released"])
 
 
 class EvidenceTests(CaptureHarness):
@@ -548,51 +600,6 @@ class EntrypointTests(CaptureHarness):
             with self.assertRaises(capture.risk_gate.RiskGateError):
                 capture.capture_event(run_id="r1", capture_token="t", event_id="bybit:X",
                                       source_class=CLASS)
-
-    def test_an_event_outside_the_registry_cannot_be_captured(self):
-        with mock.patch.object(capture.risk_gate, "consume_capture_token", return_value={}):
-            with mock.patch.object(capture.registry, "load_registry", return_value=[]):
-                with self.assertRaises(capture.CaptureError):
-                    capture.capture_event(
-                        run_id="r1", capture_token="t", event_id="bybit:X",
-                        source_class=CLASS,
-                    )
-
-    def test_an_existing_capture_directory_is_never_overwritten(self):
-        root = self.tmpdir()
-        (root / "r1").mkdir()
-        with mock.patch.object(capture.risk_gate, "consume_capture_token", return_value={}), \
-             mock.patch.object(capture.registry, "load_registry", return_value=[]), \
-             mock.patch.object(capture.registry, "latest_by_event",
-                               return_value={"bybit:NEWUSDT": self.EVENT}):
-            with self.assertRaises(capture.CaptureError):
-                capture.capture_event(
-                    run_id="r1", capture_token="t",
-                    event_id="bybit:NEWUSDT", source_class=CLASS, capture_root=root,
-                )
-
-    def test_the_claim_is_released_even_when_the_capture_fails(self):
-        released: list[str] = []
-        root = self.tmpdir()
-        with mock.patch.object(capture.risk_gate, "consume_capture_token", return_value={}), \
-             mock.patch.object(capture.risk_gate, "load_and_verify_plan",
-                               return_value={"plan_hash": "abc"}), \
-             mock.patch.object(capture.registry, "load_registry", return_value=[]), \
-             mock.patch.object(capture.registry, "latest_by_event",
-                               return_value={"bybit:NEWUSDT": self.EVENT}), \
-             mock.patch.object(capture, "claim_global_market_writer",
-                               return_value={"owner_pid": 1, "ownership_token": "x"}), \
-             mock.patch.object(capture, "release_global_market_writer",
-                               side_effect=lambda *a, **k: released.append("released")), \
-             mock.patch.object(capture, "run_capture", side_effect=RuntimeError("boom")), \
-             mock.patch.object(capture, "confirm_t0",
-                               return_value={"confirmed": True, "blockers": []}):
-            with self.assertRaises(RuntimeError):
-                capture.capture_event(
-                    run_id="r1", capture_token="t",
-                    event_id="bybit:NEWUSDT", source_class=CLASS, capture_root=root,
-                )
-        self.assertEqual(released, ["released"])
 
     def test_cli_refuses_a_capture_without_run_id_token_and_event(self):
         with self.assertRaises(SystemExit):

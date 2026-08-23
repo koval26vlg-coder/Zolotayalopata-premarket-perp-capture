@@ -21,6 +21,7 @@ collector.
 from __future__ import annotations
 
 import re
+import urllib.parse
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Iterable, Sequence
@@ -84,10 +85,25 @@ def scanned_files(root: Path) -> list[Path]:
 
 
 def _endpoint_allowed(url: str, allowed: Sequence[tuple[str, str]]) -> bool:
-    without_scheme = url.split("://", 1)[-1]
-    host, _, remainder = without_scheme.partition("/")
-    path = "/" + remainder.split("?", 1)[0]
-    return any(host == a_host and path.startswith(a_path) for a_host, a_path in allowed)
+    try:
+        parsed = urllib.parse.urlsplit(url)
+        port = parsed.port
+    except ValueError:
+        return False
+    if (
+        parsed.scheme.lower() != "https"
+        or parsed.hostname is None
+        or parsed.username is not None
+        or parsed.password is not None
+        or parsed.fragment
+        or port not in (None, 443)
+        or "%" in parsed.path
+        or "\\" in parsed.path
+        or any(segment in (".", "..") for segment in parsed.path.split("/"))
+    ):
+        return False
+    endpoint = (parsed.hostname.lower(), parsed.path or "/")
+    return endpoint in allowed
 
 
 def scan_runtime(
