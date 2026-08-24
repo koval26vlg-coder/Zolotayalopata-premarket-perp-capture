@@ -20,11 +20,11 @@ import project_config as config
 from canonical_hash import canonical_hash
 
 
-SCHEMA = "premarket_perp_capture_planonly_v25"
-PLAN_ID = "premarket_perp_capture_20260822_v25"
-SUPERSEDES_PLAN_ID = "premarket_perp_capture_20260822_v24"
-SUPERSEDES_PLAN_HASH = "6359c390ad8ab74a18ab27d24c5f99ee89d059e1a93693e65a6803cdfd07dbc0"
-SUPERSEDES_PLAN_PATH = "docs/plans/premarket-perp-capture-planonly-20260822-v24.json"
+SCHEMA = "premarket_perp_capture_planonly_v26"
+PLAN_ID = "premarket_perp_capture_20260822_v26"
+SUPERSEDES_PLAN_ID = "premarket_perp_capture_20260822_v25"
+SUPERSEDES_PLAN_HASH = "c5a5c663a2f5502fb4686ad906477c0437b9193424a7e67713e80e4d820b4389"
+SUPERSEDES_PLAN_PATH = "docs/plans/premarket-perp-capture-planonly-20260822-v25.json"
 HASH_METHOD = "sha256_canonical_json_excluding_plan_hash"
 
 

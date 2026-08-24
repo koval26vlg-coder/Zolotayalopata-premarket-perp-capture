@@ -1286,9 +1286,21 @@ ADAPTERS: tuple[VenueAdapter, ...] = (
         url="https://api.gateio.ws/api/v4/futures/usdt/contracts",
         params={},
         symbol_field="name",
-        # Gate documents launch_time as the contract expiry timestamp, not the start
-        # of trading.  create_time is retained only as contract-creation provenance;
-        # neither field is an official spot t0 or observed first trade.
+        # Two authorities disagree about launch_time and neither is ignored here.
+        #
+        # Gate's own SDK documentation (gateio/gateapi-python, docs/Contract.md) calls
+        # it "Contract expiry timestamp". Gate's data says otherwise: measured
+        # 2026-08-24, all 935 USDT perpetuals carry a launch_time in the past, none in
+        # the future; BTC_USDT reads 2019-11-18 and trades today; a perpetual has no
+        # expiry to record; and delisting_time and delisted_time already exist as
+        # separate fields for winding a contract down. The doc line looks copied from
+        # the dated-delivery model, where an expiry is real.
+        #
+        # So the conservative reading stands: create_time is recorded, carrying the
+        # caveat that contract creation is not trading start. launch_time is not
+        # promoted while its meaning is contested - a field two authorities describe
+        # differently is not a better t0, it is an unresolved one. Neither field is an
+        # official spot t0 or an observed first trade.
         t0_field="create_time",
         t0_unit="s",
         t0_semantics="venue-declared contract creation time",
