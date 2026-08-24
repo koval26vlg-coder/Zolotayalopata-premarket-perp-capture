@@ -641,6 +641,10 @@ def attest(
                 "mutation_run_id": run_id,
                 "plan_id": preflight["plan_id"],
                 "plan_hash": preflight["plan_hash"],
+                # An attestation writes a summary like any other mutation, so it binds
+                # to the registry contract like any other - otherwise the very record
+                # that cannot be re-derived would be the one left unverifiable.
+                "registry_contract_hash": registry.active_registry_contract_hash(),
                 "resolved_paths_hash": preflight["resolved_paths_hash"],
                 "mutated_at_utc": observation["received_at_utc"],
                 "complete": True,

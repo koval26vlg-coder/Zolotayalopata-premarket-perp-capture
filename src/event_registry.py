@@ -3091,8 +3091,13 @@ def _verify_registry_snapshot(
                         problems.append("summary status is not a complete registry mutation")
                     if summary.get("complete") is not True:
                         problems.append("summary complete flag is not true")
-                    if summary.get("plan_hash") != trust_root.PLAN_HASH:
-                        problems.append("summary plan_hash is not the active PlanOnly")
+                    # The registry contract, not the whole plan. A plan reissued
+                    # for something the registry does not depend on leaves this data
+                    # exactly as valid as it was; a changed registry contract does not.
+                    if summary.get("registry_contract_hash") != active_registry_contract_hash():
+                        problems.append(
+                            "summary registry_contract_hash is not the active registry contract"
+                        )
                     mutation_type = str(summary.get("mutation_type") or "metadata_refresh")
                     if mutation_type not in {"metadata_refresh", "official_attestation"}:
                         problems.append("summary mutation_type is invalid")
@@ -3422,6 +3427,21 @@ def events_for_capture(
             "plan_hash": trust_root.PLAN_HASH,
         })
     return upcoming
+
+
+
+def active_registry_contract_hash() -> str:
+    """The hash of the plan clauses that govern this registry.
+
+    Read from the verified plan rather than recomputed here, so the runtime cannot
+    quietly disagree with the document it is bound by."""
+    import risk_gate
+
+    plan = risk_gate.load_and_verify_plan()
+    recorded = str(plan.get("registry_contract_hash") or "")
+    if len(recorded) != 64:
+        raise EventRegistryError("the active PlanOnly records no registry contract hash")
+    return recorded
 
 
 def _write_json_atomic(path: Path, payload: Mapping[str, Any]) -> None:
@@ -4728,6 +4748,7 @@ def refresh(
                 "refresh_run_id": run_id,
                 "plan_id": preflight["plan_id"],
                 "plan_hash": preflight["plan_hash"],
+                "registry_contract_hash": active_registry_contract_hash(),
                 "resolved_paths_hash": preflight["resolved_paths_hash"],
                 "refreshed_at_utc": observed_at_utc,
                 LAST_COMPLETE_METADATA_REFRESH_RECEIVED_AT_FIELD: observed_at_utc,

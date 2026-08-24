@@ -1,0 +1,60 @@
+{
+  "archive_files": [
+    {
+      "archive_name": "registry.bin",
+      "role": "registry",
+      "sha256": "02a8b98810afb15f2530b6912cb736fa328d20c20afae68c7ad9698f3d046c4c",
+      "size": 28607
+    },
+    {
+      "archive_name": "summary.bin",
+      "role": "summary",
+      "sha256": "59a083995544b30a97dde6d3182c735c3e81c1759185b536b723c1ce3f43d583",
+      "size": 4849
+    },
+    {
+      "archive_name": "mutation-receipts.jsonl",
+      "role": "mutation_receipt_archive",
+      "sha256": "72e28668872f9bab7d2141397729ccb1d370a87ade0b45e48abadb8f87bcc9ef",
+      "size": 4560
+    }
+  ],
+  "authority": {
+    "plan_hash": "6359c390ad8ab74a18ab27d24c5f99ee89d059e1a93693e65a6803cdfd07dbc0",
+    "plan_id": "premarket_perp_capture_20260822_v24",
+    "registry_lock_name": "listing-events-v3.lock",
+    "registry_lock_sha256": "6aab582c9f650bb273085877025deeec4965666bc34df3f1b2dee4c35ee1d9d5",
+    "resolved_paths_hash": "1d09111a37558b1b0422822b01475158143f23d8d9a1dc5b5eca5a4b63ad446e"
+  },
+  "created_at_utc": "2026-08-24T06:35:25Z",
+  "reason": "final migration: the summary now binds to the registry contract hash rather than the whole plan hash, so this generation predates the field",
+  "receipt_entries": [
+    {
+      "original_name": "00000000000000000000-f0325588f242d13bce01c351530fd8bd8569c2b873b39ca25ff9896090396883.json",
+      "sha256": "f81bfcd265d9f230d649fd70530394fa8a84d4bd0628cb4e73987e9653a86b08",
+      "size": 3219
+    }
+  ],
+  "run_id": "migrate_to_registry_contract_binding",
+  "schema": "premarket_perp_registry_quarantine_v2",
+  "source": {
+    "receipt_dir_name": "listing-events-v3.jsonl.mutation-receipts",
+    "receipt_dir_present": true,
+    "registry_name": "listing-events-v3.jsonl",
+    "summary_name": "listing-events-v3.summary.json",
+    "summary_plan_identity": {
+      "plan_hash": "25be0f87b96f0faf117eedc96f9079f8c7a5256302e714b1148f24dda0f82942",
+      "plan_id": "premarket_perp_capture_20260822_v20"
+    },
+    "summary_present": true
+  },
+  "source_generation_cas": "0961fb7d061b354db1bb76b83a5f31addc379be49a036617b4911b4448f91e18",
+  "transaction_id": "20260824T063525Z-7bc78caf9a-ae4ed943",
+  "verifier": {
+    "problem_count": 1,
+    "problems_hash": "2994ec84200f009b1bb9e87fe694f5f9c14dfaa51944c186f63bb3b67e287cc3",
+    "recovery_action": "RESTORE_MATCHING_SUMMARY_OR_QUARANTINE_AND_BOOTSTRAP_NEW_GENERATION",
+    "status": "REGISTRY_PROBLEMS",
+    "summary_verified": false
+  }
+}

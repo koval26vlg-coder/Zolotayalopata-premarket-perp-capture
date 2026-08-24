@@ -20,11 +20,11 @@ import project_config as config
 from canonical_hash import canonical_hash
 
 
-SCHEMA = "premarket_perp_capture_planonly_v20"
-PLAN_ID = "premarket_perp_capture_20260822_v20"
-SUPERSEDES_PLAN_ID = "premarket_perp_capture_20260822_v19"
-SUPERSEDES_PLAN_HASH = "0e8336b3e5b85a87b21443b15af56768226833cae03000e5d03b684c306b6b11"
-SUPERSEDES_PLAN_PATH = "docs/plans/premarket-perp-capture-planonly-20260822-v19.json"
+SCHEMA = "premarket_perp_capture_planonly_v25"
+PLAN_ID = "premarket_perp_capture_20260822_v25"
+SUPERSEDES_PLAN_ID = "premarket_perp_capture_20260822_v24"
+SUPERSEDES_PLAN_HASH = "6359c390ad8ab74a18ab27d24c5f99ee89d059e1a93693e65a6803cdfd07dbc0"
+SUPERSEDES_PLAN_PATH = "docs/plans/premarket-perp-capture-planonly-20260822-v24.json"
 HASH_METHOD = "sha256_canonical_json_excluding_plan_hash"
 
 
@@ -1014,6 +1014,13 @@ def build_plan(generated_at_utc: str) -> dict[str, Any]:
         },
         "plan_hash_method": HASH_METHOD,
     }
+    # A hash over only the clauses that govern the registry. Binding recorded data to
+    # the whole plan_hash meant that adding a module, widening the announcement hosts
+    # or changing a capture cadence invalidated a registry those changes never touched
+    # - and the repair ran through a quarantine, which is how one edit cost a whole
+    # generation. Data must still be provably produced under the rules it claims; those
+    # rules are this section, not the entire document.
+    plan["registry_contract_hash"] = canonical_hash(plan["event_registry"])
     plan["plan_hash"] = canonical_hash(plan)
     validate_plan(plan)
     return plan

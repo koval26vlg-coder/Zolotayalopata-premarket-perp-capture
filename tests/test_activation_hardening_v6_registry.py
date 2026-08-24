@@ -182,6 +182,7 @@ def _write_refresh_summary(
         "refresh_run_id": "metadata-bootstrap",
         "plan_id": trust_root.PLAN_ID,
         "plan_hash": trust_root.PLAN_HASH,
+        "registry_contract_hash": registry.active_registry_contract_hash(),
         "resolved_paths_hash": "b" * 64,
         "refreshed_at_utc": RECEIVED_AT,
         registry.LAST_COMPLETE_METADATA_REFRESH_RECEIVED_AT_FIELD: (
@@ -386,6 +387,7 @@ class AttestationTransactionTests(unittest.TestCase):
             "action": risk_gate.OFFICIAL_ATTESTATION_ACTION,
             "plan_id": trust_root.PLAN_ID,
             "plan_hash": trust_root.PLAN_HASH,
+            "registry_contract_hash": registry.active_registry_contract_hash(),
             "resolved_paths_hash": "c" * 64,
         }
 

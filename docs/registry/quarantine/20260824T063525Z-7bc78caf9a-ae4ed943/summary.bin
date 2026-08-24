@@ -2,14 +2,13 @@
   "schema": "premarket_perp_event_registry_v3",
   "status": "REFRESH_COMPLETE",
   "mutation_type": "metadata_refresh",
-  "mutation_run_id": "registry_v3_contract_bound_bootstrap",
-  "refresh_run_id": "registry_v3_contract_bound_bootstrap",
-  "plan_id": "premarket_perp_capture_20260822_v24",
-  "plan_hash": "6359c390ad8ab74a18ab27d24c5f99ee89d059e1a93693e65a6803cdfd07dbc0",
-  "registry_contract_hash": "87dfa9f2194e3bbbf95004cd855e81ea275e56f50e86d457c4ab1838f1af7bf8",
-  "resolved_paths_hash": "1d09111a37558b1b0422822b01475158143f23d8d9a1dc5b5eca5a4b63ad446e",
-  "refreshed_at_utc": "2026-08-24T06:35:35Z",
-  "last_complete_metadata_refresh_received_at_utc": "2026-08-24T06:35:35Z",
+  "mutation_run_id": "registry_v3_rebuild_v20_20260824",
+  "refresh_run_id": "registry_v3_rebuild_v20_20260824",
+  "plan_id": "premarket_perp_capture_20260822_v20",
+  "plan_hash": "25be0f87b96f0faf117eedc96f9079f8c7a5256302e714b1148f24dda0f82942",
+  "resolved_paths_hash": "943bbd2cb62f1108bb084e33430c7c66deff736d90e75cba4eb6a04fe54a42bd",
+  "refreshed_at_utc": "2026-08-23T21:29:34Z",
+  "last_complete_metadata_refresh_received_at_utc": "2026-08-23T21:29:34Z",
   "observed_events": 16,
   "observed_by_venue": {
     "bybit": 4,
@@ -101,13 +100,13 @@
   "raw_universe_rows_by_venue": {
     "bybit": 797,
     "gate": 935,
-    "okx": 632
+    "okx": 628
   },
   "raw_universe_rows_by_surface": {
     "bybit_linear_prelaunch": 4,
     "bybit_linear_trading": 793,
     "gate_usdt_contracts": 935,
-    "okx_futures": 178,
+    "okx_futures": 174,
     "okx_swap": 454
   },
   "relevant_identity_ids_by_surface": {
@@ -158,8 +157,8 @@
     "entries": 16,
     "events": 16,
     "episodes": 16,
-    "head_record_hash": "42287c5fc8cee9d69ad81e37e6ddc92fded85ec95904949b2ad0fccae1b44a94",
-    "registry_sha256": "ed4473d5cdfa6b28b58b2d19b3df934cce7d643089b879bcf4192ce6a8ab46fa",
+    "head_record_hash": "1419b4ca358e626afadc695da1a45b4c082aee148f340e5414e1d7b1d175221e",
+    "registry_sha256": "02a8b98810afb15f2530b6912cb736fa328d20c20afae68c7ad9698f3d046c4c",
     "registry_summary_sha256": null,
     "problems": [],
     "summary_required": true,
@@ -178,5 +177,5 @@
   "mutation_receipt_schema": "premarket_perp_registry_mutation_receipt_v1",
   "mutation_seq": 0,
   "previous_mutation_receipt_hash": null,
-  "mutation_receipt_hash": "b5c1bfd3b0d938214fc5693d6b3d0a231ddefa9d52f39df14ba96e8c43a8207b"
+  "mutation_receipt_hash": "f0325588f242d13bce01c351530fd8bd8569c2b873b39ca25ff9896090396883"
 }

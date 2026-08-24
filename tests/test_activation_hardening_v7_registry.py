@@ -71,6 +71,7 @@ def _valid_attestation_preflight(run_id: str) -> dict:
         "action": risk_gate.OFFICIAL_ATTESTATION_ACTION,
         "plan_id": trust_root.PLAN_ID,
         "plan_hash": trust_root.PLAN_HASH,
+        "registry_contract_hash": registry.active_registry_contract_hash(),
         "resolved_paths_hash": "c" * 64,
     }
 
@@ -355,6 +356,7 @@ class PersistentLifecycleGenerationTests(unittest.TestCase):
                 "action": risk_gate.METADATA_REGISTRY_ACTION,
                 "plan_id": trust_root.PLAN_ID,
                 "plan_hash": trust_root.PLAN_HASH,
+                "registry_contract_hash": registry.active_registry_contract_hash(),
                 "resolved_paths_hash": "d" * 64,
             }
 

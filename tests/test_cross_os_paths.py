@@ -94,5 +94,49 @@ class NoPlatformFlavourInBoundCodeTests(unittest.TestCase):
         )
 
 
+class WorstCasePathLengthTests(unittest.TestCase):
+    """Paths this repository can produce must fit inside a Windows checkout.
+
+    Two separate breaks came from here: a quarantine archive at 200 characters and a
+    retained tombstone at 225, both of which git refused to index. MAX_PATH is 260 for
+    the whole absolute path, so what a clone root leaves is the repo-relative budget.
+    """
+
+    # 200 was wrong and let a 198-character path through that git still refused: the
+    # absolute path was 261 against MAX_PATH 260 on a 62-character checkout root. The
+    # budget has to leave room for a root, so it is set from the longest plausible one.
+    REPO_RELATIVE_BUDGET = 180
+
+    def test_no_path_in_the_working_tree_exceeds_the_budget(self):
+        worst = max(
+            (
+                (len(item.relative_to(ROOT).as_posix()), item.relative_to(ROOT).as_posix())
+                for item in ROOT.rglob("*")
+                if ".git" not in item.parts
+            ),
+            default=(0, ""),
+        )
+        self.assertLessEqual(
+            worst[0],
+            self.REPO_RELATIVE_BUDGET,
+            f"longest path is {worst[0]} chars: {worst[1]}",
+        )
+
+    def test_a_quarantine_tombstone_stays_within_the_budget(self):
+        import registry_quarantine as quarantine
+
+        tombstone = quarantine._tombstone_name(
+            "mutation_receipts", "20260823T212914Z-bc6c206eb6-8fb85904"
+        )
+        # The worst case this repository produces: a receipt file inside a tombstoned
+        # receipt directory.
+        longest_receipt = "0" * 20 + "-" + "f" * 64 + ".json"
+        worst = len("docs/registry/") + len(tombstone) + 1 + len(longest_receipt)
+        self.assertLessEqual(
+            worst,
+            self.REPO_RELATIVE_BUDGET,
+            f"a tombstoned receipt would sit {worst} chars from the repo root",
+        )
+
 if __name__ == "__main__":
     unittest.main()

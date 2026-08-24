@@ -11,10 +11,10 @@ reviewable act in its own right.
 """
 
 ACTIVE_PLAN = {
-    "schema": "premarket_perp_capture_planonly_v20",
-    "plan_id": "premarket_perp_capture_20260822_v20",
-    "plan_hash": "25be0f87b96f0faf117eedc96f9079f8c7a5256302e714b1148f24dda0f82942",
-    "plan_file_sha256": "0384f458d2642456ce3a1e94e2cb9b8300368c7e13a12a4a0763064ff0fea4ca",
+    "schema": "premarket_perp_capture_planonly_v25",
+    "plan_id": "premarket_perp_capture_20260822_v25",
+    "plan_hash": "c5a5c663a2f5502fb4686ad906477c0437b9193424a7e67713e80e4d820b4389",
+    "plan_file_sha256": "d670ad7a63fa13c9bb51b3bcad81ccd5fddb2d5439289a417f269cd90863ff5a",
 }
 
 # Every plan this project ever published, in order. They stay on disk and are
@@ -154,6 +154,41 @@ RETIRED_PLANS = (
         "plan_hash": "0e8336b3e5b85a87b21443b15af56768226833cae03000e5d03b684c306b6b11",
         "plan_file_sha256": "d5e508908154733de395b14a9530e6c69d00480d656b229959ca2f5bcb9f99f2",
         "path": "docs/plans/premarket-perp-capture-planonly-20260822-v19.json"
+    },
+    {
+        "schema": "premarket_perp_capture_planonly_v20",
+        "plan_id": "premarket_perp_capture_20260822_v20",
+        "plan_hash": "25be0f87b96f0faf117eedc96f9079f8c7a5256302e714b1148f24dda0f82942",
+        "plan_file_sha256": "0384f458d2642456ce3a1e94e2cb9b8300368c7e13a12a4a0763064ff0fea4ca",
+        "path": "docs/plans/premarket-perp-capture-planonly-20260822-v20.json"
+    },
+    {
+        "schema": "premarket_perp_capture_planonly_v21",
+        "plan_id": "premarket_perp_capture_20260822_v21",
+        "plan_hash": "0de09983d84c73a6a1c32ba8e8bea7c5c88cb22df6e8860cc82b3199d6f88f69",
+        "plan_file_sha256": "997bdc7b7d5d377858e672a6da3fe01e6c562e9a16ce8612594ea4aaa12dfcf7",
+        "path": "docs/plans/premarket-perp-capture-planonly-20260822-v21.json"
+    },
+    {
+        "schema": "premarket_perp_capture_planonly_v22",
+        "plan_id": "premarket_perp_capture_20260822_v22",
+        "plan_hash": "08b98bbe73a6efb2c25eca08b155bc1f865c93b9e1a494ac01485c5f1f0b982d",
+        "plan_file_sha256": "f79a03f26fb4e7b8d6ad1b9293bad499001ca123674358fa001a8516c94005a3",
+        "path": "docs/plans/premarket-perp-capture-planonly-20260822-v22.json"
+    },
+    {
+        "schema": "premarket_perp_capture_planonly_v23",
+        "plan_id": "premarket_perp_capture_20260822_v23",
+        "plan_hash": "70234ef98c2567ab5d55621c5b8f91937bfc5b1cb7b8b7142d333bbd09adf004",
+        "plan_file_sha256": "a2940302e02af8cbcbee28121c8a1524880c98fc7331caca0ceeea3ec5d7a8e3",
+        "path": "docs/plans/premarket-perp-capture-planonly-20260822-v23.json"
+    },
+    {
+        "schema": "premarket_perp_capture_planonly_v24",
+        "plan_id": "premarket_perp_capture_20260822_v24",
+        "plan_hash": "6359c390ad8ab74a18ab27d24c5f99ee89d059e1a93693e65a6803cdfd07dbc0",
+        "plan_file_sha256": "ccc69521a39aebf8794a3642e1fa4574d95285e6a41ad80ccd7dcd136f961a6f",
+        "path": "docs/plans/premarket-perp-capture-planonly-20260822-v24.json"
     },
 )
 

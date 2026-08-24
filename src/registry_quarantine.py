@@ -631,9 +631,7 @@ def _deactivate_source_component(
     if not _path_exists(path):
         raise QuarantineError(f"{role} source disappeared before deactivation")
 
-    tombstone = path.with_name(
-        f".{path.name}.quarantine-{transaction_id}.{role}.deactivated"
-    )
+    tombstone = path.with_name(_tombstone_name(role, transaction_id))
     if _path_exists(tombstone):
         raise QuarantineError("quarantine deactivation tombstone already exists")
     _move_path_durable(path, tombstone, replace=False)
@@ -725,6 +723,33 @@ def _release_registry_lock_to_archive(
     # durable move helper. Nothing that can fail is executed after it.
     _move_path_durable(owner.path, proof_path, replace=False)
     return proof_sha256
+
+
+
+_TOMBSTONE_ROLE_TAGS = {
+    "registry": "registry",
+    "summary": "summary",
+    "mutation_receipts": "receipts",
+}
+
+
+def _tombstone_name(role: str, transaction_id: str) -> str:
+    """The retained-source name, short enough for a working tree to hold.
+
+    It used to repeat the full source name and the role: a receipt inside a tombstoned
+    receipt directory landed 225 characters from the repository root, and git refused
+    to index it - so a quarantine left a tree that could not be committed. Shortening
+    the role alone only reached 198, still one character past MAX_PATH on this
+    checkout, because the 85-character receipt file name dominates.
+
+    The transaction id identifies the generation and the role names the component;
+    the original file name adds nothing the archive manifest does not already record.
+    Dropping it takes the worst case to roughly 160.
+    """
+    tag = _TOMBSTONE_ROLE_TAGS.get(role)
+    if tag is None:
+        raise QuarantineError(f"unknown source component: {role}")
+    return f".q-{transaction_id}-{tag}.deactivated"
 
 
 def _archive_state(
@@ -1314,13 +1339,13 @@ def _verify_retained_source_tombstones(
 
     expected_paths = {
         "registry": paths.registry_path.with_name(
-            f".{paths.registry_path.name}.quarantine-{transaction_id}.registry.deactivated"
+            _tombstone_name("registry", transaction_id)
         ),
         "summary": paths.summary_path.with_name(
-            f".{paths.summary_path.name}.quarantine-{transaction_id}.summary.deactivated"
+            _tombstone_name("summary", transaction_id)
         ),
         "mutation_receipts": paths.receipt_dir.with_name(
-            f".{paths.receipt_dir.name}.quarantine-{transaction_id}.mutation_receipts.deactivated"
+            _tombstone_name("mutation_receipts", transaction_id)
         ),
     }
     for role in expected_roles:
@@ -1352,14 +1377,52 @@ def _verify_retained_source_tombstones(
                     problems.append(f"{role} tombstone bytes mismatch")
         except OSError as exc:
             problems.append(f"{role} tombstone is unreadable: {exc}")
-    for role, canonical in (
-        ("registry", paths.registry_path),
-        ("summary", paths.summary_path),
-        ("mutation_receipts", paths.receipt_dir),
-    ):
-        if _path_exists(canonical):
-            problems.append(f"canonical {role} source exists after deactivation")
+    # Whether a canonical source exists means two different things depending on when
+    # the question is asked, and one answer served both until it started refusing the
+    # instructions it had just issued.
+    #
+    # Inside the transaction, a source reappearing after deactivation is a writer
+    # racing the quarantine, and the transaction must fail closed with its locks held.
+    #
+    # Afterwards, a source exists because the operator did what the recovery action
+    # told them to - RESTORE_MATCHING_SUMMARY_OR_QUARANTINE_AND_BOOTSTRAP_NEW_GENERATION
+    # - and calling that INVALID_ARCHIVE_FAIL_CLOSED made following the instructions
+    # invalidate the transaction that gave them. The archive attests what was
+    # quarantined; whether a later generation has since been bootstrapped is a fact
+    # about today, reported by post_quarantine_observations() instead.
     return problems
+
+
+def post_quarantine_observations(transaction_id: str) -> dict[str, Any]:
+    """What the working tree looks like now, told apart from whether the archive holds.
+
+    Never a verdict on the transaction: a rebuilt registry is the prescribed outcome,
+    and tombstones removed after byte-for-byte verification against the archive are a
+    legitimate cleanup rather than a loss."""
+    paths = _production_paths()
+    transaction_id = _validate_transaction_id(transaction_id)
+    return {
+        "canonical_sources_present": sorted(
+            role
+            for role, canonical in (
+                ("registry", paths.registry_path),
+                ("summary", paths.summary_path),
+                ("mutation_receipts", paths.receipt_dir),
+            )
+            if _path_exists(canonical)
+        ),
+        "retained_tombstones_present": sorted(
+            role
+            for role, canonical in (
+                ("registry", paths.registry_path),
+                ("summary", paths.summary_path),
+                ("mutation_receipts", paths.receipt_dir),
+            )
+            if _path_exists(
+                canonical.with_name(_tombstone_name(role, transaction_id))
+            )
+        ),
+    }
 
 
 def _transaction_location(paths: QuarantinePaths, transaction_id: str) -> Path:
@@ -1477,6 +1540,29 @@ def quarantine_transaction_status(transaction_id: str) -> dict[str, Any]:
             manifest=manifest,
         )
         problems.extend(state_problems)
+        # A canonical source existing means two different things, and which one is
+        # settled by whether this transaction ever finished - not by the filesystem.
+        #
+        # Before the lock-release proof exists, the transaction is still running, and
+        # a source that reappeared after deactivation is a writer racing it. That must
+        # fail closed with the locks held, and must keep reading INVALID afterwards:
+        # the reappearance is the evidence of the race.
+        #
+        # Once the proof exists the transaction completed, and the recovery action it
+        # handed the operator was
+        # RESTORE_MATCHING_SUMMARY_OR_QUARANTINE_AND_BOOTSTRAP_NEW_GENERATION. Calling
+        # the resulting registry corruption made following those instructions
+        # invalidate the transaction that issued them.
+        if lock_released is None:
+            for role, canonical in (
+                ("registry", paths.registry_path),
+                ("summary", paths.summary_path),
+                ("mutation_receipts", paths.receipt_dir),
+            ):
+                if _path_exists(canonical):
+                    problems.append(
+                        f"canonical {role} source exists after deactivation"
+                    )
     elif _path_exists(archive_path / LOCK_RELEASE_PROOF_FILE):
         problems.append("lock release proof exists without SOURCE_DEACTIVATED")
     if lock_released is not None and _path_exists(paths.lock_path):

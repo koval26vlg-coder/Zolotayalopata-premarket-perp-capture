@@ -1,0 +1,10 @@
+{
+  "archive_manifest_sha256": "e74371c56851d0e366010c8cc0dea2f00cbb62613f92277cd5baa40864244c26",
+  "previous_state_hash": null,
+  "recorded_at_utc": "2026-08-24T06:35:25Z",
+  "schema": "premarket_perp_registry_quarantine_state_v1",
+  "source_generation_cas": "0961fb7d061b354db1bb76b83a5f31addc379be49a036617b4911b4448f91e18",
+  "state": "PREPARED",
+  "state_hash": "166805a3a523805071fe6dfe91fe5e709806a31ffb686fa75d427eac5ad0e3b8",
+  "transaction_id": "20260824T063525Z-7bc78caf9a-ae4ed943"
+}

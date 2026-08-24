@@ -87,6 +87,7 @@ def preflight_receipt(run_id: str) -> dict:
         "action": risk_gate.METADATA_REGISTRY_ACTION,
         "plan_id": trust_root.PLAN_ID,
         "plan_hash": trust_root.PLAN_HASH,
+        "registry_contract_hash": registry.active_registry_contract_hash(),
         "resolved_paths_hash": "b" * 64,
     }
 
@@ -453,6 +454,7 @@ class CaptureSelectionTests(unittest.TestCase):
             "complete": True,
             "plan_id": registry.trust_root.PLAN_ID,
             "plan_hash": registry.trust_root.PLAN_HASH,
+            "registry_contract_hash": registry.active_registry_contract_hash(),
             "refresh_run_id": "legacy-selector-fixture",
             "resolved_paths_hash": "a" * 64,
             "refreshed_at_utc": refresh_at,
