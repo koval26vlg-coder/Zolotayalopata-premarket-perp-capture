@@ -6,22 +6,27 @@ Research-only контур для публичных pre-market perpetual дан
 
 Проект наблюдает рынок с плечом, но никогда не берёт плечо: private API, ключи,
 подпись запросов, ордера, margin, real capital и переводы запрещены. Capture не
-запускался и активным PlanOnly v27 не разрешён.
+запускался и активным PlanOnly v28 не разрешён.
 
-## Состояние v27
+## Состояние v28
 
-- immutable PlanOnly: `premarket_perp_capture_20260822_v27`;
-- status: `REGISTRY_QUARANTINE_HARDENED_NO_CAPTURE`;
+- immutable PlanOnly: `premarket_perp_capture_20260822_v28`;
+- status: `OFFICIAL_ATTESTATION_LINEAGE_HARDENED_NO_CAPTURE`;
 - разрешены только metadata registry, human official attestation и локальная
   fail-closed registry quarantine;
+- perpetual venue и venue официального spot-анонса разделены на `venue` и
+  обязательный `listing_venue`; обе роли сохраняются под registry lock и входят в
+  capture/receipt/replay lineage;
+- после смены PlanOnly capture selection требует свежую mutation receipt с точными
+  active plan id/hash;
 - `market_data_capture` описан как write class, но исключён из status/action
   authorization matrix и не может получить capture token;
 - replay descriptive-only и не поддерживает ACCEPT/REJECT стратегии.
 
-Активные v27 identity: plan hash
-`859bd59a406dd97ae0fb1e8239f5f34541a50cb08cbb39fbda4d189c5d7b2446`, file
-SHA-256 `de5c2bd1998bebd7cedd7ed728aa992ef4515ccbab4248a1d6aa8a63d644bfac`.
-Они закреплены во внешнем trust root `src/frozen_plan_bindings.py`; v26 сохранён
+Активные v28 identity: plan hash
+`141ab762953a21985eb6678c3c4bafb6247eadf7bef1073cc9626ee89d404d80`, file
+SHA-256 `b59162ee152bf1fc2301921925267731ba1c1f2f9c3d92fe4093354d55797d92`.
+Они закреплены во внешнем trust root `src/frozen_plan_bindings.py`; v27 сохранён
 byte-identical как непосредственный предшественник и никогда не был активирован для
 capture.
 
@@ -201,8 +206,8 @@ quarantine являются отдельными операциями. Capture �
 
 ## Immutable lineage
 
-Опубликованы v1–v27. Все прежние планы остаются на диске и проверяются по file SHA,
-canonical plan hash и identity. v26 сохранён byte-identical и непосредственно
-superseded v27. Ни один старый PlanOnly не переписывался.
+Опубликованы v1–v28. Все прежние планы остаются на диске и проверяются по file SHA,
+canonical plan hash и identity. v27 сохранён byte-identical и непосредственно
+superseded v28. Ни один старый PlanOnly не переписывался.
 
 См. `AGENTS.md`, `src/frozen_plan_bindings.py` и решения в `docs/decisions/`.

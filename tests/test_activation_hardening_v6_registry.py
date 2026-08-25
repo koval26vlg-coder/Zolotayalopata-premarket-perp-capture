@@ -125,7 +125,10 @@ def _official_observation(
         ),
     )
     observation["lifecycle_generation"] = GENERATION
+    observation["listing_venue"] = "bybit"
     evidence = {
+        "listing_venue": "bybit",
+        "perpetual_venue": "bybit",
         "attested_by": "registry-v6-test",
         "announced_utc": ANNOUNCED_UTC,
         "quoted_sentence": QUOTE,
@@ -252,6 +255,13 @@ class OfficialRecordSemanticVerificationTests(unittest.TestCase):
             self._report_for(_official_observation())["status"], "REGISTRY_OK"
         )
 
+    def test_official_record_requires_explicit_listing_venue(self) -> None:
+        official = _official_observation()
+        official.pop("listing_venue")
+        report = self._report_for(official)
+        self.assertEqual(report["status"], "REGISTRY_PROBLEMS")
+        self.assertRegex("; ".join(report["problems"]), r"listing_venue")
+
     def test_official_records_are_rejected_without_semantic_provenance(self) -> None:
         wrong_episode = registry.make_episode_id("bybit", "OTHERUSDT", GENERATION)
         cases = {
@@ -354,8 +364,11 @@ class OfficialRecordSemanticVerificationTests(unittest.TestCase):
             caveats=("OFFICIAL_T0_READ_BY_A_PERSON_FROM_ANNOUNCEMENT_PROSE",),
             lifecycle_generation=generation,
         )
+        official["listing_venue"] = "okx"
         official["attestation"] = {
             "schema": attestation.ATTESTATION_SCHEMA,
+            "listing_venue": "okx",
+            "perpetual_venue": "okx",
             "attested_by": "registry-v6-test",
             "announced_utc": ANNOUNCED_UTC,
             "quoted_sentence": QUOTE,
@@ -367,6 +380,28 @@ class OfficialRecordSemanticVerificationTests(unittest.TestCase):
         path = Path(tempfile.mkdtemp()) / "registry.jsonl"
         _write_records(path, registry.build_stream_revisions([], [metadata, official]))
         self.assertEqual(registry.verify_registry(path)["status"], "REGISTRY_OK")
+
+    def test_attestation_venue_roles_must_match_the_official_record(self) -> None:
+        for field, replacement in (
+            ("listing_venue", "binance"),
+            ("perpetual_venue", "okx"),
+        ):
+            with self.subTest(field=field):
+                official = _official_observation()
+                official["attestation"][field] = replacement
+                path = Path(tempfile.mkdtemp()) / "registry.jsonl"
+                _write_records(
+                    path,
+                    registry.build_stream_revisions(
+                        [], [_metadata_observation(), official]
+                    ),
+                )
+                report = registry.verify_registry(path)
+                self.assertEqual(report["status"], "REGISTRY_PROBLEMS")
+                self.assertTrue(
+                    any(field in problem for problem in report["problems"]),
+                    report["problems"],
+                )
 
 
 class AttestationTransactionTests(unittest.TestCase):

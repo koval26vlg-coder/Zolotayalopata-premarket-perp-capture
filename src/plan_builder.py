@@ -20,12 +20,13 @@ import project_config as config
 from canonical_hash import canonical_hash
 
 
-SCHEMA = "premarket_perp_capture_planonly_v27"
-PLAN_ID = "premarket_perp_capture_20260822_v27"
-SUPERSEDES_PLAN_ID = "premarket_perp_capture_20260822_v26"
-SUPERSEDES_PLAN_HASH = "ed1b5e1d4c5afbc03269905f75a01def09d31afbb5bd87dc387681747afab541"
-SUPERSEDES_PLAN_PATH = "docs/plans/premarket-perp-capture-planonly-20260822-v26.json"
+SCHEMA = "premarket_perp_capture_planonly_v28"
+PLAN_ID = "premarket_perp_capture_20260822_v28"
+SUPERSEDES_PLAN_ID = "premarket_perp_capture_20260822_v27"
+SUPERSEDES_PLAN_HASH = "859bd59a406dd97ae0fb1e8239f5f34541a50cb08cbb39fbda4d189c5d7b2446"
+SUPERSEDES_PLAN_PATH = "docs/plans/premarket-perp-capture-planonly-20260822-v27.json"
 HASH_METHOD = "sha256_canonical_json_excluding_plan_hash"
+PLAN_STATUS = "OFFICIAL_ATTESTATION_LINEAGE_HARDENED_NO_CAPTURE"
 
 
 class PlanBuildError(ValueError):
@@ -375,7 +376,7 @@ def build_plan(generated_at_utc: str) -> dict[str, Any]:
         "project": "ZolotyayLopata-premarket-perp-capture",
         "strategy_branch": "premarket_perpetual_listing_impulse",
         "mode": "PlanOnly",
-        "status": "REGISTRY_QUARANTINE_HARDENED_NO_CAPTURE",
+        "status": PLAN_STATUS,
         "generated_at_utc": generated_at_utc,
         "implementation_path_semantics": "repo_path values are relative to the runtime Git root",
         "objective": (
@@ -587,6 +588,7 @@ def build_plan(generated_at_utc: str) -> dict[str, Any]:
                 "official_source_url_and_identity": "EXACT_OFFICIAL_RECORD_MATCH",
                 "current_head_substitution": "FORBIDDEN",
                 "plan_and_asset_mapping": "EXACT_MATCH",
+                "latest_mutation_receipt_plan_identity": "EXACT_ACTIVE_PLAN_ID_AND_HASH",
             },
             "official_attestation": {
                 "policy": (
@@ -616,6 +618,11 @@ def build_plan(generated_at_utc: str) -> dict[str, Any]:
                 "metadata_freshness_required": True,
                 "current_generation_required": True,
                 "precommit_authority_recheck": "UNDER_REGISTRY_LOCK",
+                "venue_roles": {
+                    "venue": "PERPETUAL_CONTRACT_VENUE",
+                    "listing_venue": "OFFICIAL_SPOT_ANNOUNCEMENT_VENUE",
+                },
+                "locked_rebuild_field_preservation": ["venue", "listing_venue"],
             },
             "official_t0_precision_sec": 60,
             "seconds_grade_replay_precision_sec": 1,
@@ -992,8 +999,8 @@ def build_plan(generated_at_utc: str) -> dict[str, Any]:
         "activation_gate": {
             "capture_authorized": False,
             "reason": (
-                "v27 binds the remediated registry, evidence loader and safe local "
-                "quarantine, but status REGISTRY_QUARANTINE_HARDENED_NO_CAPTURE "
+                "v28 binds cross-venue official attestation and active-plan mutation "
+                "receipt lineage, but status OFFICIAL_ATTESTATION_LINEAGE_HARDENED_NO_CAPTURE "
                 "intentionally excludes market_data_capture; neither a direct mint nor "
                 "a capture preflight can authorize network capture"
             ),
@@ -1044,7 +1051,7 @@ def validate_plan(plan: dict[str, Any]) -> None:
         "supersedes path mismatch",
     )
     require(
-        plan.get("status") == "REGISTRY_QUARANTINE_HARDENED_NO_CAPTURE",
+        plan.get("status") == PLAN_STATUS,
         "active plan must remain capture-disabled",
     )
     contract = plan.get("risk_contract") or {}
@@ -1290,7 +1297,9 @@ def validate_plan(plan: dict[str, Any]) -> None:
         == "UNSUPERSEDED_OFFICIAL_CRYPTO_ANCHOR"
         and lineage_verification.get("official_source_url_and_identity")
         == "EXACT_OFFICIAL_RECORD_MATCH"
-        and lineage_verification.get("current_head_substitution") == "FORBIDDEN",
+        and lineage_verification.get("current_head_substitution") == "FORBIDDEN"
+        and lineage_verification.get("latest_mutation_receipt_plan_identity")
+        == "EXACT_ACTIVE_PLAN_ID_AND_HASH",
         "historical capture lineage contract mismatch",
     )
     due = registry.get("capture_due_window") or {}
@@ -1324,7 +1333,14 @@ def validate_plan(plan: dict[str, Any]) -> None:
         == "UNDER_REGISTRY_LOCK_BEFORE_APPEND"
         and attestation.get("metadata_freshness_required") is True
         and attestation.get("current_generation_required") is True
-        and attestation.get("precommit_authority_recheck") == "UNDER_REGISTRY_LOCK",
+        and attestation.get("precommit_authority_recheck") == "UNDER_REGISTRY_LOCK"
+        and attestation.get("venue_roles")
+        == {
+            "venue": "PERPETUAL_CONTRACT_VENUE",
+            "listing_venue": "OFFICIAL_SPOT_ANNOUNCEMENT_VENUE",
+        }
+        and attestation.get("locked_rebuild_field_preservation")
+        == ["venue", "listing_venue"],
         "official attestation lock/freshness contract mismatch",
     )
     require(

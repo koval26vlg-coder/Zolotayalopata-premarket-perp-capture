@@ -7,6 +7,7 @@ import sys
 import tempfile
 import unittest
 from pathlib import Path
+from unittest import mock
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -24,7 +25,10 @@ class HistoricalCaptureLineageTests(unittest.TestCase):
         self.path = Path(tempfile.mkdtemp()) / "listing-events-v3.jsonl"
         self.records = v6._records()
         v6._write_records(self.path, self.records)
-        v6._write_refresh_summary(self.path, self.records)
+        with mock.patch.object(
+            registry, "active_registry_contract_hash", return_value="b" * 64
+        ):
+            v6._write_refresh_summary(self.path, self.records)
         receipts, problems = registry._load_mutation_receipt_chain(self.path)
         self.assertEqual(problems, [])
         receipt = receipts[-1]
@@ -36,6 +40,7 @@ class HistoricalCaptureLineageTests(unittest.TestCase):
         self.evidence = {
             "episode_id": official["episode_id"],
             "venue": official["venue"],
+            "listing_venue": official["listing_venue"],
             "premarket_contract_id": official["premarket_contract_id"],
             "spot_symbol": official["spot_symbol"],
             "official_spot_t0": official["timestamp_ts"],
@@ -152,6 +157,14 @@ class HistoricalCaptureLineageTests(unittest.TestCase):
                     "official capture asset/timestamp lineage",
                 ):
                     registry.verify_capture_lineage(evidence, path=self.path)
+
+    def test_listing_venue_is_bound_to_the_official_record(self) -> None:
+        evidence = dict(self.evidence, listing_venue="binance")
+        with self.assertRaisesRegex(
+            registry.EventRegistryError,
+            "official capture asset/timestamp lineage",
+        ):
+            registry.verify_capture_lineage(evidence, path=self.path)
 
     def test_official_precision_is_bound_to_the_exact_record(self) -> None:
         evidence = dict(self.evidence, t0_precision_sec=1)

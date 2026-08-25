@@ -42,6 +42,7 @@ class CaptureEvidenceBoundaryTests(unittest.TestCase):
         event = {
             "episode_id": "bybit:NEWUSDT:g0",
             "venue": "bybit",
+            "listing_venue": "bybit",
             "symbol": "NEWUSDT",
             "premarket_contract_id": "NEWUSDT",
             "spot_symbol": "NEWUSDT",
@@ -55,6 +56,7 @@ class CaptureEvidenceBoundaryTests(unittest.TestCase):
         }
         job = capture.job_from_event(event, capture_id="capture-v16-test")
         self.assertEqual(job.lineage["venue"], "bybit")
+        self.assertEqual(job.lineage["listing_venue"], "bybit")
         self.assertEqual(job.lineage["premarket_contract_id"], "NEWUSDT")
         self.assertEqual(job.lineage["spot_symbol"], "NEWUSDT")
         self.assertEqual(job.lineage["official_spot_t0"], 1_800_000_000)

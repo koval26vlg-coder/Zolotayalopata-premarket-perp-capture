@@ -305,6 +305,68 @@ class ExactLifecycleStateTests(unittest.TestCase):
         )
         self.assertRegex(candidate["registry_authority_state_hash"], r"^[0-9a-f]{64}$")
 
+    def test_plan_rollover_blocks_selection_until_fresh_active_plan_receipt(self) -> None:
+        records = v6._records()
+        v6._write_records(self.path, records)
+        with mock.patch.object(
+            registry,
+            "active_registry_contract_hash",
+            return_value="b" * 64,
+        ):
+            v6._write_refresh_summary(self.path, records)
+        summary_path = self.path.with_suffix(".summary.json")
+        original_summary = json.loads(summary_path.read_text(encoding="utf-8"))
+        next_plan_id = trust_root.PLAN_ID + "_next"
+        next_plan_hash = "a" * 64
+
+        with mock.patch.object(
+            registry, "REGISTRY_PATH", self.path
+        ), mock.patch.object(
+            registry, "REGISTRY_LOCK_PATH", self.path.with_suffix(".lock")
+        ), mock.patch.object(
+            registry, "active_registry_contract_hash",
+            return_value=original_summary["registry_contract_hash"],
+        ), mock.patch.object(
+            registry.trust_root, "PLAN_ID", next_plan_id
+        ), mock.patch.object(
+            registry.trust_root, "PLAN_HASH", next_plan_hash
+        ):
+            with self.assertRaisesRegex(
+                registry.EventRegistryError,
+                r"ACTIVE_PLAN_MUTATION_RECEIPT_MISMATCH",
+            ):
+                registry.events_for_capture(
+                    now_ts=v6._t0_ts() - config.CAPTURE_WINDOW_BEFORE_SEC,
+                    source_class=registry.SOURCE_OFFICIAL_ANNOUNCEMENT,
+                )
+
+            fresh_summary = dict(
+                original_summary,
+                mutation_type="metadata_refresh",
+                mutation_run_id="fresh-under-next-plan",
+                refresh_run_id="fresh-under-next-plan",
+                plan_id=next_plan_id,
+                plan_hash=next_plan_hash,
+            )
+            with registry.registry_lock(
+                self.path.with_suffix(".lock"),
+                run_id="fresh-under-next-plan",
+                plan_hash=next_plan_hash,
+            ) as lock_owner:
+                registry._write_summary_with_mutation_receipt(
+                    self.path,
+                    fresh_summary,
+                    lock_owner=lock_owner,
+                )
+            selected = registry.events_for_capture(
+                now_ts=v6._t0_ts() - config.CAPTURE_WINDOW_BEFORE_SEC,
+                source_class=registry.SOURCE_OFFICIAL_ANNOUNCEMENT,
+            )
+
+        self.assertEqual(len(selected), 1)
+        self.assertEqual(selected[0]["plan_id"], next_plan_id)
+        self.assertEqual(selected[0]["plan_hash"], next_plan_hash)
+
 
 class FreshnessAndWriterClockTests(unittest.TestCase):
     def test_due_selection_rejects_a_stale_complete_metadata_refresh(self) -> None:

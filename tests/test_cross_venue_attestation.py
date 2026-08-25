@@ -14,15 +14,22 @@ reaches for market data.
 from __future__ import annotations
 
 import sys
+import tempfile
 import unittest
 from pathlib import Path
+from unittest import mock
 
 ROOT = Path(__file__).resolve().parents[1]
-sys.path.insert(0, str(ROOT / "src"))
+for search_path in (ROOT / "src", ROOT / "tests"):
+    if str(search_path) not in sys.path:
+        sys.path.insert(0, str(search_path))
 
+import event_registry as registry  # noqa: E402
 import official_attestation as attestation  # noqa: E402
 import project_config as config  # noqa: E402
 import public_http  # noqa: E402
+import test_activation_hardening_v6_registry as v6  # noqa: E402
+import test_activation_hardening_v7_registry as v7  # noqa: E402
 
 
 ANNOUNCED = "2027-01-15T04:00:00Z"
@@ -68,6 +75,62 @@ class RoleSeparationTests(unittest.TestCase):
         )
         self.assertEqual(observation["attestation"]["listing_venue"], "upbit")
         self.assertEqual(observation["attestation"]["perpetual_venue"], "bybit")
+
+    def test_real_attest_preserves_binance_listing_venue_through_locked_commit(self):
+        root = Path(tempfile.mkdtemp())
+        self.addCleanup(lambda: __import__("shutil").rmtree(root, ignore_errors=True))
+        path = root / "registry.jsonl"
+        records = registry.build_stream_revisions([], [v6._metadata_observation()])
+        v6._write_records(path, records)
+        run_id = "cross-venue-binance-bybit"
+
+        with mock.patch.object(
+            registry,
+            "active_registry_contract_hash",
+            return_value="b" * 64,
+        ):
+            preflight = v7._valid_attestation_preflight(run_id)
+            v6._write_refresh_summary(
+                path,
+                records,
+                last_complete_metadata_refresh_received_at=v6.RECEIVED_AT,
+            )
+            with mock.patch.object(
+                attestation.risk_gate, "preflight", return_value=preflight
+            ), mock.patch.object(
+                attestation.time,
+                "time",
+                return_value=v6._t0_ts() - 7 * 24 * 3600,
+            ):
+                result = attestation.attest(
+                    path=path,
+                    run_id=run_id,
+                    venue="bybit",
+                    listing_venue="binance",
+                    spot_symbol=v6.SPOT_SYMBOL,
+                    premarket_contract_id=v6.CONTRACT_ID,
+                    lifecycle_generation=v6.GENERATION,
+                    announced_utc=v6.ANNOUNCED_UTC,
+                    announcement_url=(
+                        "https://www.binance.com/en/support/announcement/abc123"
+                    ),
+                    quoted_sentence=v6.QUOTE,
+                    quoted_time_text=v6.QUOTED_TIME,
+                    quoted_symbol_text=v6.QUOTED_SYMBOL,
+                    attested_by="cross-venue-test",
+                )
+
+        self.assertEqual(result["status"], "ATTESTED")
+        official = registry.load_registry(path)[-1]
+        self.assertEqual(official["listing_venue"], "binance")
+        self.assertEqual(official["venue"], "bybit")
+        self.assertEqual(official["attestation"]["listing_venue"], "binance")
+        self.assertEqual(official["attestation"]["perpetual_venue"], "bybit")
+        episode = registry.materialize_episodes(registry.load_registry(path))[0]
+        self.assertEqual(episode["listing_venue"], "binance")
+        self.assertEqual(
+            episode["official_t0_provenance"]["listing_venue"], "binance"
+        )
 
     def test_the_listing_venue_defaults_to_the_perpetual_venue(self):
         # The same-exchange case must stay as simple as it was.

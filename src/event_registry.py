@@ -2323,6 +2323,7 @@ def materialize_episodes(entries: Iterable[Mapping[str, Any]]) -> list[dict[str,
                 "event_id": episode_id,
                 "episode_id": episode_id,
                 "venue": head.get("venue"),
+                "listing_venue": None,
                 "symbol": head.get("symbol") or head.get("premarket_contract_id"),
                 "premarket_contract_id": head.get("premarket_contract_id")
                 or head.get("symbol"),
@@ -2368,6 +2369,7 @@ def materialize_episodes(entries: Iterable[Mapping[str, Any]]) -> list[dict[str,
                 or head.get("t0_source_class"),
                 "source_identity": head.get("source_identity"),
                 "source_url": head.get("source_url"),
+                "listing_venue": head.get("listing_venue"),
                 "received_at_utc": head.get("received_at_utc"),
                 "t0_precision_sec": int(head.get("t0_precision_sec", 0) or 0),
                 "lifecycle_phase": head.get("lifecycle_phase"),
@@ -2443,6 +2445,7 @@ def materialize_episodes(entries: Iterable[Mapping[str, Any]]) -> list[dict[str,
             episode[TIMESTAMP_OFFICIAL_SPOT_T0] = next(iter(official_values))
             episode["t0_source_class"] = SOURCE_OFFICIAL_ANNOUNCEMENT
             official = official_observations[0]
+            episode["listing_venue"] = official["listing_venue"]
             episode["t0_precision_sec"] = official["t0_precision_sec"]
             episode["caveats"] = list(official["caveats"])
             episode["official_t0_provenance"] = {
@@ -2452,6 +2455,7 @@ def materialize_episodes(entries: Iterable[Mapping[str, Any]]) -> list[dict[str,
                 "source_class": official["source_class"],
                 "source_identity": official["source_identity"],
                 "source_url": official["source_url"],
+                "listing_venue": official["listing_venue"],
                 "received_at_utc": official["received_at_utc"],
                 "t0_precision_sec": official["t0_precision_sec"],
                 "caveats": list(official["caveats"]),
@@ -2743,9 +2747,18 @@ def _official_record_problems(
     except ValueError:
         source_port = "INVALID"
     # The announcement comes from whoever listed the underlying on spot, which need
-    # not be the venue trading the perpetual. Falling back to the perpetual venue keeps
-    # a same-venue announcement valid without letting an unnamed listing venue through.
-    listing_venue = str(entry.get("listing_venue") or venue)
+    # not be the venue trading the perpetual. The role must be explicit in the sealed
+    # record; deriving it here would let capture materialization and later historical
+    # verification disagree about the same evidence.
+    raw_listing_venue = entry.get("listing_venue")
+    listing_venue = str(raw_listing_venue or "")
+    if (
+        not isinstance(raw_listing_venue, str)
+        or not listing_venue
+        or listing_venue != listing_venue.strip()
+        or any(character.isspace() for character in listing_venue)
+    ):
+        problems.append(prefix + "official listing_venue is not explicit canonical text")
     official_hosts = config.OFFICIAL_ANNOUNCEMENT_HOSTS.get(listing_venue, ())
     if (
         parsed.scheme.lower() != "https"
@@ -2770,6 +2783,10 @@ def _official_record_problems(
         problems.append(prefix + "official attestation schema is invalid")
     if str(attestation.get("announcement_url") or "") != source_url:
         problems.append(prefix + "attestation announcement_url does not match source_url")
+    if str(attestation.get("listing_venue") or "") != listing_venue:
+        problems.append(prefix + "attestation listing_venue does not match official record")
+    if str(attestation.get("perpetual_venue") or "") != venue:
+        problems.append(prefix + "attestation perpetual_venue does not match official record")
     raw_attested_by = str(attestation.get("attested_by") or "")
     attested_by = raw_attested_by.strip()
     if (
@@ -3317,6 +3334,14 @@ def events_for_capture(
             "VERIFIED_PRODUCTION_REGISTRY_REQUIRED: latest mutation receipt is unavailable"
         )
     latest_mutation_receipt = mutation_receipts[-1]
+    if (
+        latest_mutation_receipt.get("plan_id") != trust_root.PLAN_ID
+        or latest_mutation_receipt.get("plan_hash") != trust_root.PLAN_HASH
+    ):
+        raise EventRegistryError(
+            "ACTIVE_PLAN_MUTATION_RECEIPT_MISMATCH: complete a fresh registry "
+            "mutation under the active PlanOnly before capture selection"
+        )
     raw_surface_counts = latest_mutation_receipt.get(
         RAW_UNIVERSE_ROWS_BY_SURFACE_FIELD
     )
@@ -3601,6 +3626,7 @@ def verify_capture_lineage(
     required_text_fields = (
         "episode_id",
         "venue",
+        "listing_venue",
         "premarket_contract_id",
         "spot_symbol",
         "t0_source_class",
@@ -3720,6 +3746,7 @@ def verify_capture_lineage(
     official_expectations = {
         "episode_id": lineage["episode_id"],
         "venue": lineage["venue"],
+        "listing_venue": lineage["listing_venue"],
         "premarket_contract_id": lineage["premarket_contract_id"],
         "spot_symbol": lineage["spot_symbol"],
         "timestamp_ts": t0,

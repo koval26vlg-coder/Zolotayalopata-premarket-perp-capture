@@ -59,6 +59,7 @@ REQUIRED_LINEAGE_HASH_FIELDS = (
 REQUIRED_LINEAGE_IDENTITY_FIELDS = (
     "episode_id",
     "venue",
+    "listing_venue",
     "premarket_contract_id",
     "spot_symbol",
     "t0_source_class",

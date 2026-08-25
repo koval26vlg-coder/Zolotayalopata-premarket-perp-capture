@@ -411,6 +411,8 @@ def _validate_capture_lineage(
         raise CaptureError("capture event_id does not match registry episode lineage")
     if lineage.get("venue") != job.venue:
         raise CaptureError("capture venue does not match registry episode lineage")
+    if not str(lineage.get("listing_venue") or "").strip():
+        raise CaptureError("capture lineage listing_venue is missing")
     if lineage.get("plan_id") != plan.get("plan_id"):
         raise CaptureError("capture registry lineage plan_id is stale")
     if lineage.get("plan_hash") != plan.get("plan_hash"):

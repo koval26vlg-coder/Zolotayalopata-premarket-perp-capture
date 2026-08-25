@@ -300,6 +300,7 @@ IMPLEMENTATION = {
 LINEAGE = {
     "episode_id": "bybit:NEWUSDT:official",
     "venue": "bybit",
+    "listing_venue": "binance",
     "premarket_contract_id": "NEWUSDT",
     "spot_symbol": "NEWUSDT",
     "official_spot_t0": int(T0),
@@ -425,6 +426,7 @@ class ProductionEvidenceFixture:
         for field in (
             "episode_id",
             "venue",
+            "listing_venue",
             "premarket_contract_id",
             "spot_symbol",
             "official_spot_t0",
@@ -704,6 +706,7 @@ class StrictProductionEvidenceLoaderTests(unittest.TestCase):
     def test_required_lineage_is_duplicated_and_crypto_token_only(self) -> None:
         cases = (
             ("missing", "official_record_hash", None),
+            ("listing_venue_mismatch", "listing_venue", "upbit"),
             ("mismatch", "registry_tail_record_hash", "0" * 64),
             ("wrong_asset", "asset_class", "TOKENIZED_EQUITY"),
             ("bad_seq", "mutation_receipt_seq", True),

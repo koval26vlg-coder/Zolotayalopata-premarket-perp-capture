@@ -78,7 +78,9 @@ class ImmutableV17IdentityTests(unittest.TestCase):
         self.assertEqual(
             plan["supersedes_plan_hash"], trust_root.RETIRED_PLANS[-1]["plan_hash"]
         )
-        self.assertEqual(plan["status"], risk_gate.REGISTRY_QUARANTINE_PLAN_STATUS)
+        self.assertEqual(
+            plan["status"], risk_gate.OFFICIAL_ATTESTATION_LINEAGE_PLAN_STATUS
+        )
         self.assertFalse(plan["activation_gate"]["capture_authorized"])
         self.assertNotIn(risk_gate.CAPTURE_ACTION, plan["authorized_after_gate_green"])
 

@@ -124,6 +124,7 @@ def dense_success_samples() -> list[dict]:
 LINEAGE = {
     "episode_id": EVENT_ID,
     "venue": "bybit",
+    "listing_venue": "bybit",
     "premarket_contract_id": "NEWUSDT",
     "spot_symbol": "NEWUSDT",
     "official_spot_t0": T0,
@@ -502,6 +503,7 @@ class CapabilityTokenBindingTests(unittest.TestCase):
                 "AWAIT_CAPTURE_IMPLEMENTATION_AUDIT_NO_CAPTURE",
                 "CAPTURE_IMPLEMENTATION_AUDIT_GREEN_NO_CAPTURE",
                 risk_gate.REGISTRY_QUARANTINE_PLAN_STATUS,
+                risk_gate.OFFICIAL_ATTESTATION_LINEAGE_PLAN_STATUS,
             },
         )
         forged = self.verified_preflight()

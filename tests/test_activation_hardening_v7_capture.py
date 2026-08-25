@@ -35,6 +35,7 @@ PLAN_HASH = "e" * 64
 LINEAGE = {
     "episode_id": EVENT_ID,
     "venue": "bybit",
+    "listing_venue": "bybit",
     "premarket_contract_id": "NEWUSDT",
     "spot_symbol": "NEWUSDT",
     "official_spot_t0": T0,

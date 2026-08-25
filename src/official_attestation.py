@@ -473,6 +473,7 @@ def attest(
         )
         observation = _build_attestation(
             venue=venue,
+            listing_venue=listing_venue,
             spot_symbol=spot_symbol,
             premarket_contract_id=premarket_contract_id,
             lifecycle_generation=lifecycle_generation,
@@ -576,6 +577,7 @@ def attest(
             )
         observation = _build_attestation(
             venue=venue,
+            listing_venue=listing_venue,
             spot_symbol=spot_symbol,
             premarket_contract_id=premarket_contract_id,
             lifecycle_generation=lifecycle_generation,
