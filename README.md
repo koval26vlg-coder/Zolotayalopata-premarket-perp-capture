@@ -6,21 +6,22 @@ Research-only контур для публичных pre-market perpetual дан
 
 Проект наблюдает рынок с плечом, но никогда не берёт плечо: private API, ключи,
 подпись запросов, ордера, margin, real capital и переводы запрещены. Capture не
-запускался и активным PlanOnly v17 не разрешён.
+запускался и активным PlanOnly v27 не разрешён.
 
-## Состояние v17
+## Состояние v27
 
-- immutable PlanOnly: `premarket_perp_capture_20260822_v17`;
+- immutable PlanOnly: `premarket_perp_capture_20260822_v27`;
 - status: `REGISTRY_QUARANTINE_HARDENED_NO_CAPTURE`;
 - разрешены только metadata registry, human official attestation и локальная
   fail-closed registry quarantine;
-- `market_data_capture` отсутствует в authorization matrix;
+- `market_data_capture` описан как write class, но исключён из status/action
+  authorization matrix и не может получить capture token;
 - replay descriptive-only и не поддерживает ACCEPT/REJECT стратегии.
 
-Активные v17 identity: plan hash
-`56cc373e25d1710e2fbd6fe5ac039ecb1065dfb1fbe0ead53757ae6342fb731b`, file
-SHA-256 `748f116c785aa5a9cc694be394eb355e554eceef7cd44a32d746cf673c406209`.
-Они закреплены во внешнем trust root `src/frozen_plan_bindings.py`; v16 сохранён
+Активные v27 identity: plan hash
+`859bd59a406dd97ae0fb1e8239f5f34541a50cb08cbb39fbda4d189c5d7b2446`, file
+SHA-256 `de5c2bd1998bebd7cedd7ed728aa992ef4515ccbab4248a1d6aa8a63d644bfac`.
+Они закреплены во внешнем trust root `src/frozen_plan_bindings.py`; v26 сохранён
 byte-identical как непосредственный предшественник и никогда не был активирован для
 capture.
 
@@ -60,7 +61,7 @@ namespace/id и identity hash. Классы `EQUITY_ISSUER`, `TOKENIZED_EQUITY`,
 
 Для Gate crypto identity требуется явный и проверенный `contract_type`. Если поле
 отсутствует или его значение неизвестно, контракт остаётся `UNCLASSIFIED` и
-`DESCRIPTIVE_ONLY`; v17 не заявляет доступность Gate capture-кандидатов.
+`DESCRIPTIVE_ONLY`; активный план не заявляет доступность Gate capture-кандидатов.
 
 Discovery состоит из пяти независимых поверхностей:
 
@@ -91,7 +92,7 @@ DELISTING.
 
 Исторические terminal-строки не создают local episode: Closed/xperp/delisted evidence
 привязывается только к поколению, которое раньше наблюдалось active или scheduled.
-Untracked terminal row игнорируется без выделения high-water. Bybit v17 опрашивает
+Untracked terminal row игнорируется без выделения high-water. Активный план опрашивает
 только `PreLaunch` и `Trading`; отмена/закрытие, отсутствующие в обеих поверхностях,
 остаются acquisition failure, а не inferred terminal event. Отдельная terminal-status
 поверхность потребует нового immutable PlanOnly.
@@ -200,9 +201,8 @@ quarantine являются отдельными операциями. Capture �
 
 ## Immutable lineage
 
-Опубликованы v1–v17. Все прежние планы остаются на диске и проверяются по file SHA,
-canonical plan hash и identity. v15 сохранён byte-identical и непосредственно
-superseded v16; v16 byte-identical и непосредственно superseded v17. Ни один старый
-PlanOnly не переписывался.
+Опубликованы v1–v27. Все прежние планы остаются на диске и проверяются по file SHA,
+canonical plan hash и identity. v26 сохранён byte-identical и непосредственно
+superseded v27. Ни один старый PlanOnly не переписывался.
 
-См. `AGENTS.md` и `docs/decisions/014-v17-registry-replay-quarantine-remediation.md`.
+См. `AGENTS.md`, `src/frozen_plan_bindings.py` и решения в `docs/decisions/`.

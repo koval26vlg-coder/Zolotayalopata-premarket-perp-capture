@@ -97,6 +97,6 @@ Workspace общий с `ZolotyayLopata`. Этот проект — второй
 ## Статус
 
 Capture ещё **не запускался**. PlanOnly в статусе
-`REGISTRY_QUARANTINE_HARDENED_NO_CAPTURE`; активный immutable план — v17.
+`REGISTRY_QUARANTINE_HARDENED_NO_CAPTURE`; активный immutable план — v27.
 `market_data_capture` этим статусом не авторизован. Первый capture требует отдельного
 нового PlanOnly/checkpoint и отдельного разрешения пользователя на видимый запуск.

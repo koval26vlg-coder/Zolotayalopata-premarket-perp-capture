@@ -20,11 +20,11 @@ import project_config as config
 from canonical_hash import canonical_hash
 
 
-SCHEMA = "premarket_perp_capture_planonly_v26"
-PLAN_ID = "premarket_perp_capture_20260822_v26"
-SUPERSEDES_PLAN_ID = "premarket_perp_capture_20260822_v25"
-SUPERSEDES_PLAN_HASH = "c5a5c663a2f5502fb4686ad906477c0437b9193424a7e67713e80e4d820b4389"
-SUPERSEDES_PLAN_PATH = "docs/plans/premarket-perp-capture-planonly-20260822-v25.json"
+SCHEMA = "premarket_perp_capture_planonly_v27"
+PLAN_ID = "premarket_perp_capture_20260822_v27"
+SUPERSEDES_PLAN_ID = "premarket_perp_capture_20260822_v26"
+SUPERSEDES_PLAN_HASH = "ed1b5e1d4c5afbc03269905f75a01def09d31afbb5bd87dc387681747afab541"
+SUPERSEDES_PLAN_PATH = "docs/plans/premarket-perp-capture-planonly-20260822-v26.json"
 HASH_METHOD = "sha256_canonical_json_excluding_plan_hash"
 
 
@@ -992,7 +992,7 @@ def build_plan(generated_at_utc: str) -> dict[str, Any]:
         "activation_gate": {
             "capture_authorized": False,
             "reason": (
-                "v17 binds the remediated registry, evidence loader and safe local "
+                "v27 binds the remediated registry, evidence loader and safe local "
                 "quarantine, but status REGISTRY_QUARANTINE_HARDENED_NO_CAPTURE "
                 "intentionally excludes market_data_capture; neither a direct mint nor "
                 "a capture preflight can authorize network capture"
@@ -1045,7 +1045,7 @@ def validate_plan(plan: dict[str, Any]) -> None:
     )
     require(
         plan.get("status") == "REGISTRY_QUARANTINE_HARDENED_NO_CAPTURE",
-        "v17 must remain capture-disabled",
+        "active plan must remain capture-disabled",
     )
     contract = plan.get("risk_contract") or {}
     for key in (
@@ -1062,11 +1062,11 @@ def validate_plan(plan: dict[str, Any]) -> None:
     )
     require(
         plan.get("acceptance_policy", {}).get("acceptance_capable") is False,
-        "v17 evidence must be explicitly non-acceptance-capable",
+        "active-plan evidence must be explicitly non-acceptance-capable",
     )
     require(
         plan.get("activation_gate", {}).get("capture_authorized") is False,
-        "v17 must not authorize capture",
+        "active plan must not authorize capture",
     )
     require(
         plan.get("authorized_after_gate_green") == [
@@ -1075,7 +1075,7 @@ def validate_plan(plan: dict[str, Any]) -> None:
             "append one human-verified official spot t0 after attestation preflight",
             "quarantine one failed registry generation after exact recovery preflight",
         ],
-        "authorized action set differs from the capture-disabled v17 contract",
+        "authorized action set differs from the capture-disabled active contract",
     )
     require(bool(plan.get("allowed_endpoints")), "plan must declare its endpoint allow-list")
     require(
@@ -1098,7 +1098,7 @@ def validate_plan(plan: dict[str, Any]) -> None:
     require(
         registry.get("schema") == "premarket_perp_event_registry_v3"
         and registry.get("path") == "docs/registry/listing-events-v3.jsonl",
-        "v17 registry identity mismatch",
+        "active-plan registry identity mismatch",
     )
     legacy_v2 = registry.get("immutable_v2_projection") or {}
     require(

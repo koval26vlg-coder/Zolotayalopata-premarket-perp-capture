@@ -337,9 +337,11 @@ class CrossPlatformContractTests(unittest.TestCase):
         workflow = (ROOT / ".github/workflows/checks.yml").read_text(encoding="utf-8")
         self.assertIn("windows-latest", workflow)
 
-    def test_readme_names_v17_and_shows_an_explicit_preflight_write_class(self) -> None:
+    def test_readme_names_active_plan_and_shows_an_explicit_preflight_write_class(self) -> None:
         readme = (ROOT / "README.md").read_text(encoding="utf-8")
-        self.assertIn("PlanOnly v17", readme)
+        active_version = trust_root.PLAN_ID.rsplit("_", 1)[-1]
+        self.assertIn(f"PlanOnly {active_version}", readme)
+        self.assertIn(trust_root.PLAN_ID, readme)
         self.assertIn("--write-class", readme)
 
 
