@@ -20,13 +20,13 @@ import project_config as config
 from canonical_hash import canonical_hash
 
 
-SCHEMA = "premarket_perp_capture_planonly_v29"
-PLAN_ID = "premarket_perp_capture_20260822_v29"
-SUPERSEDES_PLAN_ID = "premarket_perp_capture_20260822_v28"
-SUPERSEDES_PLAN_HASH = "141ab762953a21985eb6678c3c4bafb6247eadf7bef1073cc9626ee89d404d80"
-SUPERSEDES_PLAN_PATH = "docs/plans/premarket-perp-capture-planonly-20260822-v28.json"
+SCHEMA = "premarket_perp_capture_planonly_v30"
+PLAN_ID = "premarket_perp_capture_20260822_v30"
+SUPERSEDES_PLAN_ID = "premarket_perp_capture_20260822_v29"
+SUPERSEDES_PLAN_HASH = "63f4173a4d3662e6eed15f9ba1f372c8771f635b84291ed2439e076d6975a8d5"
+SUPERSEDES_PLAN_PATH = "docs/plans/premarket-perp-capture-planonly-20260822-v29.json"
 HASH_METHOD = "sha256_canonical_json_excluding_plan_hash"
-PLAN_STATUS = "REGISTRY_RECOVERY_SECONDS_GRADE_OFFICIAL_ANCHOR_NO_CAPTURE"
+PLAN_STATUS = "PAPER_SIMULATION_PREREGISTERED_NO_CAPTURE"
 
 
 class PlanBuildError(ValueError):
@@ -380,11 +380,10 @@ def build_plan(generated_at_utc: str) -> dict[str, Any]:
         "generated_at_utc": generated_at_utc,
         "implementation_path_semantics": "repo_path values are relative to the runtime Git root",
         "objective": (
-            "Capture public pre-market and early perpetual market data around a "
-            "listing event t0 on Bybit, OKX and Gate, densely enough to replay the "
-            "hypothesis 'enter before the listing, exit at t0/+5/+15/+60s' offline. "
-            "Capture only: this plan authorises no execution of any kind, and the "
-            "replay is a simulation over data already on disk."
+            "Preregister a deterministic offline paper-simulation readiness model "
+            "for public pre-market perpetual evidence around a listing t0 on Bybit, "
+            "OKX and Gate. This plan does not authorize market-data capture, venue "
+            "paper/testnet execution, live execution, orders, leverage or capital."
         ),
         "hypothesis_under_study": (
             "LONG before the listing, exit at t0, +5s, +15s or +60s - stated here so "
@@ -1004,11 +1003,52 @@ def build_plan(generated_at_utc: str) -> dict[str, Any]:
                 "SEALED_CAPTURE_READY_AND_ENTRY_AND_ALL_FIXED_EXITS"
             ),
         },
+        "paper_simulation": {
+            "schema": "premarket_perp_offline_paper_v1",
+            "mode": "PREREGISTERED_OFFLINE_READINESS_ONLY",
+            "runtime": "src/paper_replay.py",
+            "launcher": "tools/start_premarket_perp_paper_only_visible.ps1",
+            "fixed_model": dict(config.OFFLINE_PAPER_MODEL),
+            "caller_parameter_overrides": "FORBIDDEN",
+            "candidate_requirements": {
+                "asset_class": "CRYPTO_TOKEN",
+                "t0_source_class": "OFFICIAL_ANNOUNCEMENT",
+                "t0_precision_sec": 1,
+                "sealed_capture_required": True,
+                "historical_lineage_verification": "REQUIRED",
+            },
+            "cost_model": {
+                "status": "NOT_IMPLEMENTED_FAIL_CLOSED",
+                "required_before_virtual_position": [
+                    "CONTRACT_UNIT_NORMALIZATION",
+                    "NORMALIZED_CAUSAL_DEPTH",
+                    "VENUE_TAKER_FEES",
+                    "OBSERVED_DEPTH_SLIPPAGE",
+                    "FUNDING_RATE_AND_SETTLEMENT_TIME",
+                    "MARK_AND_INDEX_PRICE",
+                    "MAINTENANCE_MARGIN_AND_LIQUIDATION_PARAMETERS",
+                ],
+                "missing_input_result": "PAPER_NOT_RUN_COST_MODEL_MISSING",
+                "one_or_zero_leg_fill_pnl": "NONE",
+            },
+            "terminal_statuses": [
+                "NO_ELIGIBLE_EVENT",
+                "PAPER_NOT_RUN_INVALID_CANDIDATE_REPORT",
+                "PAPER_NOT_RUN_NO_CAPTURE_EVIDENCE",
+                "PAPER_NOT_RUN_COST_MODEL_MISSING",
+            ],
+            "output": "DETERMINISTIC_STDOUT_JSON_NO_PROJECT_ARTIFACT",
+            "virtual_positions_created_before_complete_model": 0,
+            "paper_broker_execution": False,
+            "market_data_capture_authorized": False,
+            "acceptance_capable": False,
+            "net_pnl_before_complete_model": None,
+        },
         "registry_quarantine": _registry_quarantine_contract(),
         "implementation": {"files": files},
         "forbidden": [
             "orders of any kind, on any venue, in any mode",
-            "paper or live execution",
+            "venue paper/testnet execution or live execution",
             "private API surfaces, credentials, request signing",
             "taking leverage or margin, or changing either",
             "withdrawals or transfers",
@@ -1021,18 +1061,19 @@ def build_plan(generated_at_utc: str) -> dict[str, Any]:
             "verify and materialize descriptive proxy observations offline",
             "append one human-verified official spot t0 after attestation preflight",
             "quarantine one failed registry generation after exact recovery preflight",
+            "run deterministic offline paper simulation over verified sealed capture evidence",
         ],
         "activation_gate": {
             "capture_authorized": False,
             "reason": (
-                "v29 binds registry recovery and source-derived official timestamp "
-                "precision, but status REGISTRY_RECOVERY_SECONDS_GRADE_OFFICIAL_ANCHOR_NO_CAPTURE "
-                "intentionally excludes market_data_capture; neither a direct mint nor "
-                "a capture preflight can authorize network capture"
+                "v30 preregisters a fail-closed offline paper model, but status "
+                "PAPER_SIMULATION_PREREGISTERED_NO_CAPTURE intentionally excludes "
+                "market_data_capture; no candidate, capture token, network capture or "
+                "venue execution is implied by activating the paper-only launcher"
             ),
             "required_next_checkpoint": (
                 "after one current-generation CRYPTO_TOKEN candidate has an official "
-                "source-derived t0 precision of at most one second, a new immutable v30 "
+                "source-derived t0 precision of at most one second, a new immutable v31 "
                 "PlanOnly must explicitly authorize exactly one market_data_capture; "
                 "activating a scheduler or collector remains a separate user-approved "
                 "visible-run action"
@@ -1043,8 +1084,8 @@ def build_plan(generated_at_utc: str) -> dict[str, Any]:
             "acceptance_capable": False,
             "acceptance_decision": "NONE_CAPTURE_ONLY",
             "note": (
-                "no metric computed from this capture supports ACCEPT or REJECT of "
-                "any strategy; a separate user-checkpointed plan is required for that"
+                "no readiness or future paper metric supports ACCEPT or REJECT of any "
+                "strategy; a separate user-checkpointed evaluation plan is required"
             ),
         },
         "plan_hash_method": HASH_METHOD,
@@ -1092,6 +1133,10 @@ def validate_plan(plan: dict[str, Any]) -> None:
     require(contract.get("research_only") is True, "risk contract must be research-only")
     require(contract.get("public_data_only") is True, "risk contract must be public-data-only")
     require(
+        contract.get("offline_paper_simulation") is True,
+        "risk contract must explicitly permit only offline paper simulation",
+    )
+    require(
         plan.get("acceptance_policy", {}).get("acceptance_decision") == "NONE_CAPTURE_ONLY",
         "plan must not carry an acceptance decision",
     )
@@ -1109,6 +1154,7 @@ def validate_plan(plan: dict[str, Any]) -> None:
             "verify and materialize descriptive proxy observations offline",
             "append one human-verified official spot t0 after attestation preflight",
             "quarantine one failed registry generation after exact recovery preflight",
+            "run deterministic offline paper simulation over verified sealed capture evidence",
         ],
         "authorized action set differs from the capture-disabled active contract",
     )
@@ -1691,6 +1737,52 @@ def validate_plan(plan: dict[str, Any]) -> None:
         and replay.get("report_readiness")
         == "SEALED_CAPTURE_READY_AND_ENTRY_AND_ALL_FIXED_EXITS",
         "causal replay contract mismatch",
+    )
+    paper = plan.get("paper_simulation") or {}
+    require(
+        paper.get("schema") == "premarket_perp_offline_paper_v1"
+        and paper.get("mode") == "PREREGISTERED_OFFLINE_READINESS_ONLY"
+        and paper.get("runtime") == "src/paper_replay.py"
+        and paper.get("launcher")
+        == "tools/start_premarket_perp_paper_only_visible.ps1"
+        and paper.get("fixed_model") == dict(config.OFFLINE_PAPER_MODEL)
+        and paper.get("caller_parameter_overrides") == "FORBIDDEN"
+        and paper.get("virtual_positions_created_before_complete_model") == 0
+        and paper.get("paper_broker_execution") is False
+        and paper.get("market_data_capture_authorized") is False
+        and paper.get("acceptance_capable") is False
+        and paper.get("net_pnl_before_complete_model") is None,
+        "offline paper preregistration contract mismatch",
+    )
+    paper_candidate = paper.get("candidate_requirements") or {}
+    require(
+        paper_candidate
+        == {
+            "asset_class": "CRYPTO_TOKEN",
+            "t0_source_class": "OFFICIAL_ANNOUNCEMENT",
+            "t0_precision_sec": 1,
+            "sealed_capture_required": True,
+            "historical_lineage_verification": "REQUIRED",
+        },
+        "offline paper candidate boundary mismatch",
+    )
+    paper_cost = paper.get("cost_model") or {}
+    require(
+        paper_cost.get("status") == "NOT_IMPLEMENTED_FAIL_CLOSED"
+        and paper_cost.get("missing_input_result")
+        == "PAPER_NOT_RUN_COST_MODEL_MISSING"
+        and paper_cost.get("one_or_zero_leg_fill_pnl") == "NONE"
+        and set(paper_cost.get("required_before_virtual_position") or [])
+        == {
+            "CONTRACT_UNIT_NORMALIZATION",
+            "NORMALIZED_CAUSAL_DEPTH",
+            "VENUE_TAKER_FEES",
+            "OBSERVED_DEPTH_SLIPPAGE",
+            "FUNDING_RATE_AND_SETTLEMENT_TIME",
+            "MARK_AND_INDEX_PRICE",
+            "MAINTENANCE_MARGIN_AND_LIQUIDATION_PARAMETERS",
+        },
+        "offline paper cost-model gate mismatch",
     )
     require(
         plan.get("registry_quarantine") == _registry_quarantine_contract(),

@@ -68,7 +68,8 @@ V25_PLAN_PATH = PROJECT_ROOT / "docs/plans/premarket-perp-capture-planonly-20260
 V26_PLAN_PATH = PROJECT_ROOT / "docs/plans/premarket-perp-capture-planonly-20260822-v26.json"
 V27_PLAN_PATH = PROJECT_ROOT / "docs/plans/premarket-perp-capture-planonly-20260822-v27.json"
 V28_PLAN_PATH = PROJECT_ROOT / "docs/plans/premarket-perp-capture-planonly-20260822-v28.json"
-PLAN_PATH = PROJECT_ROOT / "docs/plans/premarket-perp-capture-planonly-20260822-v29.json"
+V29_PLAN_PATH = PROJECT_ROOT / "docs/plans/premarket-perp-capture-planonly-20260822-v29.json"
+PLAN_PATH = PROJECT_ROOT / "docs/plans/premarket-perp-capture-planonly-20260822-v30.json"
 RUN_RECORD_PATH = PROJECT_ROOT / "docs/run/capture-run.json"
 STOP_REQUEST_PATH = PROJECT_ROOT / "docs/run/stop-request.json"
 CAPTURE_TOKEN_PATH = PROJECT_ROOT / "docs/run/capture-token.json"
@@ -119,6 +120,8 @@ BOUND_RUNTIME_FILES: tuple[tuple[str, str], ...] = (
     ("global_market_writer_claim", "src/global_market_writer_claim.py"),
     ("capture", "src/capture.py"),
     ("replay", "src/replay.py"),
+    ("paper_replay", "src/paper_replay.py"),
+    ("paper_only_launcher", "tools/start_premarket_perp_paper_only_visible.ps1"),
     ("official_attestation", "src/official_attestation.py"),
     # The forbidden-capability vocabulary is part of the contract, not a note:
     # widening it must require reissuing the plan like any runtime change.
@@ -196,6 +199,7 @@ RISK_CONTRACT: dict[str, object] = {
     "api_keys": False,  # risk-scan: allow api_key - this line is the prohibition itself
     "request_signing": False,
     "orders": False,
+    "offline_paper_simulation": True,
     "paper_execution": False,
     "live_execution": False,
     "uses_leverage": False,
@@ -204,6 +208,18 @@ RISK_CONTRACT: dict[str, object] = {
     "withdrawals_or_transfers": False,
     "execution_replay": "offline_simulation_over_captured_public_data_only",
     "acceptance_decision": "NONE_CAPTURE_ONLY",
+}
+
+# Fixed before any qualifying seconds-grade event or capture exists.  This model is
+# descriptive feasibility research only; it is neither a venue testnet executor nor
+# an instruction to place an order.
+OFFLINE_PAPER_MODEL: dict[str, object] = {
+    "direction": "LONG",
+    "virtual_notional_usdt": 25,
+    "leverage_equivalent": 1,
+    "entry_lead_sec": 60,
+    "exit_offsets_sec": [0, 5, 15, 60],
+    "execution_style": "TAKER_LIKE_CAUSAL_DEPTH",
 }
 
 # Not everything that writes a file is the same kind of write, and treating them alike

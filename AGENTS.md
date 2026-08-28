@@ -18,15 +18,16 @@
 Что делает сам проект — ничего из перечисленного, никогда:
 
 - ордера любого вида, на любой площадке, в любом режиме;
-- paper- или live-исполнение;
+- биржевое paper/testnet- или live-исполнение;
 - private API, ключи, подпись запросов;
 - взятие или изменение плеча и маржи;
 - вывод и переводы средств;
 - решения ACCEPT/REJECT по захваченным данным.
 
-`execution_replay` — офлайн-анализ уже лежащих на диске публичных данных. Текущий
-replay v2 публикует только gross BBO markout и не моделирует fill, очередь, комиссии,
-funding или net PnL.
+`execution_replay` — офлайн-анализ уже лежащих на диске публичных данных. v30
+разрешает только fail-closed offline paper simulation: без подходящего official event,
+sealed capture и полного cost model она создаёт ноль виртуальных позиций и не публикует
+net PnL. Биржевое paper execution остаётся запрещённым.
 Полный контракт: `RISK_CONTRACT` в `src/project_config.py`, он же записан в PlanOnly.
 
 ## Risk gate
@@ -92,11 +93,13 @@ Workspace общий с `ZolotyayLopata`. Этот проект — второй
   mutation receipt, а не по текущему head.
 - Текущий human-attested producer выводит точность из дословного времени источника.
   Minute-only источник остаётся descriptive; только явный `HH:MM:SS` может дать
-  seconds-grade candidate, но v29 всё равно не авторизует capture.
+  seconds-grade candidate, но v30 всё равно не авторизует capture.
 
 ## Статус
 
 Capture ещё **не запускался**. PlanOnly в статусе
-`REGISTRY_RECOVERY_SECONDS_GRADE_OFFICIAL_ANCHOR_NO_CAPTURE`; активный immutable план — v29.
+`PAPER_SIMULATION_PREREGISTERED_NO_CAPTURE`; активный immutable план — v30.
 `market_data_capture` этим статусом не авторизован. Первый capture требует отдельного
-нового PlanOnly/checkpoint и отдельного разрешения пользователя на видимый запуск.
+v31/checkpoint и отдельного разрешения пользователя на видимый запуск. Текущий
+paper-only launcher выполняет только проверку готовности и детерминированный offline
+тик; `NO_ELIGIBLE_EVENT` является нормальным нулевым результатом, а не сделкой.

@@ -2,14 +2,14 @@
   "schema": "premarket_perp_event_registry_v3",
   "status": "REFRESH_COMPLETE",
   "mutation_type": "metadata_refresh",
-  "mutation_run_id": "v29_metadata_bootstrap_20260828T190200Z",
-  "refresh_run_id": "v29_metadata_bootstrap_20260828T190200Z",
-  "plan_id": "premarket_perp_capture_20260822_v29",
-  "plan_hash": "63f4173a4d3662e6eed15f9ba1f372c8771f635b84291ed2439e076d6975a8d5",
+  "mutation_run_id": "paper_v30_refresh_20260828T213500Z",
+  "refresh_run_id": "paper_v30_refresh_20260828T213500Z",
+  "plan_id": "premarket_perp_capture_20260822_v30",
+  "plan_hash": "32877c7c731bdf63167b20827f373726e34e1fbc1bcd61db26d6975444067ab5",
   "registry_contract_hash": "eae2412fb3725e0edcdd9e6da0c192173c0c72d1ccee2450be0c9585750f0240",
-  "resolved_paths_hash": "40b72bddfd3f4b956ddc0382b52ed19f2da5106a294c7ec835d0c67f81147595",
-  "refreshed_at_utc": "2026-08-28T19:00:22Z",
-  "last_complete_metadata_refresh_received_at_utc": "2026-08-28T19:00:22Z",
+  "resolved_paths_hash": "d3f51888d7b11e4279ad23f68f647bf355167a7abea9f2b0d88fb4b09102c78e",
+  "refreshed_at_utc": "2026-08-28T20:48:36Z",
+  "last_complete_metadata_refresh_received_at_utc": "2026-08-28T20:48:36Z",
   "observed_events": 18,
   "observed_by_venue": {
     "bybit": 5,
@@ -158,8 +158,8 @@
     "okx_futures": [],
     "okx_swap": []
   },
-  "appended_entries": 18,
-  "new_streams": 18,
+  "appended_entries": 0,
+  "new_streams": 0,
   "revisions": 0,
   "registry": {
     "status": "REGISTRY_OK",
@@ -184,7 +184,7 @@
     }
   },
   "mutation_receipt_schema": "premarket_perp_registry_mutation_receipt_v1",
-  "mutation_seq": 0,
-  "previous_mutation_receipt_hash": null,
-  "mutation_receipt_hash": "0e356af574f8f9de86949fd91adc7e9b89005a5d77ce25583b791975c1a53944"
+  "mutation_seq": 2,
+  "previous_mutation_receipt_hash": "853efc16173e51406d9023c3772bb3f82716fe1af8970528b57bd85f687ae92e",
+  "mutation_receipt_hash": "f6cd0efbacd298c0114036121f1e86580d9f9a337436f9c08475c2ac27253610"
 }
