@@ -752,6 +752,29 @@ def _tombstone_name(role: str, transaction_id: str) -> str:
     return f".q-{transaction_id}-{tag}.deactivated"
 
 
+def _allowed_tombstone_names(
+    role: str, transaction_id: str, canonical_path: Path
+) -> frozenset[str]:
+    """Exact historical and current names for one source role.
+
+    The state record is hash-sealed, but accepting an arbitrary basename from it would
+    still lose the proof that the recorded path represents this role.  Three naming
+    generations have been published; enumerate them exactly and reject Windows ADS,
+    role swaps, and future naming drift until a new immutable plan reviews it.
+    """
+    legacy_role = "mutation_receipts" if role == "mutation_receipts" else role
+    return frozenset(
+        {
+            _tombstone_name(role, transaction_id),
+            f".{canonical_path.name}.q-{transaction_id}.deactivated",
+            (
+                f".{canonical_path.name}.quarantine-{transaction_id}."
+                f"{legacy_role}.deactivated"
+            ),
+        }
+    )
+
+
 def _archive_state(
     archive_path: Path,
     *,
@@ -1320,6 +1343,7 @@ def _verify_retained_source_tombstones(
     transaction_id: str,
     manifest: Mapping[str, Any],
     source_deactivated: Mapping[str, Any],
+    lock_released: Mapping[str, Any] | None,
 ) -> list[str]:
     problems: list[str] = []
     source = manifest.get("source")
@@ -1337,22 +1361,46 @@ def _verify_retained_source_tombstones(
     if not isinstance(tombstones, Mapping) or set(tombstones) != expected_roles:
         return ["source deactivation tombstone set is invalid"]
 
-    expected_paths = {
-        "registry": paths.registry_path.with_name(
-            _tombstone_name("registry", transaction_id)
-        ),
-        "summary": paths.summary_path.with_name(
-            _tombstone_name("summary", transaction_id)
-        ),
-        "mutation_receipts": paths.receipt_dir.with_name(
-            _tombstone_name("mutation_receipts", transaction_id)
-        ),
+    canonical_paths = {
+        "registry": paths.registry_path,
+        "summary": paths.summary_path,
+        "mutation_receipts": paths.receipt_dir,
     }
+    expected_paths: dict[str, Path] = {}
+    for role in expected_roles:
+        recorded_name = tombstones.get(role)
+        if (
+            not isinstance(recorded_name, str)
+            or not recorded_name
+            or Path(recorded_name).name != recorded_name
+            or "/" in recorded_name
+            or "\\" in recorded_name
+            or recorded_name
+            not in _allowed_tombstone_names(
+                role, transaction_id, canonical_paths[role]
+            )
+        ):
+            problems.append(f"{role} tombstone name is unsafe or unrelated to its role")
+            continue
+        expected_paths[role] = canonical_paths[role].with_name(recorded_name)
+
+    if problems:
+        return problems
+
+    tombstone_presence = {
+        role: _path_exists(path) for role, path in expected_paths.items()
+    }
+    present_count = sum(tombstone_presence.values())
+    if lock_released is not None and present_count == 0:
+        # The archive and terminal lock-release proof are the durable evidence.  A
+        # complete post-release cleanup is allowed; requiring tombstones forever
+        # would make the prescribed bootstrap invalidate the recovery that enabled it.
+        return []
+    if lock_released is not None and present_count != len(expected_roles):
+        return ["partial tombstone cleanup after lock release is invalid"]
+
     for role in expected_roles:
         path = expected_paths[role]
-        if tombstones.get(role) != path.name:
-            problems.append(f"{role} tombstone name mismatch")
-            continue
         try:
             if role == "mutation_receipts":
                 receipt_problems, expected_receipts = _verify_receipt_archive(
@@ -1527,19 +1575,20 @@ def quarantine_transaction_status(transaction_id: str) -> dict[str, Any]:
     elif _path_exists(archive_path / STATE_FILES[STATE_SOURCE_DEACTIVATED]):
         problems.append("SOURCE_DEACTIVATED state exists without ARCHIVE_DURABLE")
     if source_deactivated is not None:
+        lock_released, state_problems = _load_lock_release_proof(
+            archive_path,
+            manifest=manifest,
+        )
+        problems.extend(state_problems)
         problems.extend(
             _verify_retained_source_tombstones(
                 paths,
                 transaction_id=transaction_id,
                 manifest=manifest,
                 source_deactivated=source_deactivated,
+                lock_released=lock_released,
             )
         )
-        lock_released, state_problems = _load_lock_release_proof(
-            archive_path,
-            manifest=manifest,
-        )
-        problems.extend(state_problems)
         # A canonical source existing means two different things, and which one is
         # settled by whether this transaction ever finished - not by the filesystem.
         #

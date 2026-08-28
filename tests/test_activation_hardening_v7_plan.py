@@ -98,7 +98,9 @@ class V7CaptureDisabledContractTests(unittest.TestCase):
         plan = self._plan()
         evidence = plan["capture_evidence"]
         registry = plan["event_registry"]
-        self.assertEqual(registry["official_t0_precision_sec"], 60)
+        self.assertEqual(
+            registry["official_t0_precision_sec"], "SOURCE_DERIVED_1_OR_60"
+        )
         self.assertEqual(registry["selection_clock"], "received_at_utc")
         self.assertEqual(evidence["coverage_clock"], "received_ts")
         self.assertEqual(evidence["metadata_max_retries"], 0)

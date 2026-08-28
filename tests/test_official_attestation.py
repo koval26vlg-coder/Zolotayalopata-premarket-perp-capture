@@ -159,6 +159,40 @@ class ObservationTests(unittest.TestCase):
         self.assertEqual(build()["t0_precision_sec"], 60)
         self.assertEqual(attestation.ANNOUNCED_PRECISION_SEC, 60)
 
+    def test_an_explicit_seconds_fragment_carries_second_precision(self):
+        quoted_time = "Jan 15, 2027, 04:00:00 UTC"
+        observation = build(
+            quoted_sentence=(
+                f"Spot trading for {QUOTED_SYMBOL} will start on {quoted_time}."
+            ),
+            quoted_time_text=quoted_time,
+        )
+        self.assertEqual(observation["t0_precision_sec"], 1)
+        self.assertEqual(
+            observation["attestation"]["quoted_time_precision_sec"], 1
+        )
+
+    def test_seconds_cannot_be_inferred_from_a_timezone_offset(self):
+        ambiguous = "2027-01-15T04:00+00:00:00"
+        with self.assertRaisesRegex(
+            attestation.AttestationError, "unambiguous UTC timestamp"
+        ):
+            attestation.quoted_time_precision_sec(ambiguous)
+
+    def test_iso_utc_precision_depends_only_on_time_of_day(self):
+        self.assertEqual(
+            attestation.quoted_time_precision_sec("2027-01-15T04:00+00:00"),
+            60,
+        )
+        self.assertEqual(
+            attestation.quoted_time_precision_sec("2027-01-15T04:00:00+00:00"),
+            1,
+        )
+        for invalid in ("2027-01-15T04Z", "2027-01-15T040000Z"):
+            with self.subTest(invalid=invalid):
+                with self.assertRaises(attestation.AttestationError):
+                    attestation.quoted_time_precision_sec(invalid)
+
     def test_the_record_says_a_person_read_it(self):
         observation = build()
         self.assertIn("human_attestation:koval", observation["source_identity"])

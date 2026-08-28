@@ -1,0 +1,60 @@
+{
+  "archive_files": [
+    {
+      "archive_name": "registry.bin",
+      "role": "registry",
+      "sha256": "ed4473d5cdfa6b28b58b2d19b3df934cce7d643089b879bcf4192ce6a8ab46fa",
+      "size": 28607
+    },
+    {
+      "archive_name": "summary.bin",
+      "role": "summary",
+      "sha256": "39fee262695af61199054d5cbffb3c62d15dcf5a7de94bd3f6c773bb03ac4e8a",
+      "size": 4953
+    },
+    {
+      "archive_name": "mutation-receipts.jsonl",
+      "role": "mutation_receipt_archive",
+      "sha256": "83d7fd2aa06c70703b9d639caf51dabaf5335432e9fcca31800de6fe9ebcfc0e",
+      "size": 4568
+    }
+  ],
+  "authority": {
+    "plan_hash": "63f4173a4d3662e6eed15f9ba1f372c8771f635b84291ed2439e076d6975a8d5",
+    "plan_id": "premarket_perp_capture_20260822_v29",
+    "registry_lock_name": "listing-events-v3.lock",
+    "registry_lock_sha256": "37934aa104d8cb8b442aa261dc616bd0041678c92eb02ea7491c41f24d260917",
+    "resolved_paths_hash": "40b72bddfd3f4b956ddc0382b52ed19f2da5106a294c7ec835d0c67f81147595"
+  },
+  "created_at_utc": "2026-08-28T19:00:01Z",
+  "reason": "ACTIVE_REGISTRY_CONTRACT_MISMATCH_V24_TO_V29",
+  "receipt_entries": [
+    {
+      "original_name": "00000000000000000000-b5c1bfd3b0d938214fc5693d6b3d0a231ddefa9d52f39df14ba96e8c43a8207b.json",
+      "sha256": "3c0350f0cf9ed8336e8e01346b228f8b411e6476f8d2a754b78b6d19dc24cc45",
+      "size": 3223
+    }
+  ],
+  "run_id": "v29_registry_recovery_20260828T190100Z",
+  "schema": "premarket_perp_registry_quarantine_v2",
+  "source": {
+    "receipt_dir_name": "listing-events-v3.jsonl.mutation-receipts",
+    "receipt_dir_present": true,
+    "registry_name": "listing-events-v3.jsonl",
+    "summary_name": "listing-events-v3.summary.json",
+    "summary_plan_identity": {
+      "plan_hash": "6359c390ad8ab74a18ab27d24c5f99ee89d059e1a93693e65a6803cdfd07dbc0",
+      "plan_id": "premarket_perp_capture_20260822_v24"
+    },
+    "summary_present": true
+  },
+  "source_generation_cas": "90668f9906ff4a0de3645f88ab9bef36b76f675b0764fcf175a2ac27c1e8e69c",
+  "transaction_id": "20260828T190001Z-ef9e656267-b0d29f75",
+  "verifier": {
+    "problem_count": 1,
+    "problems_hash": "2994ec84200f009b1bb9e87fe694f5f9c14dfaa51944c186f63bb3b67e287cc3",
+    "recovery_action": "RESTORE_MATCHING_SUMMARY_OR_QUARANTINE_AND_BOOTSTRAP_NEW_GENERATION",
+    "status": "REGISTRY_PROBLEMS",
+    "summary_verified": false
+  }
+}

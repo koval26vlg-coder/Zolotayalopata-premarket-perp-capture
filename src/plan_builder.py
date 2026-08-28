@@ -20,13 +20,13 @@ import project_config as config
 from canonical_hash import canonical_hash
 
 
-SCHEMA = "premarket_perp_capture_planonly_v28"
-PLAN_ID = "premarket_perp_capture_20260822_v28"
-SUPERSEDES_PLAN_ID = "premarket_perp_capture_20260822_v27"
-SUPERSEDES_PLAN_HASH = "859bd59a406dd97ae0fb1e8239f5f34541a50cb08cbb39fbda4d189c5d7b2446"
-SUPERSEDES_PLAN_PATH = "docs/plans/premarket-perp-capture-planonly-20260822-v27.json"
+SCHEMA = "premarket_perp_capture_planonly_v29"
+PLAN_ID = "premarket_perp_capture_20260822_v29"
+SUPERSEDES_PLAN_ID = "premarket_perp_capture_20260822_v28"
+SUPERSEDES_PLAN_HASH = "141ab762953a21985eb6678c3c4bafb6247eadf7bef1073cc9626ee89d404d80"
+SUPERSEDES_PLAN_PATH = "docs/plans/premarket-perp-capture-planonly-20260822-v28.json"
 HASH_METHOD = "sha256_canonical_json_excluding_plan_hash"
-PLAN_STATUS = "OFFICIAL_ATTESTATION_LINEAGE_HARDENED_NO_CAPTURE"
+PLAN_STATUS = "REGISTRY_RECOVERY_SECONDS_GRADE_OFFICIAL_ANCHOR_NO_CAPTURE"
 
 
 class PlanBuildError(ValueError):
@@ -537,7 +537,10 @@ def build_plan(generated_at_utc: str) -> dict[str, Any]:
             ],
             "timestamp_producers": {
                 "premarket_contract_launch_ts": "VENUE_INSTRUMENT_METADATA",
-                "official_spot_t0": "HUMAN_VERIFIED_OFFICIAL_ATTESTATION",
+                "official_spot_t0": (
+                    "HUMAN_VERIFIED_OFFICIAL_ATTESTATION_WITH_"
+                    "VERBATIM_SOURCE_DERIVED_PRECISION"
+                ),
                 "transition_ts": (
                     "VENUE_METADATA_WHEN_EXPLICIT_ELSE_OBSERVED_LIFECYCLE_"
                     "DETECTION_TIME_PROXY"
@@ -591,6 +594,7 @@ def build_plan(generated_at_utc: str) -> dict[str, Any]:
                 "latest_mutation_receipt_plan_identity": "EXACT_ACTIVE_PLAN_ID_AND_HASH",
             },
             "official_attestation": {
+                "schema": config.OFFICIAL_ATTESTATION_SCHEMA,
                 "policy": (
                     "OFFICIAL_ANNOUNCEMENT is a separate preflight write class. The "
                     "row must target the current active metadata lifecycle generation "
@@ -623,17 +627,39 @@ def build_plan(generated_at_utc: str) -> dict[str, Any]:
                     "listing_venue": "OFFICIAL_SPOT_ANNOUNCEMENT_VENUE",
                 },
                 "locked_rebuild_field_preservation": ["venue", "listing_venue"],
+                "precision_policy": {
+                    "derivation": "VERBATIM_QUOTED_TIME_TEXT_GRANULARITY",
+                    "caller_override": "FORBIDDEN",
+                    "accepted_precision_sec": [1, 60],
+                    "capture_candidate_max_precision_sec": 1,
+                    "minute_only_source": "VALID_DESCRIPTIVE_ONLY",
+                },
             },
-            "official_t0_precision_sec": 60,
+            "official_t0_precision_sec": "SOURCE_DERIVED_1_OR_60",
             "seconds_grade_replay_precision_sec": 1,
             "seconds_grade_readiness": {
                 "required_precision_sec_lte": 1,
-                "current_official_producer_precision_sec": 60,
-                "current_official_producer_capable": False,
-                "current_result": "DESCRIPTIVE_ONLY_PRECISION_GT_ONE_SECOND",
-                "authority_increase": (
-                    "NEW_IMMUTABLE_PLAN_AND_SECONDS_GRADE_OFFICIAL_PRODUCER_REQUIRED"
+                "current_official_producer_precision_sec": "SOURCE_DERIVED_1_OR_60",
+                "current_official_producer_capable": True,
+                "current_result": (
+                    "CANDIDATE_ONLY_WHEN_VERBATIM_SOURCE_EXPLICITLY_STATES_SECONDS"
                 ),
+                "authority_increase": (
+                    "V29_DERIVES_PRECISION_FROM_VERBATIM_SOURCE_AND_REJECTS_"
+                    "MINUTE_ONLY_ANCHORS_BEFORE_CAPTURE"
+                ),
+            },
+            "candidate_verifier": {
+                "mode": "READ_ONLY_NO_TOKEN_NO_CLAIM_NO_NETWORK",
+                "cli": "event_registry.py --candidate-status",
+                "source_class": "OFFICIAL_ANNOUNCEMENT",
+                "asset_class": "CRYPTO_TOKEN",
+                "precision_sec_lte": 1,
+                "current_lifecycle_generation_required": True,
+                "fresh_metadata_max_age_sec": config.MAX_COMPLETE_METADATA_REFRESH_AGE_SEC,
+                "exact_spot_symbol_mapping_required": True,
+                "due_window_required": True,
+                "capture_authority": "NEVER",
             },
             "selection_clock": "received_at_utc",
             "capture_due_window": {
@@ -999,13 +1025,15 @@ def build_plan(generated_at_utc: str) -> dict[str, Any]:
         "activation_gate": {
             "capture_authorized": False,
             "reason": (
-                "v28 binds cross-venue official attestation and active-plan mutation "
-                "receipt lineage, but status OFFICIAL_ATTESTATION_LINEAGE_HARDENED_NO_CAPTURE "
+                "v29 binds registry recovery and source-derived official timestamp "
+                "precision, but status REGISTRY_RECOVERY_SECONDS_GRADE_OFFICIAL_ANCHOR_NO_CAPTURE "
                 "intentionally excludes market_data_capture; neither a direct mint nor "
                 "a capture preflight can authorize network capture"
             ),
             "required_next_checkpoint": (
-                "a new immutable PlanOnly must explicitly authorize market_data_capture; "
+                "after one current-generation CRYPTO_TOKEN candidate has an official "
+                "source-derived t0 precision of at most one second, a new immutable v30 "
+                "PlanOnly must explicitly authorize exactly one market_data_capture; "
                 "activating a scheduler or collector remains a separate user-approved "
                 "visible-run action"
             ),
@@ -1257,7 +1285,10 @@ def validate_plan(plan: dict[str, Any]) -> None:
         registry.get("timestamp_producers")
         == {
             "premarket_contract_launch_ts": "VENUE_INSTRUMENT_METADATA",
-            "official_spot_t0": "HUMAN_VERIFIED_OFFICIAL_ATTESTATION",
+            "official_spot_t0": (
+                "HUMAN_VERIFIED_OFFICIAL_ATTESTATION_WITH_"
+                "VERBATIM_SOURCE_DERIVED_PRECISION"
+            ),
             "transition_ts": (
                 "VENUE_METADATA_WHEN_EXPLICIT_ELSE_OBSERVED_LIFECYCLE_"
                 "DETECTION_TIME_PROXY"
@@ -1277,17 +1308,37 @@ def validate_plan(plan: dict[str, Any]) -> None:
         "proxy event policy mismatch",
     )
     require(
-        registry.get("seconds_grade_readiness")
+        registry.get("official_t0_precision_sec") == "SOURCE_DERIVED_1_OR_60"
+        and registry.get("seconds_grade_readiness")
         == {
             "required_precision_sec_lte": 1,
-            "current_official_producer_precision_sec": 60,
-            "current_official_producer_capable": False,
-            "current_result": "DESCRIPTIVE_ONLY_PRECISION_GT_ONE_SECOND",
+            "current_official_producer_precision_sec": "SOURCE_DERIVED_1_OR_60",
+            "current_official_producer_capable": True,
+            "current_result": (
+                "CANDIDATE_ONLY_WHEN_VERBATIM_SOURCE_EXPLICITLY_STATES_SECONDS"
+            ),
             "authority_increase": (
-                "NEW_IMMUTABLE_PLAN_AND_SECONDS_GRADE_OFFICIAL_PRODUCER_REQUIRED"
+                "V29_DERIVES_PRECISION_FROM_VERBATIM_SOURCE_AND_REJECTS_"
+                "MINUTE_ONLY_ANCHORS_BEFORE_CAPTURE"
             ),
         },
         "seconds-grade official timestamp boundary mismatch",
+    )
+    require(
+        registry.get("candidate_verifier")
+        == {
+            "mode": "READ_ONLY_NO_TOKEN_NO_CLAIM_NO_NETWORK",
+            "cli": "event_registry.py --candidate-status",
+            "source_class": "OFFICIAL_ANNOUNCEMENT",
+            "asset_class": "CRYPTO_TOKEN",
+            "precision_sec_lte": 1,
+            "current_lifecycle_generation_required": True,
+            "fresh_metadata_max_age_sec": config.MAX_COMPLETE_METADATA_REFRESH_AGE_SEC,
+            "exact_spot_symbol_mapping_required": True,
+            "due_window_required": True,
+            "capture_authority": "NEVER",
+        },
+        "read-only candidate verifier contract mismatch",
     )
     lineage_verification = registry.get("capture_lineage_verification") or {}
     require(
@@ -1329,7 +1380,8 @@ def validate_plan(plan: dict[str, Any]) -> None:
     )
     attestation = registry.get("official_attestation") or {}
     require(
-        attestation.get("writer_clock_recheck")
+        attestation.get("schema") == "premarket_perp_official_attestation_v2"
+        and attestation.get("writer_clock_recheck")
         == "UNDER_REGISTRY_LOCK_BEFORE_APPEND"
         and attestation.get("metadata_freshness_required") is True
         and attestation.get("current_generation_required") is True
@@ -1342,6 +1394,17 @@ def validate_plan(plan: dict[str, Any]) -> None:
         and attestation.get("locked_rebuild_field_preservation")
         == ["venue", "listing_venue"],
         "official attestation lock/freshness contract mismatch",
+    )
+    require(
+        attestation.get("precision_policy")
+        == {
+            "derivation": "VERBATIM_QUOTED_TIME_TEXT_GRANULARITY",
+            "caller_override": "FORBIDDEN",
+            "accepted_precision_sec": [1, 60],
+            "capture_candidate_max_precision_sec": 1,
+            "minute_only_source": "VALID_DESCRIPTIVE_ONLY",
+        },
+        "official attestation precision policy mismatch",
     )
     require(
         attestation.get("announcement_url_policy")

@@ -15,7 +15,6 @@ if str(SRC) not in sys.path:
     sys.path.insert(0, str(SRC))
 
 import frozen_plan_bindings as trust_root  # noqa: E402
-import plan_builder  # noqa: E402
 import project_config as config  # noqa: E402
 
 
@@ -46,7 +45,6 @@ class V27AccuracyTests(unittest.TestCase):
         self.assertIn(V27_RELATIVE_PATH, retired)
         self.assertEqual(retired[V27_RELATIVE_PATH]["plan_hash"], V27_PLAN_HASH)
         self.assertEqual(retired[V27_RELATIVE_PATH]["plan_file_sha256"], V27_FILE_SHA256)
-        self.assertEqual(trust_root.PLAN_ID, "premarket_perp_capture_20260822_v28")
         self.assertEqual(config.V27_PLAN_PATH, v27_path)
 
     def test_v27_names_its_own_identity_without_granting_capture(self) -> None:
@@ -60,12 +58,9 @@ class V27AccuracyTests(unittest.TestCase):
         self.assertNotIn("v17", reason)
         self.assertIn("v27", reason)
 
-    def test_operator_docs_identify_v28_as_active_and_retain_v27_history(self) -> None:
+    def test_operator_docs_retain_v27_history(self) -> None:
         readme = (ROOT / "README.md").read_text(encoding="utf-8")
-        agents = (ROOT / "AGENTS.md").read_text(encoding="utf-8")
-        self.assertIn("premarket_perp_capture_20260822_v28", readme)
-        self.assertIn("v27 сохранён", readme)
-        self.assertIn("активный immutable план — v28", agents)
+        self.assertIn("v27 и v28 сохранены", readme)
         self.assertNotIn("активным PlanOnly v17", readme)
         self.assertNotIn("## Состояние v17", readme)
 

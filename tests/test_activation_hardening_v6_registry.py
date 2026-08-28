@@ -25,7 +25,7 @@ import risk_gate  # noqa: E402
 
 
 ANNOUNCED_UTC = "2027-01-15T04:00:00Z"
-QUOTED_TIME = "Jan 15, 2027, 4:00AM UTC"
+QUOTED_TIME = "Jan 15, 2027, 4:00:00AM UTC"
 QUOTED_SYMBOL = "KII/USDT"
 QUOTE = f"Spot trading for {QUOTED_SYMBOL} will start on {QUOTED_TIME}."
 SOURCE_URL = (
@@ -115,7 +115,7 @@ def _official_observation(
         source_identity="human_attestation:registry-v6-test",
         source_url=source_url,
         received_at_utc=received_at_utc,
-        precision_sec=60,
+        precision_sec=1,
         caveats=("OFFICIAL_T0_READ_BY_A_PERSON_FROM_ANNOUNCEMENT_PROSE",),
         asset_identity=registry.AssetIdentity(
             asset_class=registry.ASSET_CLASS_CRYPTO_TOKEN,
@@ -134,6 +134,7 @@ def _official_observation(
         "quoted_sentence": QUOTE,
         "quoted_time_text": QUOTED_TIME,
         "quoted_symbol_text": QUOTED_SYMBOL,
+        "quoted_time_precision_sec": 1,
         "announcement_url": source_url,
         "lead_sec_at_attestation": 7 * 24 * 3600,
     }
@@ -360,7 +361,7 @@ class OfficialRecordSemanticVerificationTests(unittest.TestCase):
             source_identity="human_attestation:registry-v6-test",
             source_url="https://www.okx.com/help/kii-listing",
             received_at_utc=RECEIVED_AT,
-            precision_sec=60,
+            precision_sec=1,
             caveats=("OFFICIAL_T0_READ_BY_A_PERSON_FROM_ANNOUNCEMENT_PROSE",),
             lifecycle_generation=generation,
         )
@@ -374,6 +375,7 @@ class OfficialRecordSemanticVerificationTests(unittest.TestCase):
             "quoted_sentence": QUOTE,
             "quoted_time_text": QUOTED_TIME,
             "quoted_symbol_text": QUOTED_SYMBOL,
+            "quoted_time_precision_sec": 1,
             "announcement_url": "https://www.okx.com/help/kii-listing",
             "lead_sec_at_attestation": 7 * 24 * 3600,
         }
@@ -402,6 +404,74 @@ class OfficialRecordSemanticVerificationTests(unittest.TestCase):
                     any(field in problem for problem in report["problems"]),
                     report["problems"],
                 )
+
+    def test_v2_attestation_requires_the_derived_precision_field(self) -> None:
+        official = _official_observation()
+        official["attestation"].pop("quoted_time_precision_sec")
+
+        report = self._report_for(official)
+
+        self.assertEqual(report["status"], "REGISTRY_PROBLEMS")
+        self.assertIn(
+            "quoted_time_precision_sec",
+            "; ".join(report["problems"]),
+        )
+
+    def test_v2_official_precision_must_be_an_integer_not_coercible_text(self) -> None:
+        official = _official_observation()
+        official["t0_precision_sec"] = "1"
+
+        report = self._report_for(official)
+
+        self.assertEqual(report["status"], "REGISTRY_PROBLEMS")
+        self.assertIn("precision", "; ".join(report["problems"]))
+
+    def test_stored_precision_cannot_disagree_with_verbatim_granularity(self) -> None:
+        seconds_as_minute = _official_observation()
+        seconds_as_minute["t0_precision_sec"] = 60
+        seconds_as_minute["attestation"]["quoted_time_precision_sec"] = 60
+
+        minute_as_second = _official_observation()
+        minute_quote = "Jan 15, 2027, 4:00AM UTC"
+        minute_as_second["attestation"].update(
+            {
+                "quoted_sentence": (
+                    f"Spot trading for {QUOTED_SYMBOL} will start on {minute_quote}."
+                ),
+                "quoted_time_text": minute_quote,
+                "quoted_time_precision_sec": 1,
+            }
+        )
+
+        for name, official in (
+            ("seconds_quote_claims_minute", seconds_as_minute),
+            ("minute_quote_claims_second", minute_as_second),
+        ):
+            with self.subTest(name=name):
+                report = self._report_for(official)
+                self.assertEqual(report["status"], "REGISTRY_PROBLEMS")
+                self.assertIn(
+                    "does not match the verbatim quoted time",
+                    "; ".join(report["problems"]),
+                )
+
+    def test_registry_rejects_seconds_hidden_in_an_iso_offset(self) -> None:
+        official = _official_observation()
+        ambiguous = "2027-01-15T04:00+00:00:00"
+        official["attestation"].update(
+            {
+                "quoted_sentence": (
+                    f"Spot trading for {QUOTED_SYMBOL} will start on {ambiguous}."
+                ),
+                "quoted_time_text": ambiguous,
+                "quoted_time_precision_sec": 1,
+            }
+        )
+
+        report = self._report_for(official)
+
+        self.assertEqual(report["status"], "REGISTRY_PROBLEMS")
+        self.assertIn("quoted time", "; ".join(report["problems"]))
 
 
 class AttestationTransactionTests(unittest.TestCase):
@@ -501,7 +571,7 @@ class MaterializedCaptureProvenanceTests(unittest.TestCase):
         self.assertEqual(provenance["source_url"], SOURCE_URL)
         self.assertEqual(provenance["received_at_utc"], RECEIVED_AT)
         self.assertEqual(provenance["record_hash"], official_record["record_hash"])
-        self.assertEqual(provenance["t0_precision_sec"], 60)
+        self.assertEqual(provenance["t0_precision_sec"], 1)
         self.assertEqual(
             provenance["caveats"],
             ["OFFICIAL_T0_READ_BY_A_PERSON_FROM_ANNOUNCEMENT_PROSE"],

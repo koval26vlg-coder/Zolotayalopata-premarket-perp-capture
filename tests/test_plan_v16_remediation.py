@@ -79,7 +79,7 @@ class ImmutableV17IdentityTests(unittest.TestCase):
             plan["supersedes_plan_hash"], trust_root.RETIRED_PLANS[-1]["plan_hash"]
         )
         self.assertEqual(
-            plan["status"], risk_gate.OFFICIAL_ATTESTATION_LINEAGE_PLAN_STATUS
+            plan["status"], risk_gate.REGISTRY_RECOVERY_SECONDS_GRADE_PLAN_STATUS
         )
         self.assertFalse(plan["activation_gate"]["capture_authorized"])
         self.assertNotIn(risk_gate.CAPTURE_ACTION, plan["authorized_after_gate_green"])
@@ -268,14 +268,14 @@ class RegistryV17PlanContractTests(unittest.TestCase):
         self.assertEqual(self.registry["acceptance_anchor"]["timestamp_kind"], "official_spot_t0")
         self.assertEqual(self.registry["proxy_policy"]["evidence_use"], "DESCRIPTIVE_ONLY")
         self.assertFalse(self.registry["proxy_policy"]["capture_eligible"])
-        self.assertFalse(
+        self.assertTrue(
             self.registry["seconds_grade_readiness"][
                 "current_official_producer_capable"
             ]
         )
         self.assertEqual(
             self.registry["seconds_grade_readiness"]["current_result"],
-            "DESCRIPTIVE_ONLY_PRECISION_GT_ONE_SECOND",
+            "CANDIDATE_ONLY_WHEN_VERBATIM_SOURCE_EXPLICITLY_STATES_SECONDS",
         )
         self.assertEqual(
             self.registry["venue_metadata_semantics"]["gate"]["launch_time"],

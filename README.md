@@ -6,14 +6,18 @@ Research-only контур для публичных pre-market perpetual дан
 
 Проект наблюдает рынок с плечом, но никогда не берёт плечо: private API, ключи,
 подпись запросов, ордера, margin, real capital и переводы запрещены. Capture не
-запускался и активным PlanOnly v28 не разрешён.
+запускался и активным PlanOnly v29 не разрешён.
 
-## Состояние v28
+## Состояние v29
 
-- immutable PlanOnly: `premarket_perp_capture_20260822_v28`;
-- status: `OFFICIAL_ATTESTATION_LINEAGE_HARDENED_NO_CAPTURE`;
+- immutable PlanOnly: `premarket_perp_capture_20260822_v29`;
+- status: `REGISTRY_RECOVERY_SECONDS_GRADE_OFFICIAL_ANCHOR_NO_CAPTURE`;
 - разрешены только metadata registry, human official attestation и локальная
   fail-closed registry quarantine;
+- точность official `t0` выводится только из дословного времени источника: minute-only
+  остаётся descriptive, а acceptance candidate требует явных секунд;
+- `event_registry.py --candidate-status` выполняет только read-only проверку и
+  повторяет authoritative selector без token, claim, сети или права на capture;
 - perpetual venue и venue официального spot-анонса разделены на `venue` и
   обязательный `listing_venue`; обе роли сохраняются под registry lock и входят в
   capture/receipt/replay lineage;
@@ -23,10 +27,10 @@ Research-only контур для публичных pre-market perpetual дан
   authorization matrix и не может получить capture token;
 - replay descriptive-only и не поддерживает ACCEPT/REJECT стратегии.
 
-Активные v28 identity: plan hash
-`141ab762953a21985eb6678c3c4bafb6247eadf7bef1073cc9626ee89d404d80`, file
-SHA-256 `b59162ee152bf1fc2301921925267731ba1c1f2f9c3d92fe4093354d55797d92`.
-Они закреплены во внешнем trust root `src/frozen_plan_bindings.py`; v27 сохранён
+Активные v29 identity: plan hash
+`63f4173a4d3662e6eed15f9ba1f372c8771f635b84291ed2439e076d6975a8d5`, file
+SHA-256 `7c93aebec952ec1d52def42ce5ac4165b6b3c8c608436ed702f50dbfb012b822`.
+Они закреплены во внешнем trust root `src/frozen_plan_bindings.py`; v28 сохранён
 byte-identical как непосредственный предшественник и никогда не был активирован для
 capture.
 
@@ -112,10 +116,11 @@ Mutation receipt закрепляет полный pre-hash record: registry/sum
 `mutation_run_id`, active/high-water state, venue/surface counts, relevant IDs/hashes и
 terminal IDs. Валидатор PlanOnly сверяет этот словарь целиком.
 
-Текущий official-attestation producer фиксирует `t0` с точностью 60 секунд, тогда как
-секундная гипотеза требует не хуже одной секунды. Поэтому даже структурно полный
-capture этого поколения остаётся `DESCRIPTIVE_ONLY_PRECISION_GT_ONE_SECOND`; повышение
-authority требует нового producer и следующего immutable PlanOnly.
+Official-attestation producer v29 выводит точность только из дословно сохранённой
+временной формулировки источника: явные секунды дают `1`, а только часы и минуты —
+`60`. Minute-only evidence остаётся descriptive-only; candidate selector допускает
+событие к будущему capture только при official crypto announcement с точностью не хуже
+одной секунды. Сам v29 всё ещё не даёт capture-authority.
 
 REST books OKX не возвращает `instId`, поэтому инструмент привязан к exact URL/query и
 их hash, записанным рядом с payload. Gate orderbook поддерживает документированный
@@ -125,7 +130,10 @@ payload остаётся optional descriptive и не участвует в caus
 trades и orderbook.
 
 Legacy registry v2 остаётся byte-identical migration source и закреплён SHA/head/
-mutation receipt в PlanOnly. Production v3 имеет отдельный путь и не был наполнен.
+mutation receipt в PlanOnly. 28 августа 2026 production v3 был восстановлен под
+контрактом v29: один complete public-metadata refresh создал 18 событий (Bybit 5,
+Gate 10, OKX 3), без truncation и venue errors. Все они metadata-only и не являются
+official seconds-grade capture candidates.
 
 ## Replay v2
 
@@ -169,7 +177,9 @@ tombstones; registry — последним. Tombstone names/bytes закреп�
 durable move превращается в terminal proof; после него нет fallible I/O. Automatic
 recovery запрещён — неоднозначное состояние и оставшиеся locks требуют manual recovery.
 
-Наличие реализации не означает, что production quarantine выполнялась в этом пакете.
+28 августа 2026 несовместимое v24-поколение было архивировано recoverable-транзакцией
+`20260828T190001Z-ef9e656267-b0d29f75`; terminal state и lock-release proof проверены.
+После bootstrap активный production registry возвращает `REGISTRY_OK`.
 
 ## Проверки
 
@@ -206,8 +216,8 @@ quarantine являются отдельными операциями. Capture �
 
 ## Immutable lineage
 
-Опубликованы v1–v28. Все прежние планы остаются на диске и проверяются по file SHA,
-canonical plan hash и identity. v27 сохранён byte-identical и непосредственно
-superseded v28. Ни один старый PlanOnly не переписывался.
+Опубликованы v1–v29. Все прежние планы остаются на диске и проверяются по file SHA,
+canonical plan hash и identity. v27 и v28 сохранены byte-identical; v28 непосредственно
+superseded v29. Ни один старый PlanOnly не переписывался.
 
 См. `AGENTS.md`, `src/frozen_plan_bindings.py` и решения в `docs/decisions/`.

@@ -208,19 +208,23 @@ class OkxDatedFuturesMappingTests(unittest.TestCase):
             source_identity="human_attestation:registry-v7-test",
             source_url="https://www.okx.com/help/new-listing",
             received_at_utc=v6.RECEIVED_AT,
-            precision_sec=60,
+            precision_sec=1,
             caveats=("OFFICIAL_T0_READ_BY_A_PERSON_FROM_ANNOUNCEMENT_PROSE",),
             lifecycle_generation=0,
         )
+        official["listing_venue"] = "okx"
         official["attestation"] = {
             "schema": attestation.ATTESTATION_SCHEMA,
             "attested_by": "registry-v7-test",
+            "perpetual_venue": "okx",
+            "listing_venue": "okx",
             "announced_utc": v6.ANNOUNCED_UTC,
             "quoted_sentence": (
                 f"Spot trading for NEW/USDT will start on {v6.QUOTED_TIME}."
             ),
             "quoted_time_text": v6.QUOTED_TIME,
             "quoted_symbol_text": "NEW/USDT",
+            "quoted_time_precision_sec": 1,
             "announcement_url": "https://www.okx.com/help/new-listing",
             "lead_sec_at_attestation": 7 * 24 * 3600,
         }

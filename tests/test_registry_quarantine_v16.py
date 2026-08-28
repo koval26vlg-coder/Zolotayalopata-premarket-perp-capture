@@ -229,6 +229,28 @@ class QuarantinePolicyTests(unittest.TestCase):
 
 
 class SnapshotCasTests(QuarantineFixture):
+    def test_tombstone_names_are_exactly_role_bound_and_reject_windows_ads(self) -> None:
+        transaction_id = "20260828T120000Z-example"
+        canonical = {
+            "registry": self.registry_path,
+            "summary": self.summary_path,
+            "mutation_receipts": self.receipt_dir,
+        }
+        for role, path in canonical.items():
+            with self.subTest(role=role):
+                allowed = quarantine._allowed_tombstone_names(
+                    role, transaction_id, path
+                )
+                self.assertIn(
+                    quarantine._tombstone_name(role, transaction_id), allowed
+                )
+                self.assertNotIn(
+                    f".q-{transaction_id}-wrong.deactivated", allowed
+                )
+                self.assertNotIn(
+                    f".q-{transaction_id}-{role}.deactivated:ads", allowed
+                )
+
     def test_generation_cas_covers_registry_summary_and_raw_receipts(self) -> None:
         baseline = quarantine.snapshot_registry_generation(self.paths).generation_cas
         for path in (
@@ -551,6 +573,44 @@ class TransactionArchiveTests(QuarantineFixture):
         manifest = json.loads(manifest_bytes)
         self.assertEqual(manifest["source"]["registry_name"], self.registry_path.name)
         self.assertNotIn("quarantine_dir", manifest)
+
+    def test_completed_transaction_allows_verified_tombstones_to_be_cleaned(self) -> None:
+        result = self._execute(run_id="completed-cleanup")
+        archive = Path(result["archive_path"])
+        source_deactivated = json.loads(
+            (archive / "002-SOURCE_DEACTIVATED.json").read_text(encoding="utf-8")
+        )
+        for name in source_deactivated["details"]["retained_source_tombstones"].values():
+            path = self.tmp / name
+            if path.is_dir():
+                for child in path.iterdir():
+                    child.unlink()
+                path.rmdir()
+            else:
+                path.unlink()
+
+        with self._production_paths():
+            status = quarantine.quarantine_transaction_status(result["transaction_id"])
+        self.assertEqual(status["status"], "COMPLETED", status["problems"])
+
+    def test_partial_tombstone_cleanup_remains_invalid(self) -> None:
+        result = self._execute(run_id="partial-cleanup")
+        archive = Path(result["archive_path"])
+        source_deactivated = json.loads(
+            (archive / "002-SOURCE_DEACTIVATED.json").read_text(encoding="utf-8")
+        )
+        registry_tombstone = self.tmp / source_deactivated["details"][
+            "retained_source_tombstones"
+        ]["registry"]
+        registry_tombstone.unlink()
+
+        with self._production_paths():
+            status = quarantine.quarantine_transaction_status(result["transaction_id"])
+        self.assertEqual(status["status"], "INVALID_ARCHIVE_FAIL_CLOSED")
+        self.assertTrue(
+            any("partial tombstone cleanup" in problem for problem in status["problems"]),
+            status["problems"],
+        )
 
     def test_archive_tampering_is_invalid_and_fail_closed(self) -> None:
         result = self._execute(run_id="archive-tamper")

@@ -67,7 +67,8 @@ V24_PLAN_PATH = PROJECT_ROOT / "docs/plans/premarket-perp-capture-planonly-20260
 V25_PLAN_PATH = PROJECT_ROOT / "docs/plans/premarket-perp-capture-planonly-20260822-v25.json"
 V26_PLAN_PATH = PROJECT_ROOT / "docs/plans/premarket-perp-capture-planonly-20260822-v26.json"
 V27_PLAN_PATH = PROJECT_ROOT / "docs/plans/premarket-perp-capture-planonly-20260822-v27.json"
-PLAN_PATH = PROJECT_ROOT / "docs/plans/premarket-perp-capture-planonly-20260822-v28.json"
+V28_PLAN_PATH = PROJECT_ROOT / "docs/plans/premarket-perp-capture-planonly-20260822-v28.json"
+PLAN_PATH = PROJECT_ROOT / "docs/plans/premarket-perp-capture-planonly-20260822-v29.json"
 RUN_RECORD_PATH = PROJECT_ROOT / "docs/run/capture-run.json"
 STOP_REQUEST_PATH = PROJECT_ROOT / "docs/run/stop-request.json"
 CAPTURE_TOKEN_PATH = PROJECT_ROOT / "docs/run/capture-token.json"
@@ -153,7 +154,7 @@ ALLOWED_ENDPOINTS: tuple[tuple[str, str], ...] = (
 # Provenance policy for human-attested official listing moments.  Registry validation
 # imports this policy rather than the attestation writer, so an arbitrary JSON row
 # cannot become official merely by spelling OFFICIAL_ANNOUNCEMENT correctly.
-OFFICIAL_ATTESTATION_SCHEMA = "premarket_perp_official_attestation_v1"
+OFFICIAL_ATTESTATION_SCHEMA = "premarket_perp_official_attestation_v2"
 # Whose announcement counts as official, keyed by the venue that LISTS the underlying
 # on spot. That is not necessarily the venue trading the pre-market perpetual: a token
 # whose perp sits on Bybit may be spot-listed on Binance or Upbit, and that listing is

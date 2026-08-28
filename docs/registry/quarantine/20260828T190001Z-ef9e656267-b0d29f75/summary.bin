@@ -2,19 +2,19 @@
   "schema": "premarket_perp_event_registry_v3",
   "status": "REFRESH_COMPLETE",
   "mutation_type": "metadata_refresh",
-  "mutation_run_id": "v29_metadata_bootstrap_20260828T190200Z",
-  "refresh_run_id": "v29_metadata_bootstrap_20260828T190200Z",
-  "plan_id": "premarket_perp_capture_20260822_v29",
-  "plan_hash": "63f4173a4d3662e6eed15f9ba1f372c8771f635b84291ed2439e076d6975a8d5",
-  "registry_contract_hash": "eae2412fb3725e0edcdd9e6da0c192173c0c72d1ccee2450be0c9585750f0240",
-  "resolved_paths_hash": "40b72bddfd3f4b956ddc0382b52ed19f2da5106a294c7ec835d0c67f81147595",
-  "refreshed_at_utc": "2026-08-28T19:00:22Z",
-  "last_complete_metadata_refresh_received_at_utc": "2026-08-28T19:00:22Z",
-  "observed_events": 18,
+  "mutation_run_id": "registry_v3_contract_bound_bootstrap",
+  "refresh_run_id": "registry_v3_contract_bound_bootstrap",
+  "plan_id": "premarket_perp_capture_20260822_v24",
+  "plan_hash": "6359c390ad8ab74a18ab27d24c5f99ee89d059e1a93693e65a6803cdfd07dbc0",
+  "registry_contract_hash": "87dfa9f2194e3bbbf95004cd855e81ea275e56f50e86d457c4ab1838f1af7bf8",
+  "resolved_paths_hash": "1d09111a37558b1b0422822b01475158143f23d8d9a1dc5b5eca5a4b63ad446e",
+  "refreshed_at_utc": "2026-08-24T06:35:35Z",
+  "last_complete_metadata_refresh_received_at_utc": "2026-08-24T06:35:35Z",
+  "observed_events": 16,
   "observed_by_venue": {
-    "bybit": 5,
+    "bybit": 4,
     "okx": 3,
-    "gate": 10
+    "gate": 9
   },
   "pages_by_venue": {
     "bybit": 2,
@@ -29,8 +29,7 @@
       "ANTHROPICUSDT",
       "BPUSDT",
       "MOONSHOTUSDT",
-      "OPENAIUSDT",
-      "SHEINUSDT"
+      "OPENAIUSDT"
     ],
     "gate": [
       "ANDURIL_USDT",
@@ -41,8 +40,7 @@
       "NEURALINK_USDT",
       "OPENAI_USDT",
       "POLYMARKET_USDT",
-      "QNTX_USDT",
-      "SHEIN_USDT"
+      "QNTX_USDT"
     ],
     "okx": [
       "ANTHROPIC-USDT-SWAP",
@@ -55,8 +53,7 @@
       "ANTHROPICUSDT": 0,
       "BPUSDT": 0,
       "MOONSHOTUSDT": 0,
-      "OPENAIUSDT": 0,
-      "SHEINUSDT": 0
+      "OPENAIUSDT": 0
     },
     "gate": {
       "ANDURIL_USDT": 0,
@@ -67,8 +64,7 @@
       "NEURALINK_USDT": 0,
       "OPENAI_USDT": 0,
       "POLYMARKET_USDT": 0,
-      "QNTX_USDT": 0,
-      "SHEIN_USDT": 0
+      "QNTX_USDT": 0
     },
     "okx": {
       "ANTHROPIC-USDT-SWAP": 0,
@@ -81,8 +77,7 @@
       "ANTHROPICUSDT": 0,
       "BPUSDT": 0,
       "MOONSHOTUSDT": 0,
-      "OPENAIUSDT": 0,
-      "SHEINUSDT": 0
+      "OPENAIUSDT": 0
     },
     "gate": {
       "ANDURIL_USDT": 0,
@@ -93,8 +88,7 @@
       "NEURALINK_USDT": 0,
       "OPENAI_USDT": 0,
       "POLYMARKET_USDT": 0,
-      "QNTX_USDT": 0,
-      "SHEIN_USDT": 0
+      "QNTX_USDT": 0
     },
     "okx": {
       "ANTHROPIC-USDT-SWAP": 0,
@@ -105,24 +99,23 @@
   "refresh_evidence_class": "PUBLIC_VENUE_METADATA_LIVE",
   "production_eligible": true,
   "raw_universe_rows_by_venue": {
-    "bybit": 809,
-    "gate": 942,
-    "okx": 646
+    "bybit": 797,
+    "gate": 935,
+    "okx": 632
   },
   "raw_universe_rows_by_surface": {
-    "bybit_linear_prelaunch": 5,
-    "bybit_linear_trading": 804,
-    "gate_usdt_contracts": 942,
-    "okx_futures": 187,
-    "okx_swap": 459
+    "bybit_linear_prelaunch": 4,
+    "bybit_linear_trading": 793,
+    "gate_usdt_contracts": 935,
+    "okx_futures": 178,
+    "okx_swap": 454
   },
   "relevant_identity_ids_by_surface": {
     "bybit_linear_prelaunch": [
       "ANTHROPICUSDT",
       "BPUSDT",
       "MOONSHOTUSDT",
-      "OPENAIUSDT",
-      "SHEINUSDT"
+      "OPENAIUSDT"
     ],
     "bybit_linear_trading": [],
     "gate_usdt_contracts": [
@@ -134,8 +127,7 @@
       "NEURALINK_USDT",
       "OPENAI_USDT",
       "POLYMARKET_USDT",
-      "QNTX_USDT",
-      "SHEIN_USDT"
+      "QNTX_USDT"
     ],
     "okx_futures": [],
     "okx_swap": [
@@ -145,9 +137,9 @@
     ]
   },
   "relevant_identity_set_sha256_by_surface": {
-    "bybit_linear_prelaunch": "deeb2e30492704cb5f027fb742eb68fb5f0101fc4f4717a2138def76fa802991",
+    "bybit_linear_prelaunch": "ea91b8a4745c89284ee401731d8b245a0b5c06a5498288033d22129f78a0a5f9",
     "bybit_linear_trading": "854b09aca892fe6dbd25ca9cea76dd59d04db975257be83e12df7aa3437c6471",
-    "gate_usdt_contracts": "37e1791f897018aef671d2b8937cb08c8fb4b58e59d1998b1650a848d6a7324d",
+    "gate_usdt_contracts": "e40c21701747b6f8e1af96e963ab448f007ff25e55da110b9664c7e88ad6ee3d",
     "okx_futures": "84860f015dbf6012da592b1ed0b35c24771baf1db6b96423d48a3b592fca0456",
     "okx_swap": "239e7b7d9cd5e5148e502726847b0573ad5789f5230697e25d4fb50dead60a86"
   },
@@ -158,16 +150,16 @@
     "okx_futures": [],
     "okx_swap": []
   },
-  "appended_entries": 18,
-  "new_streams": 18,
+  "appended_entries": 16,
+  "new_streams": 16,
   "revisions": 0,
   "registry": {
     "status": "REGISTRY_OK",
-    "entries": 18,
-    "events": 18,
-    "episodes": 18,
-    "head_record_hash": "3c329acc8c7aeb41583fbecfa94871e5e5a1315652af5167717c01ea58e41f5c",
-    "registry_sha256": "6017526b0d9dc5617c948ea3d1c4a186ed608afae0fb2bee85e54879962ab494",
+    "entries": 16,
+    "events": 16,
+    "episodes": 16,
+    "head_record_hash": "42287c5fc8cee9d69ad81e37e6ddc92fded85ec95904949b2ad0fccae1b44a94",
+    "registry_sha256": "ed4473d5cdfa6b28b58b2d19b3df934cce7d643089b879bcf4192ce6a8ab46fa",
     "registry_summary_sha256": null,
     "problems": [],
     "summary_required": true,
@@ -175,16 +167,16 @@
     "recovery_action": null,
     "bootstrap_state": "SUMMARY_PENDING_UNDER_LOCK",
     "by_source_class": {
-      "VENUE_INSTRUMENT_METADATA": 18
+      "VENUE_INSTRUMENT_METADATA": 16
     },
     "by_venue": {
-      "bybit": 5,
-      "gate": 10,
+      "bybit": 4,
+      "gate": 9,
       "okx": 3
     }
   },
   "mutation_receipt_schema": "premarket_perp_registry_mutation_receipt_v1",
   "mutation_seq": 0,
   "previous_mutation_receipt_hash": null,
-  "mutation_receipt_hash": "0e356af574f8f9de86949fd91adc7e9b89005a5d77ce25583b791975c1a53944"
+  "mutation_receipt_hash": "b5c1bfd3b0d938214fc5693d6b3d0a231ddefa9d52f39df14ba96e8c43a8207b"
 }

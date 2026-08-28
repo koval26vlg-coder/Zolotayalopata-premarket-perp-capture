@@ -167,10 +167,10 @@ class HistoricalCaptureLineageTests(unittest.TestCase):
             registry.verify_capture_lineage(evidence, path=self.path)
 
     def test_official_precision_is_bound_to_the_exact_record(self) -> None:
-        evidence = dict(self.evidence, t0_precision_sec=1)
+        evidence = dict(self.evidence, t0_precision_sec=60)
         with self.assertRaisesRegex(
             registry.EventRegistryError,
-            "official capture asset/timestamp lineage",
+            "seconds-grade|official capture asset/timestamp lineage",
         ):
             registry.verify_capture_lineage(evidence, path=self.path)
 

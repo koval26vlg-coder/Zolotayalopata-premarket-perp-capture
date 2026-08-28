@@ -42,11 +42,19 @@ def valid_official_observation(
     timestamp_ts: int = 1_800_000_000,
     contract: str = "NEWUSDT",
     attested_by: str = "test",
+    precision_sec: int = 1,
 ) -> dict:
     url = f"https://announcements.bybit.com/{attested_by}"
     announced = datetime.fromtimestamp(timestamp_ts, timezone.utc).isoformat(
         timespec="seconds"
     ).replace("+00:00", "Z")
+    quoted_time = (
+        announced
+        if precision_sec == 1
+        else datetime.fromtimestamp(timestamp_ts, timezone.utc).strftime(
+            "%b %d, %Y, %H:%M UTC"
+        )
+    )
     observation = registry.make_timestamp_observation(
         episode_id=registry.make_episode_id("bybit", contract),
         venue="bybit",
@@ -59,7 +67,7 @@ def valid_official_observation(
         source_identity=f"human_attestation:{attested_by}",
         source_url=url,
         received_at_utc="2026-08-22T20:00:00Z",
-        precision_sec=60,
+        precision_sec=precision_sec,
         caveats=("OFFICIAL_T0_READ_BY_A_PERSON_FROM_ANNOUNCEMENT_PROSE",),
         asset_identity=registry.AssetIdentity(
             asset_class=registry.ASSET_CLASS_CRYPTO_TOKEN,
@@ -68,13 +76,17 @@ def valid_official_observation(
             evidence_class=registry.IDENTITY_EVIDENCE_OFFICIAL_ATTESTATION,
         ),
     )
+    observation["listing_venue"] = "bybit"
     observation["attestation"] = {
         "schema": config.OFFICIAL_ATTESTATION_SCHEMA,
         "attested_by": attested_by,
+        "perpetual_venue": "bybit",
+        "listing_venue": "bybit",
         "announced_utc": announced,
-        "quoted_sentence": f"Spot trading for {contract} starts at {announced}.",
-        "quoted_time_text": announced,
+        "quoted_sentence": f"Spot trading for {contract} starts at {quoted_time}.",
+        "quoted_time_text": quoted_time,
         "quoted_symbol_text": contract,
+        "quoted_time_precision_sec": precision_sec,
         "announcement_url": url,
         "lead_sec_at_attestation": timestamp_ts
         - int(datetime.fromisoformat("2026-08-22T20:00:00+00:00").timestamp()),
@@ -314,8 +326,12 @@ class CaptureSelectionContractTests(unittest.TestCase):
                 evidence_class=registry.IDENTITY_EVIDENCE_OFFICIAL_ATTESTATION,
             ),
         )
+        official_spot["listing_venue"] = "bybit"
 
-        materialized = registry.materialize_episodes([contract_launch, official_spot])
+        records = registry.build_stream_revisions(
+            [], [contract_launch, official_spot]
+        )
+        materialized = registry.materialize_episodes(records)
 
         self.assertEqual(len(materialized), 1)
         self.assertEqual(materialized[0]["premarket_contract_launch_ts"], 1_799_990_000)
@@ -338,6 +354,20 @@ class CaptureSelectionContractTests(unittest.TestCase):
         self.assertEqual(len(selected), 1)
         self.assertEqual(selected[0]["official_spot_t0"], 1_800_000_000)
         self.assertEqual(selected[0]["premarket_contract_launch_ts"], 1_799_990_000)
+
+    def test_minute_precision_official_record_is_not_selected_for_capture(self) -> None:
+        proxy = valid_metadata_observation()
+        official = valid_official_observation(precision_sec=60)
+        records = registry.build_stream_revisions([], [proxy, official])
+
+        path = self._write_production_registry(records)
+        with mock.patch.object(registry, "REGISTRY_PATH", path):
+            selected = registry.events_for_capture(
+                now_ts=1_800_000_000 - config.CAPTURE_WINDOW_BEFORE_SEC,
+                source_class=registry.SOURCE_OFFICIAL_ANNOUNCEMENT,
+            )
+
+        self.assertEqual(selected, [])
 
     def test_conflicting_official_timestamps_fail_closed(self) -> None:
         metadata = valid_metadata_observation()

@@ -504,6 +504,7 @@ class CapabilityTokenBindingTests(unittest.TestCase):
                 "CAPTURE_IMPLEMENTATION_AUDIT_GREEN_NO_CAPTURE",
                 risk_gate.REGISTRY_QUARANTINE_PLAN_STATUS,
                 risk_gate.OFFICIAL_ATTESTATION_LINEAGE_PLAN_STATUS,
+                risk_gate.REGISTRY_RECOVERY_SECONDS_GRADE_PLAN_STATUS,
             },
         )
         forged = self.verified_preflight()

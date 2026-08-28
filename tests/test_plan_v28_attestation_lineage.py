@@ -14,16 +14,21 @@ SRC = ROOT / "src"
 if str(SRC) not in sys.path:
     sys.path.insert(0, str(SRC))
 
-import plan_builder  # noqa: E402
 import project_config as config  # noqa: E402
-import risk_gate  # noqa: E402
 import frozen_plan_bindings as trust_root  # noqa: E402
 
 
 V27_RELATIVE_PATH = "docs/plans/premarket-perp-capture-planonly-20260822-v27.json"
 V27_PLAN_HASH = "859bd59a406dd97ae0fb1e8239f5f34541a50cb08cbb39fbda4d189c5d7b2446"
 V27_FILE_SHA256 = "de5c2bd1998bebd7cedd7ed728aa992ef4515ccbab4248a1d6aa8a63d644bfac"
+V28_RELATIVE_PATH = "docs/plans/premarket-perp-capture-planonly-20260822-v28.json"
+V28_PLAN_HASH = "141ab762953a21985eb6678c3c4bafb6247eadf7bef1073cc9626ee89d404d80"
+V28_FILE_SHA256 = "b59162ee152bf1fc2301921925267731ba1c1f2f9c3d92fe4093354d55797d92"
 V28_STATUS = "OFFICIAL_ATTESTATION_LINEAGE_HARDENED_NO_CAPTURE"
+
+
+def frozen_v28() -> dict:
+    return json.loads(config.V28_PLAN_PATH.read_text(encoding="utf-8"))
 
 
 class V28AttestationLineageTests(unittest.TestCase):
@@ -37,12 +42,9 @@ class V28AttestationLineageTests(unittest.TestCase):
             V27_PLAN_HASH,
         )
         self.assertEqual(config.V27_PLAN_PATH, v27_path)
-        self.assertEqual(
-            config.PLAN_PATH.name,
-            "premarket-perp-capture-planonly-20260822-v28.json",
-        )
+        self.assertEqual(config.V28_PLAN_PATH, ROOT / V28_RELATIVE_PATH)
 
-        plan = plan_builder.build_plan("2026-08-26T00:00:00.000Z")
+        plan = frozen_v28()
         self.assertEqual(plan["schema"], "premarket_perp_capture_planonly_v28")
         self.assertEqual(plan["plan_id"], "premarket_perp_capture_20260822_v28")
         self.assertEqual(plan["supersedes_plan_id"], "premarket_perp_capture_20260822_v27")
@@ -53,13 +55,14 @@ class V28AttestationLineageTests(unittest.TestCase):
         self.assertFalse(plan["acceptance_policy"]["acceptance_capable"])
 
     def test_v28_preregisters_cross_venue_and_rollover_lineage(self) -> None:
-        self.assertIn("listing_venue", config.CAPTURE_LINEAGE_FIELDS)
+        plan = frozen_v28()
+        frozen_fields = plan["event_registry"]["capture_lineage_fields"]
+        self.assertIn("listing_venue", frozen_fields)
         self.assertEqual(
-            config.CAPTURE_LINEAGE_FIELDS.index("listing_venue"),
-            config.CAPTURE_LINEAGE_FIELDS.index("venue") + 1,
+            frozen_fields.index("listing_venue"),
+            frozen_fields.index("venue") + 1,
         )
 
-        plan = plan_builder.build_plan("2026-08-26T00:00:00.000Z")
         registry = plan["event_registry"]
         attestation = registry["official_attestation"]
         self.assertEqual(
@@ -79,28 +82,27 @@ class V28AttestationLineageTests(unittest.TestCase):
             "EXACT_ACTIVE_PLAN_ID_AND_HASH",
         )
         self.assertEqual(
-            registry["capture_lineage_fields"], list(config.CAPTURE_LINEAGE_FIELDS)
+            registry["capture_lineage_fields"], frozen_fields
         )
 
     def test_v28_write_authority_stays_no_capture(self) -> None:
-        plan = plan_builder.build_plan("2026-08-26T00:00:00.000Z")
-        authorization = risk_gate.PLAN_WRITE_AUTHORIZATION[plan["status"]]
+        plan = frozen_v28()
         self.assertEqual(
-            authorization["write_classes"],
-            frozenset(
-                {"metadata_registry", "official_attestation", "registry_quarantine"}
-            ),
+            set(plan["write_classes"]),
+            {"metadata_registry", "market_data_capture", "official_attestation", "registry_quarantine"},
         )
-        self.assertNotIn("market_data_capture", authorization["write_classes"])
+        self.assertNotIn(
+            "market_data_capture", plan["authorized_after_gate_green"]
+        )
         self.assertFalse(plan["activation_gate"]["capture_authorized"])
 
-    def test_v28_is_the_external_trust_root_and_v27_is_retired(self) -> None:
-        plan = risk_gate.load_and_verify_plan()
+    def test_v28_is_retired_byte_identical_and_v27_is_retained(self) -> None:
+        plan = frozen_v28()
         self.assertEqual(plan["plan_id"], "premarket_perp_capture_20260822_v28")
-        self.assertEqual(plan["plan_hash"], trust_root.PLAN_HASH)
+        self.assertEqual(plan["plan_hash"], V28_PLAN_HASH)
         self.assertEqual(
-            hashlib.sha256(config.PLAN_PATH.read_bytes()).hexdigest(),
-            trust_root.PLAN_FILE_SHA256,
+            hashlib.sha256(config.V28_PLAN_PATH.read_bytes()).hexdigest(),
+            V28_FILE_SHA256,
         )
         retired = {
             str(item["path"]).replace("\\", "/"): item
@@ -110,6 +112,11 @@ class V28AttestationLineageTests(unittest.TestCase):
         self.assertEqual(retired[V27_RELATIVE_PATH]["plan_hash"], V27_PLAN_HASH)
         self.assertEqual(
             retired[V27_RELATIVE_PATH]["plan_file_sha256"], V27_FILE_SHA256
+        )
+        self.assertIn(V28_RELATIVE_PATH, retired)
+        self.assertEqual(retired[V28_RELATIVE_PATH]["plan_hash"], V28_PLAN_HASH)
+        self.assertEqual(
+            retired[V28_RELATIVE_PATH]["plan_file_sha256"], V28_FILE_SHA256
         )
 
 

@@ -509,6 +509,7 @@ class CaptureEligibilityTests(CaptureHarness):
         "episode_id": "bybit:NEWUSDT",
         "event_id": "bybit:NEWUSDT",
         "venue": "bybit",
+        "listing_venue": "bybit",
         "symbol": "NEWUSDT",
         "premarket_contract_id": "NEWUSDT",
         "spot_symbol": "NEWUSDT",
@@ -551,6 +552,32 @@ class CaptureEligibilityTests(CaptureHarness):
                     run_id="r1", capture_token="t", event_id="bybit:X",
                     source_class="OFFICIAL_ANNOUNCEMENT",
                 )
+
+    def test_ineligible_precision_is_rejected_before_token_claim_and_network(self):
+        with mock.patch.object(
+            capture.risk_gate,
+            "load_and_verify_plan",
+            return_value={"plan_id": "plan-test", "plan_hash": "e" * 64},
+        ), mock.patch.object(
+            capture.registry, "events_for_capture", return_value=[]
+        ), mock.patch.object(
+            capture.risk_gate, "consume_capture_token"
+        ) as consume, mock.patch.object(
+            capture, "claim_global_market_writer"
+        ) as claim, mock.patch.object(
+            capture, "observe_venue_metadata"
+        ) as network:
+            with self.assertRaisesRegex(capture.CaptureError, "capture-eligible"):
+                capture.capture_event(
+                    run_id="minute-precision",
+                    capture_token="unused",
+                    event_id="bybit:NEWUSDT",
+                    source_class="OFFICIAL_ANNOUNCEMENT",
+                )
+
+        consume.assert_not_called()
+        claim.assert_not_called()
+        network.assert_not_called()
 
     def test_an_existing_capture_directory_is_never_overwritten(self):
         root = self.tmpdir()

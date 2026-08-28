@@ -74,6 +74,9 @@ REGISTRY_QUARANTINE_PLAN_STATUS = "REGISTRY_QUARANTINE_HARDENED_NO_CAPTURE"
 OFFICIAL_ATTESTATION_LINEAGE_PLAN_STATUS = (
     "OFFICIAL_ATTESTATION_LINEAGE_HARDENED_NO_CAPTURE"
 )
+REGISTRY_RECOVERY_SECONDS_GRADE_PLAN_STATUS = (
+    "REGISTRY_RECOVERY_SECONDS_GRADE_OFFICIAL_ANCHOR_NO_CAPTURE"
+)
 PLAN_WRITE_AUTHORIZATION: dict[str, dict[str, frozenset[str]]] = {
     "AWAIT_CAPTURE_IMPLEMENTATION_AUDIT_NO_CAPTURE": {
         "authorized_actions": frozenset({
@@ -105,6 +108,19 @@ PLAN_WRITE_AUTHORIZATION: dict[str, dict[str, frozenset[str]]] = {
         }),
     },
     OFFICIAL_ATTESTATION_LINEAGE_PLAN_STATUS: {
+        "authorized_actions": frozenset({
+            METADATA_REGISTRY_ACTION,
+            OFFLINE_DESCRIPTIVE_ACTION,
+            OFFICIAL_ATTESTATION_ACTION,
+            REGISTRY_QUARANTINE_ACTION,
+        }),
+        "write_classes": frozenset({
+            "metadata_registry",
+            "official_attestation",
+            "registry_quarantine",
+        }),
+    },
+    REGISTRY_RECOVERY_SECONDS_GRADE_PLAN_STATUS: {
         "authorized_actions": frozenset({
             METADATA_REGISTRY_ACTION,
             OFFLINE_DESCRIPTIVE_ACTION,

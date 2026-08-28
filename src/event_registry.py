@@ -1464,6 +1464,12 @@ def make_timestamp_observation(
     asset_identity: AssetIdentity | None = None,
 ) -> dict[str, Any]:
     """Build one validated timestamp observation for an immutable listing episode."""
+    if (
+        isinstance(precision_sec, bool)
+        or not isinstance(precision_sec, int)
+        or precision_sec <= 0
+    ):
+        raise EventRegistryError("precision_sec must be a positive integer")
     if not episode_id.strip():
         raise EventRegistryError("episode_id is required")
     if venue not in {adapter.venue for adapter in ADAPTERS}:
@@ -1511,6 +1517,7 @@ def make_timestamp_observation(
         raise EventRegistryError("asset_identity must be an AssetIdentity")
     acceptance_anchor = (
         timestamp_kind == TIMESTAMP_OFFICIAL_SPOT_T0
+        and 0 < int(precision_sec) <= 1
         and asset_identity.asset_class == ASSET_CLASS_CRYPTO_TOKEN
         and asset_identity.evidence_class
         in {
@@ -2444,7 +2451,17 @@ def materialize_episodes(entries: Iterable[Mapping[str, Any]]) -> list[dict[str,
         elif len(official_values) == 1 and not episode["official_conflict"]:
             episode[TIMESTAMP_OFFICIAL_SPOT_T0] = next(iter(official_values))
             episode["t0_source_class"] = SOURCE_OFFICIAL_ANNOUNCEMENT
-            official = official_observations[0]
+            # Equal official instants may be attested from sources with different
+            # granularity.  Selection must be independent of append order and retain
+            # the most precise evidence; conflicting instants still fail closed above.
+            official = min(
+                official_observations,
+                key=lambda item: (
+                    int(item.get("t0_precision_sec", 0) or 0) or 2**31,
+                    str(item.get("received_at_utc") or ""),
+                    str(item.get("stream_id") or ""),
+                ),
+            )
             episode["listing_venue"] = official["listing_venue"]
             episode["t0_precision_sec"] = official["t0_precision_sec"]
             episode["caveats"] = list(official["caveats"])
@@ -2473,6 +2490,7 @@ def materialize_episodes(entries: Iterable[Mapping[str, Any]]) -> list[dict[str,
                 and official_identity is not None
                 and official_identity[0] == ASSET_CLASS_CRYPTO_TOKEN
                 and metadata_identity_keys == {official_identity}
+                and 0 < int(official.get("t0_precision_sec", 0) or 0) <= 1
             )
             episode["evidence_use"] = (
                 "ACCEPTANCE_ANCHOR" if acceptance_anchor else "DESCRIPTIVE_ONLY"
@@ -2667,18 +2685,64 @@ def market_symbols_equivalent(venue: str, contract: Any, spot_symbol: Any) -> bo
 
 def _parse_quoted_utc(value: Any) -> datetime | None:
     text = " ".join(str(value or "").split())
-    for form in (
+    second_forms = (
+        "%b %d, %Y, %I:%M:%S%p UTC",
+        "%B %d, %Y, %I:%M:%S%p UTC",
+        "%b %d, %Y, %H:%M:%S UTC",
+        "%B %d, %Y, %H:%M:%S UTC",
+        "%Y-%m-%d %H:%M:%S UTC",
+    )
+    minute_forms = (
         "%b %d, %Y, %I:%M%p UTC",
         "%B %d, %Y, %I:%M%p UTC",
         "%b %d, %Y, %H:%M UTC",
         "%B %d, %Y, %H:%M UTC",
         "%Y-%m-%d %H:%M UTC",
-    ):
+    )
+    for form in (*second_forms, *minute_forms):
         try:
             return datetime.strptime(text, form).replace(tzinfo=timezone.utc)
         except ValueError:
             continue
-    return _parse_explicit_utc(text)
+    if re.fullmatch(
+        r"\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(?::\d{2})?(?:Z|\+00:00)",
+        text,
+    ):
+        return _parse_explicit_utc(text)
+    return None
+
+
+def _quoted_time_precision_sec(value: Any) -> int | None:
+    text = " ".join(str(value or "").split())
+    if _parse_quoted_utc(text) is None:
+        return None
+    iso_match = re.fullmatch(
+        r"\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(?P<second>:\d{2})?"
+        r"(?:Z|\+00:00)",
+        text,
+    )
+    if iso_match is not None:
+        return 1 if iso_match.group("second") is not None else 60
+    if any(
+        _matches_quoted_form(text, form)
+        for form in (
+            "%b %d, %Y, %I:%M:%S%p UTC",
+            "%B %d, %Y, %I:%M:%S%p UTC",
+            "%b %d, %Y, %H:%M:%S UTC",
+            "%B %d, %Y, %H:%M:%S UTC",
+            "%Y-%m-%d %H:%M:%S UTC",
+        )
+    ):
+        return 1
+    return 60
+
+
+def _matches_quoted_form(value: str, form: str) -> bool:
+    try:
+        datetime.strptime(value, form)
+    except ValueError:
+        return False
+    return True
 
 
 def _official_record_problems(
@@ -2814,8 +2878,12 @@ def _official_record_problems(
             )
         if declared_lead != actual_lead:
             problems.append(prefix + "attestation lead does not equal t0 minus received_at")
-    if int(entry.get("t0_precision_sec", 0) or 0) != 60:
-        problems.append(prefix + "official attestation precision must be exactly 60 seconds")
+    raw_precision_sec = entry.get("t0_precision_sec")
+    if isinstance(raw_precision_sec, bool) or not isinstance(raw_precision_sec, int):
+        precision_sec = 0
+        problems.append(prefix + "official attestation precision must be an integer")
+    else:
+        precision_sec = raw_precision_sec
     caveats = tuple(entry.get("caveats") or ())
     if caveats != ("OFFICIAL_T0_READ_BY_A_PERSON_FROM_ANNOUNCEMENT_PROSE",):
         problems.append(prefix + "official attestation caveat is missing or changed")
@@ -2846,6 +2914,23 @@ def _official_record_problems(
         or int(quoted_moment.timestamp()) != int(announced.timestamp())
     ):
         problems.append(prefix + "attestation quoted time does not match announced_utc")
+    quoted_precision = _quoted_time_precision_sec(quoted_time)
+    if precision_sec not in {1, 60} or quoted_precision != precision_sec:
+        problems.append(
+            prefix
+            + "official attestation precision does not match the verbatim quoted time"
+        )
+    attested_precision = attestation.get("quoted_time_precision_sec")
+    if (
+        isinstance(attested_precision, bool)
+        or not isinstance(attested_precision, int)
+        or attested_precision != precision_sec
+    ):
+        problems.append(
+            prefix + "attestation quoted_time_precision_sec is missing or inconsistent"
+        )
+    if acceptance_anchor and precision_sec > 1:
+        problems.append(prefix + "minute precision cannot be an acceptance anchor")
     return problems
 
 
@@ -3436,6 +3521,7 @@ def events_for_capture(
             and entry.get("asset_identity_conflict") is False
             and entry.get("capture_eligible") is True
             and entry.get("evidence_use") == "ACCEPTANCE_ANCHOR"
+            and 0 < int(entry.get("t0_precision_sec", 0) or 0) <= 1
             and active_generation is not None
             and int(entry.get("lifecycle_generation", -1)) == active_generation
             and is_due_t0(entry.get("official_spot_t0"))
@@ -3464,6 +3550,197 @@ def events_for_capture(
             "plan_hash": trust_root.PLAN_HASH,
         })
     return upcoming
+
+
+def capture_candidate_problems(
+    episode: Mapping[str, Any],
+    *,
+    active_generation: int | None,
+    metadata_refresh_received_at_utc: str | None,
+    now_ts: int,
+    horizon_sec: int,
+) -> list[str]:
+    """Explain why one materialized episode is not a seconds-grade candidate.
+
+    This is deliberately pure and read-only.  It mirrors the hard selection boundary
+    so an operator can diagnose a candidate before any token, writer claim, directory
+    creation, or market-data request is possible.
+    """
+    problems: list[str] = []
+    venue = str(episode.get("venue") or "")
+    contract = str(episode.get("premarket_contract_id") or "")
+    spot_symbol = str(episode.get("spot_symbol") or "")
+    if episode.get("official_conflict") is True:
+        problems.append("OFFICIAL_T0_CONFLICT")
+    if episode.get("asset_identity_conflict") is True:
+        problems.append("ASSET_IDENTITY_CONFLICT")
+    if episode.get("t0_source_class") != SOURCE_OFFICIAL_ANNOUNCEMENT:
+        problems.append("SOURCE_CLASS_NOT_OFFICIAL_ANNOUNCEMENT")
+    if episode.get("asset_class") != ASSET_CLASS_CRYPTO_TOKEN:
+        problems.append("ASSET_CLASS_NOT_CRYPTO_TOKEN")
+    if not market_symbols_equivalent(venue, contract, spot_symbol):
+        problems.append("SPOT_SYMBOL_MAPPING_INVALID")
+    raw_precision = episode.get("t0_precision_sec")
+    if isinstance(raw_precision, bool) or not isinstance(raw_precision, int):
+        precision = 0
+        problems.append("OFFICIAL_T0_PRECISION_INVALID")
+    else:
+        precision = raw_precision
+    if precision <= 0:
+        problems.append("OFFICIAL_T0_PRECISION_MISSING")
+    elif precision > 1:
+        problems.append("OFFICIAL_T0_PRECISION_GT_ONE_SECOND")
+    try:
+        generation = int(episode.get("lifecycle_generation", -1))
+    except (TypeError, ValueError):
+        generation = -1
+    if active_generation is None or generation != active_generation:
+        problems.append("LIFECYCLE_GENERATION_NOT_CURRENT")
+    metadata_received = _parse_explicit_utc(metadata_refresh_received_at_utc)
+    if metadata_received is None:
+        problems.append("METADATA_REFRESH_MISSING")
+    else:
+        metadata_age = now_ts - int(metadata_received.timestamp())
+        if not 0 <= metadata_age <= MAX_COMPLETE_METADATA_REFRESH_AGE_SEC:
+            problems.append("METADATA_REFRESH_STALE_OR_FUTURE")
+    provenance = episode.get("official_t0_provenance")
+    received = (
+        _parse_explicit_utc(provenance.get("received_at_utc"))
+        if isinstance(provenance, Mapping)
+        else None
+    )
+    if received is None:
+        problems.append("OFFICIAL_RECEIVED_AT_MISSING")
+    elif int(received.timestamp()) > now_ts:
+        problems.append("OFFICIAL_EVIDENCE_NOT_YET_RECEIVED")
+    try:
+        t0 = int(episode.get("official_spot_t0", 0) or 0)
+    except (TypeError, ValueError):
+        t0 = 0
+    if t0 <= 0:
+        problems.append("OFFICIAL_SPOT_T0_MISSING")
+    else:
+        target = t0 - config.CAPTURE_WINDOW_BEFORE_SEC
+        if not (
+            target - config.CAPTURE_LAUNCH_EARLY_GRACE_SEC
+            <= now_ts
+            <= target + config.CAPTURE_LAUNCH_LATE_GRACE_SEC
+        ):
+            problems.append("OUTSIDE_CAPTURE_DUE_WINDOW")
+        if t0 > now_ts + horizon_sec:
+            problems.append("OUTSIDE_CANDIDATE_HORIZON")
+    if (
+        episode.get("capture_eligible") is not True
+        or episode.get("evidence_use") != "ACCEPTANCE_ANCHOR"
+    ):
+        problems.append("NOT_CAPTURE_ELIGIBLE")
+    return problems
+
+
+def inspect_capture_candidates(
+    *,
+    now_ts: int,
+    horizon_sec: int = 24 * 3600,
+    registry_path: Path | None = None,
+) -> dict[str, Any]:
+    """Return candidate diagnostics without creating any capture authority."""
+    path = registry_path or REGISTRY_PATH
+    if path.resolve(strict=False) != REGISTRY_PATH.resolve(strict=False):
+        raise EventRegistryError(
+            "VERIFIED_PRODUCTION_REGISTRY_REQUIRED: candidate inspection only reads "
+            "the production registry"
+        )
+    entries, report = _verify_registry_snapshot(path)
+    if report["status"] != "REGISTRY_OK" or (
+        report["summary_required"] and not report["summary_verified"]
+    ):
+        return {
+            "status": "REGISTRY_RECOVERY_REQUIRED",
+            "capture_authorized": False,
+            "registry": report,
+            "candidates": [],
+            "rejections": [],
+        }
+
+    # Reuse the authoritative selector rather than approximating its global gates.
+    # This remains read-only, but it guarantees that a candidate cannot be reported
+    # while the active mutation receipt, surface authority anchors, freshness, or a
+    # due conflict would make the real selector fail closed.
+    try:
+        authoritative = events_for_capture(
+            now_ts=now_ts,
+            source_class=SOURCE_OFFICIAL_ANNOUNCEMENT,
+            asset_class=ASSET_CLASS_CRYPTO_TOKEN,
+            horizon_sec=horizon_sec,
+            registry_path=path,
+        )
+    except EventRegistryError as exc:
+        return {
+            "status": "CAPTURE_AUTHORITY_NOT_READY",
+            "capture_authorized": False,
+            "authority_problem": str(exc),
+            "registry": report,
+            "candidates": [],
+            "rejections": [],
+        }
+    authoritative_by_episode = {
+        str(item.get("episode_id") or item.get("event_id") or ""): item
+        for item in authoritative
+    }
+
+    active_generations, _high_water = _load_lifecycle_generation_state(
+        path.with_suffix(".summary.json"), existing=entries
+    )
+    metadata_received = _summary_complete_metadata_refresh_received_at(
+        path.with_suffix(".summary.json")
+    )
+    candidates: list[dict[str, Any]] = []
+    rejections: list[dict[str, Any]] = []
+    for episode in materialize_episodes(entries):
+        venue = str(episode.get("venue") or "")
+        contract = str(episode.get("premarket_contract_id") or "")
+        reasons = capture_candidate_problems(
+            episode,
+            active_generation=active_generations.get(venue, {}).get(contract),
+            metadata_refresh_received_at_utc=metadata_received,
+            now_ts=now_ts,
+            horizon_sec=horizon_sec,
+        )
+        summary = {
+            "episode_id": episode.get("episode_id"),
+            "venue": venue,
+            "premarket_contract_id": contract,
+            "spot_symbol": episode.get("spot_symbol"),
+            "official_spot_t0": episode.get("official_spot_t0"),
+            "t0_precision_sec": episode.get("t0_precision_sec"),
+            "asset_class": episode.get("asset_class"),
+        }
+        episode_key = str(episode.get("episode_id") or episode.get("event_id") or "")
+        if not reasons and episode_key not in authoritative_by_episode:
+            reasons.append("AUTHORITATIVE_SELECTOR_DID_NOT_ADMIT")
+        if reasons:
+            rejections.append({**summary, "reasons": reasons})
+        else:
+            admitted = authoritative_by_episode[episode_key]
+            candidates.append(
+                {
+                    **summary,
+                    "mutation_receipt_seq": admitted.get("mutation_receipt_seq"),
+                    "plan_id": admitted.get("plan_id"),
+                    "plan_hash": admitted.get("plan_hash"),
+                }
+            )
+    return {
+        "status": (
+            "SECONDS_GRADE_CANDIDATE_FOUND_NO_CAPTURE_AUTHORITY"
+            if candidates
+            else "NO_SECONDS_GRADE_CANDIDATE"
+        ),
+        "capture_authorized": False,
+        "registry": report,
+        "candidates": candidates,
+        "rejections": rejections,
+    }
 
 
 
@@ -3654,8 +3931,11 @@ def verify_capture_lineage(
         isinstance(precision, bool)
         or not isinstance(precision, int)
         or precision <= 0
+        or precision > 1
     ):
-        raise EventRegistryError("capture lineage t0_precision_sec is missing or invalid")
+        raise EventRegistryError(
+            "capture lineage requires seconds-grade t0_precision_sec <= 1"
+        )
     if lineage["asset_class"] != ASSET_CLASS_CRYPTO_TOKEN:
         raise EventRegistryError(
             "capture lineage is not the explicit crypto asset class"
@@ -4850,6 +5130,7 @@ def main(argv: list[str] | None = None) -> int:
                         help="read public instrument metadata and append what changed")
     parser.add_argument("--verify", action="store_true")
     parser.add_argument("--upcoming", action="store_true")
+    parser.add_argument("--candidate-status", action="store_true")
     parser.add_argument("--horizon-hours", type=int, default=24)
     parser.add_argument("--source-class", choices=SOURCE_CLASSES)
     parser.add_argument("--run-id", default="")
@@ -4882,6 +5163,16 @@ def main(argv: list[str] | None = None) -> int:
             "events": upcoming,
         }, ensure_ascii=False))
         return 0
+    if args.candidate_status:
+        result = inspect_capture_candidates(
+            now_ts=int(time.time()),
+            horizon_sec=args.horizon_hours * 3600,
+        )
+        print(json.dumps(result, ensure_ascii=False))
+        return 0 if result["status"] in {
+            "NO_SECONDS_GRADE_CANDIDATE",
+            "SECONDS_GRADE_CANDIDATE_FOUND_NO_CAPTURE_AUTHORITY",
+        } else 1
     if args.refresh:
         payloads = None
         if args.payloads:

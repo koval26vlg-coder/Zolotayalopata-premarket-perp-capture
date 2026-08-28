@@ -90,13 +90,13 @@ Workspace общий с `ZolotyayLopata`. Этот проект — второй
   cross-surface transition уже отслеживаемого PreLaunch-контракта.
 - Replay production evidence проверяется по историческому префиксу реестра и точной
   mutation receipt, а не по текущему head.
-- Текущий официальный producer фиксирует `t0` с точностью 60 секунд. Поэтому данные
-  этого поколения могут быть только descriptive для секундной гипотезы; readiness
-  требует отдельного producer с точностью не хуже одной секунды и нового PlanOnly.
+- Текущий human-attested producer выводит точность из дословного времени источника.
+  Minute-only источник остаётся descriptive; только явный `HH:MM:SS` может дать
+  seconds-grade candidate, но v29 всё равно не авторизует capture.
 
 ## Статус
 
 Capture ещё **не запускался**. PlanOnly в статусе
-`OFFICIAL_ATTESTATION_LINEAGE_HARDENED_NO_CAPTURE`; активный immutable план — v28.
+`REGISTRY_RECOVERY_SECONDS_GRADE_OFFICIAL_ANCHOR_NO_CAPTURE`; активный immutable план — v29.
 `market_data_capture` этим статусом не авторизован. Первый capture требует отдельного
 нового PlanOnly/checkpoint и отдельного разрешения пользователя на видимый запуск.

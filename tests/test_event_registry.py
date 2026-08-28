@@ -410,7 +410,7 @@ class CaptureSelectionTests(unittest.TestCase):
             source_identity="human_attestation:test",
             source_url="https://announcements.bybit.com/example",
             received_at_utc="2026-08-22T00:00:00Z",
-            precision_sec=60,
+            precision_sec=1,
             caveats=("OFFICIAL_T0_READ_BY_A_PERSON_FROM_ANNOUNCEMENT_PROSE",),
             asset_identity=registry.AssetIdentity(
                 asset_class=registry.ASSET_CLASS_CRYPTO_TOKEN,
@@ -419,13 +419,17 @@ class CaptureSelectionTests(unittest.TestCase):
                 evidence_class=registry.IDENTITY_EVIDENCE_OFFICIAL_ATTESTATION,
             ),
         )
+        official["listing_venue"] = "bybit"
         official["attestation"] = {
             "schema": config.OFFICIAL_ATTESTATION_SCHEMA,
             "attested_by": "test",
+            "perpetual_venue": "bybit",
+            "listing_venue": "bybit",
             "announced_utc": "2026-08-22T12:01:00Z",
             "quoted_sentence": "Spot trading for B starts at 2026-08-22T12:01:00Z.",
             "quoted_time_text": "2026-08-22T12:01:00Z",
             "quoted_symbol_text": "B",
+            "quoted_time_precision_sec": 1,
             "announcement_url": "https://announcements.bybit.com/example",
             "lead_sec_at_attestation": 12 * 3600 + 60,
         }

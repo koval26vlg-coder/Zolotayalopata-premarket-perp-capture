@@ -50,9 +50,31 @@ ATTESTATION_SCHEMA = config.OFFICIAL_ATTESTATION_SCHEMA
 # different datum wearing the same word.
 OFFICIAL_ANNOUNCEMENT_HOSTS = config.OFFICIAL_ANNOUNCEMENT_HOSTS
 
-# An announcement says "10:00AM UTC", not "10:00:00.000". Recording second precision
-# would claim an accuracy the source never offered.
+# Most announcements say "10:00AM UTC", not "10:00:00".  Sixty seconds remains the
+# compatibility default, but v29 can preserve one-second precision when the verbatim
+# source fragment itself explicitly carries seconds.  Precision is derived; callers
+# never get a flag with which to upgrade a minute-only source.
 ANNOUNCED_PRECISION_SEC = 60
+SECONDS_GRADE_PRECISION_SEC = 1
+
+_QUOTED_SECOND_FORMS = (
+    "%b %d, %Y, %I:%M:%S%p UTC",
+    "%B %d, %Y, %I:%M:%S%p UTC",
+    "%b %d, %Y, %H:%M:%S UTC",
+    "%B %d, %Y, %H:%M:%S UTC",
+    "%Y-%m-%d %H:%M:%S UTC",
+)
+_QUOTED_MINUTE_FORMS = (
+    "%b %d, %Y, %I:%M%p UTC",
+    "%B %d, %Y, %I:%M%p UTC",
+    "%b %d, %Y, %H:%M UTC",
+    "%B %d, %Y, %H:%M UTC",
+    "%Y-%m-%d %H:%M UTC",
+)
+_QUOTED_ISO_UTC = re.compile(
+    r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(?P<second>:\d{2})?"
+    r"(?:Z|\+00:00)$"
+)
 
 # A capture opens its window before t0, so an anchor must still be far enough ahead to
 # be usable. Attesting a moment that has already passed cannot anchor a live capture,
@@ -139,23 +161,49 @@ def _normalise_symbol(value: str) -> str:
 def parse_quoted_utc(value: str) -> int:
     """Parse only the exact UTC fragment selected by the attestor."""
     text = " ".join(value.split())
-    for form in (
-        "%b %d, %Y, %I:%M%p UTC",
-        "%B %d, %Y, %I:%M%p UTC",
-        "%b %d, %Y, %H:%M UTC",
-        "%B %d, %Y, %H:%M UTC",
-        "%Y-%m-%d %H:%M UTC",
-    ):
+    for form in (*_QUOTED_SECOND_FORMS, *_QUOTED_MINUTE_FORMS):
         try:
             return int(datetime.strptime(text, form).replace(tzinfo=timezone.utc).timestamp())
         except ValueError:
             continue
+    if _QUOTED_ISO_UTC.fullmatch(text) is not None:
+        try:
+            return int(datetime.fromisoformat(text.replace("Z", "+00:00")).timestamp())
+        except ValueError:
+            pass
+    raise AttestationError(
+        "quoted time fragment must be an explicit, unambiguous UTC timestamp"
+    )
+
+
+def quoted_time_precision_sec(value: str) -> int:
+    """Derive source precision from the exact quoted fragment.
+
+    An ISO value normalised by the operator is not evidence of seconds.  The quoted
+    fragment must visibly contain an ``HH:MM:SS`` component; otherwise the honest
+    precision is one minute even when the represented instant happens to end in
+    ``:00``.
+    """
+    text = " ".join(str(value or "").split())
+    parse_quoted_utc(text)
+    iso_match = _QUOTED_ISO_UTC.fullmatch(text)
+    if iso_match is not None:
+        return (
+            SECONDS_GRADE_PRECISION_SEC
+            if iso_match.group("second") is not None
+            else ANNOUNCED_PRECISION_SEC
+        )
+    if any(_matches_quoted_form(text, form) for form in _QUOTED_SECOND_FORMS):
+        return SECONDS_GRADE_PRECISION_SEC
+    return ANNOUNCED_PRECISION_SEC
+
+
+def _matches_quoted_form(value: str, form: str) -> bool:
     try:
-        return parse_announced_utc(text)
-    except AttestationError as exc:
-        raise AttestationError(
-            "quoted time fragment must be an explicit supported UTC timestamp"
-        ) from exc
+        datetime.strptime(value, form)
+    except ValueError:
+        return False
+    return True
 
 
 def require_quotation(
@@ -255,6 +303,7 @@ def _build_attestation(
         quoted_symbol_text=quoted_symbol_text,
         spot_symbol=spot_symbol,
     )
+    precision_sec = quoted_time_precision_sec(quoted_time_text)
 
     lead = t0_ts - now_ts
     if enforce_min_lead and lead < MIN_LEAD_SEC:
@@ -281,7 +330,7 @@ def _build_attestation(
         source_identity=f"human_attestation:{attested_by}",
         source_url=url,
         received_at_utc=received_at_utc,
-        precision_sec=ANNOUNCED_PRECISION_SEC,
+        precision_sec=precision_sec,
         caveats=("OFFICIAL_T0_READ_BY_A_PERSON_FROM_ANNOUNCEMENT_PROSE",),
         lifecycle_generation=lifecycle_generation,
         asset_identity=asset_identity,
@@ -301,6 +350,7 @@ def _build_attestation(
         "quoted_sentence": quote,
         "quoted_time_text": quoted_time_text,
         "quoted_symbol_text": quoted_symbol_text,
+        "quoted_time_precision_sec": precision_sec,
         "announcement_url": url,
         "lead_sec_at_attestation": lead,
     }
@@ -552,7 +602,7 @@ def attest(
                 "status": "ALREADY_RECORDED",
                 "episode_id": observation["episode_id"],
                 "official_spot_t0": observation["timestamp_ts"],
-                "precision_sec": ANNOUNCED_PRECISION_SEC,
+                "precision_sec": int(official_entry.get("t0_precision_sec") or 0),
                 "appended_records": 0,
                 "official_record_hash": official_entry["record_hash"],
                 "attestation": official_entry["attestation"],
@@ -696,7 +746,7 @@ def attest(
         "status": "ATTESTED" if written else "ALREADY_RECORDED",
         "episode_id": observation["episode_id"],
         "official_spot_t0": observation["timestamp_ts"],
-        "precision_sec": ANNOUNCED_PRECISION_SEC,
+        "precision_sec": int(official_entry.get("t0_precision_sec") or 0),
         "appended_records": written,
         "official_record_hash": official_entry["record_hash"],
         "attestation": official_entry["attestation"],
