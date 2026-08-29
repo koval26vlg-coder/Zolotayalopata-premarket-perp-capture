@@ -3716,12 +3716,16 @@ def events_for_capture(
     source_class: str,
     asset_class: str = ASSET_CLASS_CRYPTO_TOKEN,
     horizon_sec: int = 24 * 3600,
+    _selection_mode: str = "capture",
+    _registry_lock_owner: RegistryLockOwner | None = None,
 ) -> list[dict[str, Any]]:
     """Events whose t0 is still ahead, within one source class only.
 
     The source class is a required argument rather than a filter applied afterwards:
     mixing an announcement-derived t0 with a metadata-derived one in the same capture
     set would reintroduce exactly the defect this registry exists to avoid."""
+    if _selection_mode not in {"capture", "arming"}:
+        raise EventRegistryError(f"unknown official event selection mode: {_selection_mode}")
     if registry_path is not None and not isinstance(registry_path, (str, os.PathLike)):
         raise EventRegistryError(
             "VERIFIED_PRODUCTION_REGISTRY_REQUIRED: direct event sequences are not "
@@ -3733,7 +3737,9 @@ def events_for_capture(
             "VERIFIED_PRODUCTION_REGISTRY_REQUIRED: capture selection only reads "
             "the production registry"
         )
-    entries, report = _verify_registry_snapshot(path)
+    entries, report = _verify_registry_snapshot(
+        path, bootstrap_lock_owner=_registry_lock_owner
+    )
     if report["status"] != "REGISTRY_OK" or (
         report["summary_required"] and not report["summary_verified"]
     ):
@@ -3838,6 +3844,12 @@ def events_for_capture(
     episodes = materialize_episodes(entries)
     def is_due_t0(value: Any) -> bool:
         t0 = int(value or 0)
+        if _selection_mode == "arming":
+            # Arming is deliberately earlier than capture selection.  It seals an
+            # already-attested event only while the complete pre-listing window can
+            # still be observed; it never grants capture authority or applies the
+            # narrow t0-30m launch grace used by the collector.
+            return t0 - now_ts >= config.CAPTURE_WINDOW_BEFORE_SEC
         target = t0 - config.CAPTURE_WINDOW_BEFORE_SEC
         return (
             target - config.CAPTURE_LAUNCH_EARLY_GRACE_SEC
@@ -3916,6 +3928,32 @@ def events_for_capture(
             "plan_hash": trust_root.PLAN_HASH,
         })
     return upcoming
+
+
+def events_for_arming(
+    registry_path: Path | None = None,
+    *,
+    now_ts: int,
+    source_class: str = SOURCE_OFFICIAL_ANNOUNCEMENT,
+    asset_class: str = ASSET_CLASS_CRYPTO_TOKEN,
+    _registry_lock_owner: RegistryLockOwner | None = None,
+) -> list[dict[str, Any]]:
+    """Select future official anchors early enough to seal an arming receipt.
+
+    Unlike :func:`events_for_capture`, this selector does not wait for the narrow
+    collector launch window around ``t0 - CAPTURE_WINDOW_BEFORE_SEC``.  All registry,
+    active-generation, freshness, official-source, asset-identity and lineage checks
+    remain identical, while the event must still be far enough ahead to preserve the
+    complete configured pre-listing window.
+    """
+    return events_for_capture(
+        registry_path=registry_path,
+        now_ts=now_ts,
+        source_class=source_class,
+        asset_class=asset_class,
+        _selection_mode="arming",
+        _registry_lock_owner=_registry_lock_owner,
+    )
 
 
 def capture_candidate_problems(

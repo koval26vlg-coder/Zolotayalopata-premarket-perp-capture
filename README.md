@@ -6,17 +6,17 @@ Research-only контур для публичных pre-market perpetual дан
 
 Проект наблюдает рынок с плечом, но никогда не берёт плечо: private API, ключи,
 подпись запросов, ордера, margin, real capital и переводы запрещены. Capture не
-запускался и активным PlanOnly v34 не разрешён. v34 сохраняет bounded-поиск
-официальных announcement-кандидатов, но принимает их только по точной схеме полей,
-с фиксированными non-authority значениями и venue-bound официальным URL;
+запускался и активным PlanOnly v36 не разрешён. v36 сохраняет bounded-поиск
+официальных announcement-кандидатов, добавляет at-most-once локальное уведомление,
+no-capture arming точного official `t0` и create-only предложение event-bound v37;
 локальная fail-closed paper simulation остаётся отдельным offline-контуром. Новый
 no-model scheduler делает только дешёвый пяти-минутный due-check; фактическая сеть
 работает по adaptive cadence 6ч/3ч/1ч/5мин.
 
-## Состояние v34
+## Состояние v36
 
-- immutable PlanOnly: `premarket_perp_capture_20260822_v34`;
-- status: `ANNOUNCEMENT_WATCH_SCHEDULED_NO_CAPTURE`;
+- immutable PlanOnly: `premarket_perp_capture_20260822_v36`;
+- status: `OFFICIAL_T0_ARMING_READY_NO_CAPTURE`;
 - разрешены только metadata registry, human official attestation и локальная
   fail-closed registry quarantine, offline paper-readiness и bounded official-index
   discovery без article-body fetch;
@@ -27,6 +27,14 @@ no-model scheduler делает только дешёвый пяти-минут�
 - candidate store отклоняет любое поле вне точной схемы, повторно связывает article URL
   с официальным host/path конкретного `listing_venue` и не допускает повышения
   `identity_authority`, `registry_write` или `human_attestation_required`;
+- первый current-кандидат может показать один локальный Windows toast; intent
+  fsync-ится до единственного `Show`, а неопределённый результат не пересылается
+  автоматически и не становится `t0`;
+- arming требует current `CRYPTO_TOKEN`, `OFFICIAL_ANNOUNCEMENT`, точность ровно одну
+  секунду, точное contract/spot mapping и не менее полного pre-listing окна; receipt
+  append-only и не содержит capture token;
+- генератор v37 создаёт только детерминированное предложение, не новый активный план:
+  trust root, capture authority и scheduler он не меняет;
 - тикер в заголовке — только heuristic candidate. Cross-venue связь требует
   отдельной human `SAME_UNDERLYING` аттестации с дословным названием актива;
 - точность official `t0` выводится только из дословного времени источника: minute-only
@@ -47,8 +55,8 @@ no-model scheduler делает только дешёвый пяти-минут�
   `PAPER_NOT_RUN_COST_MODEL_MISSING`; виртуальная позиция и net PnL не создаются;
 - replay descriptive-only и не поддерживает ACCEPT/REJECT стратегии.
 
-Активные v34 plan hash и file SHA-256 закреплены во внешнем trust root
-`src/frozen_plan_bindings.py`; v33 сохранён byte-identical как непосредственный
+Активные v36 plan hash и file SHA-256 закреплены во внешнем trust root
+`src/frozen_plan_bindings.py`; v35 сохранён byte-identical как непосредственный
 предшественник.
 
 ## Компоненты
@@ -64,6 +72,9 @@ no-model scheduler делает только дешёвый пяти-минут�
 | `src/announcement_candidate_store.py` | append-only hash-chain непроверенных кандидатов |
 | `src/announcement_watch_state.py` | hash-chained attempts, atomic state и dedicated claim |
 | `src/announcement_watch_scheduler.py` | adaptive wake-only due-controller без модели |
+| `src/candidate_alert.py` | at-most-once alert ledger и локальный toast dispatch |
+| `src/official_t0_arming.py` | immutable official-t0 no-capture arming receipt |
+| `src/event_bound_plan_proposal.py` | deterministic create-only proposal для v37 |
 | `src/registry_quarantine.py` | локальная CAS-bound quarantine повреждённого поколения |
 | `src/capture.py` | bounded collector implementation; активным планом не авторизован |
 | `src/replay.py` | строгий offline loader и causal gross BBO markout |
@@ -72,6 +83,8 @@ no-model scheduler делает только дешёвый пяти-минут�
 | `tools/start_premarket_announcement_discovery_visible.ps1` | один bounded visible discovery tick |
 | `tools/start_premarket_announcement_watch_scheduler.ps1` | тихий due-tick/status launcher |
 | `tools/install_premarket_announcement_watch_scheduler.ps1` | idempotent hidden Windows task installer |
+| `tools/show_premarket_candidate_alert.ps1` | Windows notification sidecar без сети |
+| `tools/start_premarket_official_t0_arming_visible.ps1` | visible no-capture arming/status launcher |
 | `src/frozen_plan_bindings.py` | внешний trust root PlanOnly lineage |
 
 ## Registry v3
@@ -262,6 +275,99 @@ pwsh -NoProfile -ExecutionPolicy Bypass `
 и пишутся в stderr, но задача остаётся включённой. Codex/LLM automation для неё не
 включается.
 
+## После candidate alert: refresh → attest → arm
+
+Toast является только приглашением прочитать официальную статью. Сначала скопируйте из
+неё дословное предложение со временем, дословный UTC-фрагмент **с секундами** и символ.
+Нельзя превращать `10:00 UTC` в `10:00:00 UTC`: minute-only источник останется
+descriptive-only. Затем весь участок ниже нужно закончить не позднее 300 секунд после
+refresh и минимум за 1 800 секунд до `t0`.
+
+```powershell
+$py = "C:\Users\koval\.cache\codex-runtimes\codex-primary-runtime\dependencies\python\python.exe"
+$pwsh7 = "C:\Program Files\PowerShell\7\pwsh.exe"
+$armLauncher = ".\tools\start_premarket_official_t0_arming_visible.ps1"
+
+$perpVenue = "<bybit|okx|gate>"
+$listingVenue = "<bybit|okx|gate|binance|bitget|kucoin|upbit>"
+$contract = "<native perpetual contract id>"
+$spotSymbol = "<spot symbol из официальной статьи>"
+$t0Utc = "<YYYY-MM-DDTHH:MM:SSZ>"
+$announcementUrl = "<официальный URL из toast>"
+$quote = "<дословное предложение со стартом spot>"
+$quotedTime = "<дословный UTC-фрагмент с секундами>"
+$quotedSymbol = "<дословный символ>"
+$operator = "<operator id>"
+
+$metaRun = "metadata_operator_" + [DateTime]::UtcNow.ToString("yyyyMMddTHHmmssZ")
+$metadata = (& $py src\event_registry.py --refresh --run-id $metaRun) |
+    ConvertFrom-Json
+if ($LASTEXITCODE -ne 0 -or $metadata.status -ne "REFRESH_COMPLETE" -or
+    $metadata.complete -ne $true) {
+    throw "metadata refresh incomplete: $($metadata.status)"
+}
+
+# Read-only copyable queue: episode_id, lifecycle_generation, contract and article URL.
+& $py src\candidate_alert.py --review-status --json
+if ($LASTEXITCODE -ne 0) { throw "candidate review queue unavailable" }
+
+$venueState = $metadata.active_lifecycle_generations_by_venue.PSObject.Properties[
+    $perpVenue
+].Value
+$generationProperty = $venueState.PSObject.Properties[$contract]
+if ($null -eq $generationProperty) { throw "contract is not current" }
+$generation = [int]$generationProperty.Value
+
+$attestRun = "attest_operator_" + [DateTime]::UtcNow.ToString("yyyyMMddTHHmmssZ")
+$attestArgs = @(
+    "src\official_attestation.py", "--attest", "--run-id", $attestRun,
+    "--venue", $perpVenue, "--listing-venue", $listingVenue,
+    "--spot-symbol", $spotSymbol, "--premarket-contract-id", $contract,
+    "--lifecycle-generation", ([string]$generation),
+    "--announced-utc", $t0Utc, "--announcement-url", $announcementUrl,
+    "--quote", $quote, "--quoted-time", $quotedTime,
+    "--quoted-symbol", $quotedSymbol, "--attested-by", $operator
+)
+# При cross-venue дополнительно обязательны:
+# --same-underlying-decision SAME_UNDERLYING --identity-quote <дословно>
+# --quoted-underlying <дословное полное название актива>
+$attest = (& $py @attestArgs) | ConvertFrom-Json
+if ($LASTEXITCODE -ne 0 -or $attest.status -notin @("ATTESTED", "ALREADY_RECORDED") -or
+    [int]$attest.precision_sec -ne 1) {
+    throw "official attestation is not seconds-grade"
+}
+
+$current = (& $pwsh7 -NoProfile -ExecutionPolicy Bypass -File $armLauncher `
+    -Status -EpisodeId $attest.episode_id -Json) | ConvertFrom-Json
+if ($LASTEXITCODE -ne 0) { throw "arming status failed" }
+$currentHead = ""
+if ($current.status -eq "ARMED_NO_CAPTURE_AUTHORITY") {
+    $currentHead = [string]$current.receipt_hash
+} elseif ($current.status -ne "NO_ARMING_RECEIPT") {
+    throw "unexpected arming state: $($current.status)"
+}
+
+$armRun = "arm_operator_" + [DateTime]::UtcNow.ToString("yyyyMMddTHHmmssZ")
+$armed = (& $pwsh7 -NoProfile -ExecutionPolicy Bypass -File $armLauncher -Arm `
+    -RunId $armRun -EpisodeId $attest.episode_id `
+    -OfficialRecordHash $attest.official_record_hash `
+    -ExpectedOfficialT0 ([string]$attest.official_spot_t0) `
+    -ExpectedContract $contract -ExpectedSpotSymbol $spotSymbol `
+    -ExpectedCurrentArmingReceiptHash $currentHead -ArmedBy $operator `
+    -AcknowledgeNoCaptureAuthority -Json) | ConvertFrom-Json
+if ($LASTEXITCODE -ne 0 -or $armed.capture_authorized -ne $false -or
+    $armed.capture_token_issued -ne $false) { throw "arming failed closed" }
+
+$readback = (& $pwsh7 -NoProfile -ExecutionPolicy Bypass -File $armLauncher `
+    -Status -EpisodeId $attest.episode_id -Json) | ConvertFrom-Json
+if ($readback.receipt_hash -ne $armed.receipt_hash -or
+    $readback.capture_authorized -ne $false) { throw "arming readback mismatch" }
+$readback | ConvertTo-Json -Depth 32
+```
+
+Каждый writer сам делает initial и commit preflight. Этот маршрут не запускает market
+capture, не выдаёт capture token и не создаёт event-bound v37 автоматически.
+
 ## Preflight
 
 ```powershell
@@ -269,21 +375,24 @@ pwsh -NoProfile -ExecutionPolicy Bypass `
 & $py src\risk_gate.py --preflight --write-class official_attestation --run-id <id>
 & $py src\risk_gate.py --preflight --write-class announcement_discovery --run-id <id>
 & $py src\risk_gate.py --preflight --write-class announcement_watch_control --run-id <id>
+& $py src\risk_gate.py --preflight --write-class candidate_alert --run-id <id>
+& $py src\risk_gate.py --preflight --write-class official_t0_arming --run-id <id>
+& $py src\risk_gate.py --preflight --write-class event_bound_plan_proposal --run-id <id>
 & $py src\risk_gate.py --preflight --write-class registry_quarantine --run-id <id>
 ```
 
-Preflight не запускает writer автоматически. Реальные refresh, attestation и
+Preflight не запускает writer автоматически. Реальные refresh, attestation,
 quarantine и discovery являются отдельными операциями. После human official
-attestation нужен отдельный minute-grade arming PlanOnly без capture; только следующий
-event-bound PlanOnly может связать конкретное событие и явно добавить ровно один
-`market_data_capture`, плюс отдельное разрешение пользователя на видимый запуск.
+attestation v36 может создать только no-capture arming receipt и детерминированное
+предложение. Реальный event-bound v37 должен быть отдельно проверен, выпущен и явно
+одобрен пользователем до ровно одного видимого `market_data_capture`.
 
 ## Immutable lineage
 
-Опубликованы v1–v34. Все прежние планы остаются на диске и проверяются по file SHA,
+Опубликованы v1–v36. Все прежние планы остаются на диске и проверяются по file SHA,
 canonical plan hash и identity. v27 и v28 сохранены; v29 сохранён byte-identical;
-v30–v33 сохранены byte-identical. v34 supersede-ит v33, сохраняя adaptive no-model
-scheduler/control-plane contract и исправляя fresh-host создание Task Scheduler folder
-без capture-authority. Ни один старый PlanOnly не переписывался.
+v30–v35 сохранены byte-identical. v36 supersede-ит v35, исправляя production alert
+integration и закрепляя final-clock/current-head/CAS guards без capture-authority. Ни
+один старый PlanOnly не переписывался.
 
 См. `AGENTS.md`, `src/frozen_plan_bindings.py` и решения в `docs/decisions/`.

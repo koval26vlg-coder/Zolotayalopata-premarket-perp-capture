@@ -586,6 +586,20 @@ def _load_and_verify(path: Path) -> list[dict[str, Any]]:
     return records
 
 
+def load_verified_candidate_records(
+    path: str | os.PathLike[str],
+) -> tuple[dict[str, Any], ...]:
+    """Read and verify the complete candidate-store chain without mutating it.
+
+    The candidate alert controller needs a public read surface, but it must not
+    gain a weaker parser than the writer uses.  Returning fresh dictionaries in
+    an immutable outer tuple keeps caller mutations local while preserving the
+    exact on-disk verification performed by :func:`_load_and_verify`.
+    """
+
+    return tuple(dict(record) for record in _load_and_verify(Path(path)))
+
+
 def _append_locked(
     path: Path,
     candidates: Sequence[dict[str, Any]],

@@ -507,6 +507,7 @@ class CapabilityTokenBindingTests(unittest.TestCase):
                 risk_gate.REGISTRY_RECOVERY_SECONDS_GRADE_PLAN_STATUS,
                 risk_gate.ANNOUNCEMENT_DISCOVERY_PLAN_STATUS,
                 risk_gate.ANNOUNCEMENT_WATCH_PLAN_STATUS,
+                risk_gate.OFFICIAL_T0_ARMING_READY_PLAN_STATUS,
             },
         )
         forged = self.verified_preflight()

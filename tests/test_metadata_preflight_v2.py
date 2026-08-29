@@ -67,6 +67,20 @@ class ResolvedPathBindingTests(unittest.TestCase):
             "announcement_watch_claim_archive": str(
                 risk_gate.config.ANNOUNCEMENT_WATCH_CLAIM_ARCHIVE.resolve(strict=False)
             ),
+            "candidate_alert_ledger_path": str(
+                risk_gate.config.CANDIDATE_ALERT_LEDGER_PATH.resolve(strict=False)
+            ),
+            "official_t0_arming_root": str(
+                risk_gate.config.OFFICIAL_T0_ARMING_ROOT.resolve(strict=False)
+            ),
+            "event_bound_plan_proposal_root": str(
+                risk_gate.config.EVENT_BOUND_PLAN_PROPOSAL_ROOT.resolve(strict=False)
+            ),
+            "windows_powershell_executable": str(
+                Path(risk_gate.config.WINDOWS_POWERSHELL_EXECUTABLE).resolve(
+                    strict=False
+                )
+            ),
         }
         self.assertEqual(
             risk_gate.verify_resolved_path_bindings(

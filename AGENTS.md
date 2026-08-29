@@ -24,13 +24,17 @@
 - вывод и переводы средств;
 - решения ACCEPT/REJECT по захваченным данным.
 
-`execution_replay` — офлайн-анализ уже лежащих на диске публичных данных. v34
+`execution_replay` — офлайн-анализ уже лежащих на диске публичных данных. v36
 сохраняет fail-closed offline paper simulation, bounded official
 announcement-index discovery: без подходящего official event,
 sealed capture и полного cost model она создаёт ноль виртуальных позиций и не публикует
 net PnL. Discovery-кандидат не является `t0` и не даёт capture-authority. Биржевое
 paper execution остаётся запрещённым. Candidate store принимает только exact schema,
 фиксированные non-authority значения и официальный URL, связанный с listing venue.
+Первый current candidate может получить одно локальное уведомление; uncertainty после
+submission intent не ретраится автоматически. Official-t0 arming принимает только
+explicit human-attested seconds-grade crypto event, но не выдаёт capture token. v37
+proposal является create-only черновиком и не меняет trust root.
 No-model watcher просыпается локально каждые пять минут, но сеть и исследовательские
 записи разрешены только при наступлении adaptive due; `NOT_DUE` ничего не пишет.
 Полный контракт: `RISK_CONTRACT` в `src/project_config.py`, он же записан в PlanOnly.
@@ -50,9 +54,10 @@ No-model watcher просыпается локально каждые пять �
   предыдущий capture не завершён.
 
 Только `market_data_capture` может получить одноразовый capture-токен. Metadata refresh,
-human official attestation, bounded announcement discovery и локальная registry
-quarantine имеют отдельные действия и не заимствуют capture-authority. Capture без
-токена невозможен — флага «я подтверждаю» здесь нет по замыслу.
+human official attestation, bounded announcement discovery, candidate alert,
+official-t0 arming, event-bound proposal и локальная registry quarantine имеют
+отдельные действия и не заимствуют capture-authority. Capture без токена невозможен —
+флага «я подтверждаю» здесь нет по замыслу.
 
 Исключение только одно: `announcement_watch_control` пишет локальные state/ledger/claim
 после PlanOnly/capability preflight, но не требует shared gate. Это нужно, чтобы
@@ -107,15 +112,16 @@ Workspace общий с `ZolotyayLopata`. Этот проект — второй
   mutation receipt, а не по текущему head.
 - Текущий human-attested producer выводит точность из дословного времени источника.
   Minute-only источник остаётся descriptive; только явный `HH:MM:SS` может дать
-  seconds-grade candidate, но v34 всё равно не авторизует capture.
+seconds-grade candidate, но v36 всё равно не авторизует capture.
 
 ## Статус
 
 Capture ещё **не запускался**. PlanOnly в статусе
-`ANNOUNCEMENT_WATCH_SCHEDULED_NO_CAPTURE`; активный immutable план — v34.
+`OFFICIAL_T0_ARMING_READY_NO_CAPTURE`; активный immutable план — v36.
 `market_data_capture` этим статусом не авторизован. Discovery сохраняет только
 `UNVERIFIED_ANNOUNCEMENT_DISCOVERY`; index publication time и ticker match не могут
-стать official `t0`. После human attestation нужен отдельный arming/checkpoint, а затем
-event-bound PlanOnly и отдельное разрешение пользователя на видимый capture. Текущий
+стать official `t0`. После human attestation v36 может записать no-capture arming
+receipt и создать proposal; затем нужен отдельный immutable event-bound v37 и отдельное
+разрешение пользователя на видимый capture. Текущий
 paper-only launcher выполняет только проверку готовности и детерминированный offline
 тик; `NO_ELIGIBLE_EVENT` является нормальным нулевым результатом, а не сделкой.

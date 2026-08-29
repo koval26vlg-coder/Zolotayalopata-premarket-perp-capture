@@ -20,13 +20,13 @@ import project_config as config
 from canonical_hash import canonical_hash
 
 
-SCHEMA = "premarket_perp_capture_planonly_v34"
-PLAN_ID = "premarket_perp_capture_20260822_v34"
-SUPERSEDES_PLAN_ID = "premarket_perp_capture_20260822_v33"
-SUPERSEDES_PLAN_HASH = "9db73dc2e15ec266472d0cf0693f5db935f26e6b6dd3633885214e8cc965980e"
-SUPERSEDES_PLAN_PATH = "docs/plans/premarket-perp-capture-planonly-20260822-v33.json"
+SCHEMA = "premarket_perp_capture_planonly_v36"
+PLAN_ID = "premarket_perp_capture_20260822_v36"
+SUPERSEDES_PLAN_ID = "premarket_perp_capture_20260822_v35"
+SUPERSEDES_PLAN_HASH = "51956bf5e041f4df2424f1647c52bde438232b3f2e9303de3456e7fa98dd2950"
+SUPERSEDES_PLAN_PATH = "docs/plans/premarket-perp-capture-planonly-20260822-v35.json"
 HASH_METHOD = "sha256_canonical_json_excluding_plan_hash"
-PLAN_STATUS = "ANNOUNCEMENT_WATCH_SCHEDULED_NO_CAPTURE"
+PLAN_STATUS = "OFFICIAL_T0_ARMING_READY_NO_CAPTURE"
 
 
 class PlanBuildError(ValueError):
@@ -536,6 +536,7 @@ def _announcement_watch_scheduler_contract() -> dict[str, Any]:
             "attempt_started_ledger",
             "metadata_registry_refresh",
             "announcement_discovery",
+            "candidate_alert_dispatch",
             "candidate_inspection",
             "attempt_terminal_ledger",
             "atomic_state",
@@ -560,13 +561,13 @@ def _announcement_watch_scheduler_contract() -> dict[str, Any]:
         "control_preflight_failure": (
             "FAIL_CLOSED_NO_WRITE_RECHECK_ON_NEXT_FIVE_MINUTE_WAKE"
         ),
-        "state_path": "docs/announcements/official-listing-discovery-state-v34.json",
+        "state_path": "docs/announcements/official-listing-discovery-state-v36.json",
         "attempt_ledger_path": (
-            "docs/announcements/official-listing-discovery-attempts-v34.jsonl"
+            "docs/announcements/official-listing-discovery-attempts-v36.jsonl"
         ),
-        "claim_path": "docs/announcements/official-listing-watch-claim-v34.json",
+        "claim_path": "docs/announcements/official-listing-watch-claim-v36.json",
         "claim_archive": (
-            "docs/announcements/official-listing-watch-claim-archive-v34"
+            "docs/announcements/official-listing-watch-claim-archive-v36"
         ),
         "control_write_class": "announcement_watch_control",
         "shared_gate_required_for_research_writes": True,
@@ -575,6 +576,112 @@ def _announcement_watch_scheduler_contract() -> dict[str, Any]:
         "capture_authorized": False,
         "paper_execution": False,
         "live_execution": False,
+        "orders": False,
+    }
+
+
+def _candidate_alert_contract() -> dict[str, Any]:
+    return {
+        "schema": "premarket_candidate_alert_v1",
+        "runtime": "src/candidate_alert.py",
+        "sidecar": "tools/show_premarket_candidate_alert.ps1",
+        "scheduler": "EXISTING_HIDDEN_INTERACTIVE_TASK",
+        "windows_runtime": str(config.WINDOWS_POWERSHELL_EXECUTABLE),
+        "source": "VERIFIED_APPEND_ONLY_UNVERIFIED_CANDIDATE_STORE",
+        "eligibility": (
+            "FIRST_REVISION_OF_CURRENT_NONTERMINAL_CANDIDATE_MATCHING_"
+            "CURRENT_REGISTRY_EPISODE"
+        ),
+        "alert_group": "ZLP-PREMARKET",
+        "automatic_show_max_per_candidate": 1,
+        "duplicate_or_revision": "NO_NEW_TOAST",
+        "intent_order": "FSYNC_SUBMISSION_INTENT_BEFORE_SINGLE_SHOW_CALL",
+        "uncertain_delivery": "DELIVERY_UNCERTAIN_NO_AUTO_RETRY",
+        "stale_lock_recovery": (
+            "ARCHIVE_AND_REACQUIRE_ONLY_FOR_CONCLUSIVELY_DEAD_SAME_HOST_PID"
+        ),
+        "unresolved_or_remote_lock": "FAIL_CLOSED_RETRY_NEXT_INTERVAL",
+        "history_confirmation": "EXACT_TAG_AND_GROUP_READBACK",
+        "scheduler_counts": ["submitted_alerts", "history_confirmed_alerts"],
+        "operator_review_status": (
+            "READ_ONLY_VERIFIED_QUEUE_WITH_EPISODE_AND_LIFECYCLE_GENERATION"
+        ),
+        "failure_before_intent": "RETRY_NEXT_INTERVAL",
+        "separate_scheduler": False,
+        "network": False,
+        "capture_authorized": False,
+        "capture_token_issued": False,
+        "orders": False,
+    }
+
+
+def _official_t0_arming_contract() -> dict[str, Any]:
+    return {
+        "schema": "premarket_official_t0_arming_receipt_v1",
+        "runtime": "src/official_t0_arming.py",
+        "launcher": "tools/start_premarket_official_t0_arming_visible.ps1",
+        "root": "docs/arming/official-t0-v1",
+        "source_class": "OFFICIAL_ANNOUNCEMENT",
+        "asset_class": "CRYPTO_TOKEN",
+        "required_precision_sec": 1,
+        "minimum_lead_sec": config.CAPTURE_WINDOW_BEFORE_SEC,
+        "event_selector": "DISTINCT_EARLY_ARMING_SELECTOR_NOT_CAPTURE_DUE_SELECTOR",
+        "expected_operator_bindings": [
+            "official_record_hash",
+            "official_spot_t0",
+            "premarket_contract_id",
+            "spot_symbol",
+        ],
+        "revision_compare_and_swap": (
+            "EXACT_CURRENT_ARMING_RECEIPT_HASH_REQUIRED_WHEN_ANCHOR_CHANGES"
+        ),
+        "lineage": list(config.CAPTURE_LINEAGE_FIELDS),
+        "receipt_intrinsic_binding": (
+            "ARMING_ID_FROM_EPISODE_AND_LEAD_FROM_ARMED_AT_TO_OFFICIAL_T0"
+        ),
+        "preflight": "EXACT_INITIAL_AND_COMMIT_RECEIPTS_MUST_MATCH",
+        "clock": "FINAL_UTC_SECONDS_SAMPLED_AFTER_COMMIT_PREFLIGHT",
+        "registry_head_guard": (
+            "RESELECT_AFTER_COMMIT_PREFLIGHT_AND_HOLD_PRODUCTION_REGISTRY_LOCK_"
+            "THROUGH_RECEIPT_FSYNC"
+        ),
+        "write": "O_EXCL_ONE_IMMUTABLE_RECEIPT_PER_EVENT_REVISION",
+        "duplicate": "ALREADY_ARMED_NO_WRITE",
+        "requires_explicit_no_capture_acknowledgement": True,
+        "shared_gate_required": True,
+        "exclusive_market_data_writer_claim": False,
+        "network": False,
+        "capture_authorized": False,
+        "capture_token_issued": False,
+        "event_bound_plan_generated": False,
+        "orders": False,
+    }
+
+
+def _event_bound_plan_proposal_contract() -> dict[str, Any]:
+    return {
+        "schema": "premarket_perp_event_bound_plan_proposal_v1",
+        "runtime": "src/event_bound_plan_proposal.py",
+        "proposed_plan_schema": "premarket_perp_capture_planonly_v37",
+        "proposed_plan_id": "premarket_perp_capture_20260822_v37",
+        "proposed_plan_path": (
+            "docs/plans/premarket-perp-capture-planonly-20260822-v37.json"
+        ),
+        "mode": "CREATE_ONLY_PROPOSAL_NO_TRUST_ROOT_REBIND",
+        "event_anchor": "FROZEN_V36_ARMING_RECEIPT",
+        "current_lifecycle_snapshot": "REQUIRED_UNDER_V37_BEFORE_CAPTURE",
+        "receipt_validation": "EXACT_SCHEMA_FIELD_SET_AND_CANONICAL_RECEIPT_HASH",
+        "current_arming_head": (
+            "SUPPLIED_RECEIPT_MUST_REMAIN_DURABLE_HEAD_UNDER_ARMING_WRITER_LOCK"
+        ),
+        "write": "O_EXCL_ROOT_CONFINED_DETERMINISTIC_PROPOSAL",
+        "output_root": "docs/arming/event-bound-plan-proposals-v1",
+        "clock": "FINAL_UTC_SECONDS_SAMPLED_AFTER_COMMIT_PREFLIGHT",
+        "preflight": "EXACT_INITIAL_AND_COMMIT_RECEIPTS_MUST_MATCH",
+        "requires_explicit_user_capture_approval": True,
+        "capture_authorized": False,
+        "capture_token_issued": False,
+        "trust_root_rebound": False,
         "orders": False,
     }
 
@@ -601,12 +708,13 @@ def build_plan(generated_at_utc: str) -> dict[str, Any]:
         "generated_at_utc": generated_at_utc,
         "implementation_path_semantics": "repo_path values are relative to the runtime Git root",
         "objective": (
-            "Schedule low-cost bounded discovery of official spot-listing announcement candidates for "
-            "current crypto pre-market perpetual episodes, preserving registry and "
-            "source lineage for explicit human review. Index timestamps remain "
-            "publication metadata only. This plan does not authorize automatic t0 "
-            "attestation, market-data capture, venue paper/testnet execution, live "
-            "execution, orders, leverage or capital."
+            "Run low-cost bounded discovery, alert once on a current official-listing "
+            "candidate, and allow an explicitly reviewed seconds-grade official t0 to "
+            "be sealed as no-capture arming evidence. A deterministic v37 proposal may "
+            "then be prepared, but cannot activate a plan or start capture. Index "
+            "timestamps remain publication metadata only. This plan does not authorize "
+            "automatic t0 attestation, market-data capture, venue paper/testnet "
+            "execution, live execution, orders, leverage or capital."
         ),
         "hypothesis_under_study": (
             "LONG before the listing, exit at t0, +5s, +15s or +60s - stated here so "
@@ -638,6 +746,18 @@ def build_plan(generated_at_utc: str) -> dict[str, Any]:
             ),
             "announcement_watch_claim_archive": str(
                 config.ANNOUNCEMENT_WATCH_CLAIM_ARCHIVE.resolve(strict=False)
+            ),
+            "candidate_alert_ledger_path": str(
+                config.CANDIDATE_ALERT_LEDGER_PATH.resolve(strict=False)
+            ),
+            "official_t0_arming_root": str(
+                config.OFFICIAL_T0_ARMING_ROOT.resolve(strict=False)
+            ),
+            "event_bound_plan_proposal_root": str(
+                config.EVENT_BOUND_PLAN_PROPOSAL_ROOT.resolve(strict=False)
+            ),
+            "windows_powershell_executable": str(
+                Path(config.WINDOWS_POWERSHELL_EXECUTABLE).resolve(strict=False)
             ),
         },
         "enforcement": {
@@ -672,7 +792,8 @@ def build_plan(generated_at_utc: str) -> dict[str, Any]:
                 "the already validated IP while TLS SNI and Host retain the venue name"
             ),
             "resolved_path_bindings": (
-                "shared controls, capture root and announcement-watch control paths "
+                "shared controls, capture root, announcement-watch controls, alert "
+                "ledger, arming/proposal roots and the Windows notification runtime "
                 "are compared to their canonical absolute values before writes"
             ),
         },
@@ -1081,6 +1202,9 @@ def build_plan(generated_at_utc: str) -> dict[str, Any]:
         },
         "announcement_discovery": _announcement_discovery_contract(),
         "announcement_watch_scheduler": _announcement_watch_scheduler_contract(),
+        "candidate_alert": _candidate_alert_contract(),
+        "official_t0_arming": _official_t0_arming_contract(),
+        "event_bound_plan_proposal": _event_bound_plan_proposal_contract(),
         "capture_bounds": {
             "window_before_t0_sec": config.CAPTURE_WINDOW_BEFORE_SEC,
             "window_after_t0_sec": config.CAPTURE_WINDOW_AFTER_SEC,
@@ -1315,26 +1439,32 @@ def build_plan(generated_at_utc: str) -> dict[str, Any]:
                 "fetch bounded official announcement indexes and append unverified "
                 "announcement candidates"
             ),
+            "submit one local candidate notification after alert preflight",
+            (
+                "seal one human-attested exact seconds-grade official spot t0 "
+                "as immutable no-capture arming evidence"
+            ),
+            "write one deterministic event-bound plan proposal from an arming receipt",
             "quarantine one failed registry generation after exact recovery preflight",
             "run deterministic offline paper simulation over verified sealed capture evidence",
         ],
         "activation_gate": {
             "capture_authorized": False,
             "reason": (
-                "v34 preserves the v33 no-model watcher contract and fixes exact "
-                "fresh-host Task Scheduler folder creation before registration, while "
-                "hardens the append-only unverified candidate store with an exact "
-                "field schema, fixed non-authority values and venue-bound official "
-                "article URLs. The active status still "
-                "excludes market_data_capture: index publication time and ticker "
-                "matches cannot create an official t0, capture token, venue paper "
-                "execution, live execution or order authority"
+                "v36 preserves the v35 no-model watcher, at-most-once candidate alert, "
+                "official seconds-grade t0 arming receipt and deterministic create-only "
+                "event proposal, while binding the production scheduler to every alert "
+                "dependency after the first v35 tick exposed an incomplete call. "
+                "Candidate metadata and "
+                "proxy timestamps cannot arm. Even a valid arming receipt has no "
+                "capture token or capture authority, and the proposal cannot rebind the "
+                "trust root, execute venue paper/live orders, or start market data work"
             ),
             "required_next_checkpoint": (
-                "after human review creates one current-generation CRYPTO_TOKEN "
-                "official attestation, issue a separate immutable minute-grade arming "
-                "plan without capture; only a later event-bound PlanOnly may explicitly "
-                "authorize exactly one visible market_data_capture"
+                "after human review creates and arms one current-generation CRYPTO_TOKEN "
+                "official seconds-grade t0 with enough lead, inspect the deterministic "
+                "proposal, collect a fresh lifecycle snapshot, and explicitly issue a "
+                "separate immutable event-bound v37 before exactly one visible capture"
             ),
         },
         "acceptance_policy": {
@@ -1416,6 +1546,12 @@ def validate_plan(plan: dict[str, Any]) -> None:
                 "fetch bounded official announcement indexes and append unverified "
                 "announcement candidates"
             ),
+            "submit one local candidate notification after alert preflight",
+            (
+                "seal one human-attested exact seconds-grade official spot t0 "
+                "as immutable no-capture arming evidence"
+            ),
+            "write one deterministic event-bound plan proposal from an arming receipt",
             "quarantine one failed registry generation after exact recovery preflight",
             "run deterministic offline paper simulation over verified sealed capture evidence",
         ],
@@ -1430,6 +1566,19 @@ def validate_plan(plan: dict[str, Any]) -> None:
         == _announcement_watch_scheduler_contract(),
         "announcement watch scheduler contract mismatch",
     )
+    require(
+        plan.get("candidate_alert") == _candidate_alert_contract(),
+        "candidate alert contract mismatch",
+    )
+    require(
+        plan.get("official_t0_arming") == _official_t0_arming_contract(),
+        "official t0 arming contract mismatch",
+    )
+    require(
+        plan.get("event_bound_plan_proposal")
+        == _event_bound_plan_proposal_contract(),
+        "event-bound proposal contract mismatch",
+    )
     require(bool(plan.get("allowed_endpoints")), "plan must declare its endpoint allow-list")
     require(
         set((plan.get("resolved_path_bindings") or {}))
@@ -1442,6 +1591,10 @@ def validate_plan(plan: dict[str, Any]) -> None:
             "announcement_attempts_path",
             "announcement_watch_claim_path",
             "announcement_watch_claim_archive",
+            "candidate_alert_ledger_path",
+            "official_t0_arming_root",
+            "event_bound_plan_proposal_root",
+            "windows_powershell_executable",
         },
         "resolved path bindings are incomplete",
     )

@@ -44,6 +44,21 @@ def _candidate_inspection(**kwargs: Any) -> Mapping[str, Any]:
     return event_registry.inspect_capture_candidates(**kwargs)
 
 
+def _candidate_alert(**kwargs: Any) -> Mapping[str, Any]:
+    """Load the local Windows alert runtime only on a due research path."""
+    import candidate_alert
+    import event_registry
+    import risk_gate
+
+    return candidate_alert.process_candidate_alerts(
+        **kwargs,
+        candidate_store_path=config.ANNOUNCEMENT_CANDIDATE_PATH,
+        alert_ledger_path=config.CANDIDATE_ALERT_LEDGER_PATH,
+        target_selector=event_registry.select_unattested_crypto_premarket_episodes,
+        preflight=risk_gate.preflight,
+    )
+
+
 def _validate_control_receipt(
     receipt: Mapping[str, Any], *, run_id: str
 ) -> Mapping[str, Any]:
@@ -61,6 +76,12 @@ DISCOVERY_SUCCESS_STATUSES = frozenset({
 CANDIDATE_SUCCESS_STATUSES = frozenset({
     "NO_SECONDS_GRADE_CANDIDATE",
     "SECONDS_GRADE_CANDIDATE_FOUND_NO_CAPTURE_AUTHORITY",
+})
+ALERT_SUCCESS_STATUSES = frozenset({
+    "NO_NEW_CANDIDATE_ALERTS",
+    "CANDIDATE_ALERTS_HISTORY_CONFIRMED",
+    "CANDIDATE_ALERTS_SUBMITTED_UNCONFIRMED",
+    "DELIVERY_UNCERTAIN_NO_AUTO_RETRY",
 })
 
 
@@ -157,6 +178,10 @@ def _terminal_result(
     appended_candidates: int,
     reason: str | None,
     failure_stage: str | None = None,
+    alert_status: str | None = None,
+    submitted_alerts: int = 0,
+    history_confirmed_alerts: int = 0,
+    alert_ledger_head_hash: str | None = None,
 ) -> dict[str, Any]:
     terminal = store.record_terminal(
         attempt_id=attempt_id,
@@ -172,6 +197,10 @@ def _terminal_result(
         appended_candidates=appended_candidates,
         reason=reason,
         failure_stage=failure_stage,
+        alert_status=alert_status,
+        submitted_alerts=submitted_alerts,
+        history_confirmed_alerts=history_confirmed_alerts,
+        alert_ledger_head_hash=alert_ledger_head_hash,
     )
     state = store.commit_terminal_state(terminal)
     return {
@@ -186,6 +215,10 @@ def _terminal_result(
         "candidate_status": candidate_status,
         "announcement_requests": announcement_requests,
         "appended_candidates": appended_candidates,
+        "alert_status": alert_status,
+        "submitted_alerts": submitted_alerts,
+        "history_confirmed_alerts": history_confirmed_alerts,
+        "alert_ledger_head_hash": alert_ledger_head_hash,
         "failure_stage": failure_stage,
         "reason": reason,
         "capture_authorized": False,
@@ -200,6 +233,7 @@ def run_scheduled_tick(
     metadata_refresh: Any,
     announcement_discovery: Any,
     candidate_inspection: Any,
+    candidate_alert: Any | None = None,
     clock: Callable[[], float | int] | None = None,
 ) -> dict[str, Any]:
     """Run one wake. The NOT_DUE path performs reads only and returns immediately."""
@@ -355,6 +389,63 @@ def run_scheduled_tick(
         discovery_status = str(discovery.get("status") or "")
         requests = _count(discovery.get("announcement_requests"))
         appended = _count(discovery.get("appended_candidates"))
+
+        alert_ts = _fresh_now(clock_fn, floor=discovery_ts)
+        if candidate_alert is None:
+            alert_report: Mapping[str, Any] = {
+                "status": "NO_NEW_CANDIDATE_ALERTS",
+                "submitted_alerts": 0,
+                "history_confirmed_alerts": 0,
+            }
+        else:
+            try:
+                raw_alert = candidate_alert(now_ts=alert_ts, run_id=attempt_id)
+            except Exception as exc:  # noqa: BLE001 - persist and defer before retry
+                raw_alert = {
+                    "status": "CANDIDATE_ALERT_RETRY_NEXT_INTERVAL",
+                    "reason": f"{type(exc).__name__}: {exc}",
+                }
+            alert_report = (
+                raw_alert
+                if isinstance(raw_alert, Mapping)
+                else {
+                    "status": "CANDIDATE_ALERT_RETRY_NEXT_INTERVAL",
+                    "reason": "candidate alert returned a non-object",
+                }
+            )
+        alert_status = str(alert_report.get("status") or "")
+        submitted_alerts = _count(alert_report.get("submitted_alerts"))
+        history_confirmed_alerts = _count(
+            alert_report.get("history_confirmed_alerts")
+        )
+        alert_ledger_head_hash = alert_report.get("alert_ledger_head_hash")
+        if alert_status not in ALERT_SUCCESS_STATUSES:
+            release_status = "PARTIAL_RETRY_NEXT_INTERVAL"
+            return _terminal_result(
+                store=store,
+                attempt_id=attempt_id,
+                now_ts=_fresh_now(clock_fn, floor=alert_ts),
+                terminal_status=release_status,
+                cadence=starting_cadence,
+                pending_retry=True,
+                metadata_status=metadata_status,
+                discovery_status=discovery_status,
+                candidate_status=None,
+                announcement_requests=requests,
+                appended_candidates=appended,
+                alert_status=alert_status,
+                submitted_alerts=submitted_alerts,
+                history_confirmed_alerts=history_confirmed_alerts,
+                alert_ledger_head_hash=(
+                    str(alert_ledger_head_hash) if alert_ledger_head_hash else None
+                ),
+                reason=str(
+                    alert_report.get("reason")
+                    or alert_status
+                    or "unknown candidate alert status"
+                ),
+                failure_stage="candidate_alert",
+            )
         if discovery_status not in DISCOVERY_SUCCESS_STATUSES:
             release_status = "PARTIAL_RETRY_NEXT_INTERVAL"
             return _terminal_result(
@@ -369,6 +460,12 @@ def run_scheduled_tick(
                 candidate_status=None,
                 announcement_requests=requests,
                 appended_candidates=appended,
+                alert_status=alert_status,
+                submitted_alerts=submitted_alerts,
+                history_confirmed_alerts=history_confirmed_alerts,
+                alert_ledger_head_hash=(
+                    str(alert_ledger_head_hash) if alert_ledger_head_hash else None
+                ),
                 reason=str(
                     discovery.get("reason")
                     or discovery_status
@@ -409,6 +506,12 @@ def run_scheduled_tick(
                 candidate_status=candidate_status,
                 announcement_requests=requests,
                 appended_candidates=appended,
+                alert_status=alert_status,
+                submitted_alerts=submitted_alerts,
+                history_confirmed_alerts=history_confirmed_alerts,
+                alert_ledger_head_hash=(
+                    str(alert_ledger_head_hash) if alert_ledger_head_hash else None
+                ),
                 reason=(
                     str(candidate_report.get("reason") or candidate_status)
                     if isinstance(candidate_report, Mapping)
@@ -436,6 +539,12 @@ def run_scheduled_tick(
             candidate_status=str(candidate_report.get("status")),
             announcement_requests=requests,
             appended_candidates=appended,
+            alert_status=alert_status,
+            submitted_alerts=submitted_alerts,
+            history_confirmed_alerts=history_confirmed_alerts,
+            alert_ledger_head_hash=(
+                str(alert_ledger_head_hash) if alert_ledger_head_hash else None
+            ),
             reason=None,
         )
     finally:
@@ -499,6 +608,7 @@ def main(argv: list[str] | None = None) -> int:
             metadata_refresh=_metadata_refresh,
             announcement_discovery=_announcement_discovery,
             candidate_inspection=_candidate_inspection,
+            candidate_alert=_candidate_alert,
         )
     is_error = _is_error_status(result.get("status"))
     if args.json:

@@ -69,6 +69,16 @@ ANNOUNCEMENT_DISCOVERY_ACTION = (
 ANNOUNCEMENT_WATCH_CONTROL_ACTION = (
     "persist the local adaptive announcement-watch state, ledger and claim"
 )
+CANDIDATE_ALERT_ACTION = (
+    "submit one local candidate notification after alert preflight"
+)
+OFFICIAL_T0_ARMING_ACTION = (
+    "seal one human-attested exact seconds-grade official spot t0 "
+    "as immutable no-capture arming evidence"
+)
+EVENT_BOUND_PLAN_PROPOSAL_ACTION = (
+    "write one deterministic event-bound plan proposal from an arming receipt"
+)
 REGISTRY_QUARANTINE_ACTION = (
     "quarantine one failed registry generation after exact recovery preflight"
 )
@@ -81,6 +91,9 @@ WRITE_CLASS_ACTION = {
     "metadata_registry": METADATA_REGISTRY_ACTION,
     "official_attestation": OFFICIAL_ATTESTATION_ACTION,
     "announcement_discovery": ANNOUNCEMENT_DISCOVERY_ACTION,
+    "candidate_alert": CANDIDATE_ALERT_ACTION,
+    "official_t0_arming": OFFICIAL_T0_ARMING_ACTION,
+    "event_bound_plan_proposal": EVENT_BOUND_PLAN_PROPOSAL_ACTION,
     "registry_quarantine": REGISTRY_QUARANTINE_ACTION,
     "market_data_capture": CAPTURE_ACTION,
 }
@@ -98,6 +111,7 @@ ANNOUNCEMENT_DISCOVERY_PLAN_STATUS = (
     "ANNOUNCEMENT_DISCOVERY_CANDIDATE_STORE_NO_CAPTURE"
 )
 ANNOUNCEMENT_WATCH_PLAN_STATUS = "ANNOUNCEMENT_WATCH_SCHEDULED_NO_CAPTURE"
+OFFICIAL_T0_ARMING_READY_PLAN_STATUS = "OFFICIAL_T0_ARMING_READY_NO_CAPTURE"
 # Compatibility name used by version-agnostic no-capture tests. It denotes the
 # current hardened no-capture status; the exact v29 literal remains separately bound.
 REGISTRY_RECOVERY_SECONDS_GRADE_PLAN_STATUS = (
@@ -207,6 +221,30 @@ PLAN_WRITE_AUTHORIZATION: dict[str, dict[str, frozenset[str]]] = {
             "registry_quarantine",
         }),
     },
+    OFFICIAL_T0_ARMING_READY_PLAN_STATUS: {
+        "authorized_actions": frozenset({
+            METADATA_REGISTRY_ACTION,
+            OFFLINE_DESCRIPTIVE_ACTION,
+            OFFICIAL_ATTESTATION_ACTION,
+            ANNOUNCEMENT_DISCOVERY_ACTION,
+            ANNOUNCEMENT_WATCH_CONTROL_ACTION,
+            CANDIDATE_ALERT_ACTION,
+            OFFICIAL_T0_ARMING_ACTION,
+            EVENT_BOUND_PLAN_PROPOSAL_ACTION,
+            REGISTRY_QUARANTINE_ACTION,
+            OFFLINE_PAPER_SIMULATION_ACTION,
+        }),
+        "write_classes": frozenset({
+            "announcement_watch_control",
+            "metadata_registry",
+            "official_attestation",
+            "announcement_discovery",
+            "candidate_alert",
+            "official_t0_arming",
+            "event_bound_plan_proposal",
+            "registry_quarantine",
+        }),
+    },
 }
 
 
@@ -248,6 +286,18 @@ def resolved_path_bindings() -> dict[str, str]:
         ),
         "announcement_watch_claim_archive": str(
             config.ANNOUNCEMENT_WATCH_CLAIM_ARCHIVE.resolve(strict=False)
+        ),
+        "candidate_alert_ledger_path": str(
+            config.CANDIDATE_ALERT_LEDGER_PATH.resolve(strict=False)
+        ),
+        "official_t0_arming_root": str(
+            config.OFFICIAL_T0_ARMING_ROOT.resolve(strict=False)
+        ),
+        "event_bound_plan_proposal_root": str(
+            config.EVENT_BOUND_PLAN_PROPOSAL_ROOT.resolve(strict=False)
+        ),
+        "windows_powershell_executable": str(
+            Path(config.WINDOWS_POWERSHELL_EXECUTABLE).resolve(strict=False)
         ),
     }
 
@@ -985,6 +1035,12 @@ def preflight(
         decision["decision"] = "ALLOW_ANNOUNCEMENT_DISCOVERY"
     if decision["ok"] and write_class == "announcement_watch_control":
         decision["decision"] = "ALLOW_ANNOUNCEMENT_WATCH_CONTROL"
+    if decision["ok"] and write_class == "candidate_alert":
+        decision["decision"] = "ALLOW_CANDIDATE_ALERT"
+    if decision["ok"] and write_class == "official_t0_arming":
+        decision["decision"] = "ALLOW_OFFICIAL_T0_ARMING"
+    if decision["ok"] and write_class == "event_bound_plan_proposal":
+        decision["decision"] = "ALLOW_EVENT_BOUND_PLAN_PROPOSAL"
     if decision["ok"] and write_class == "registry_quarantine":
         decision["decision"] = "ALLOW_REGISTRY_QUARANTINE"
     if decision["ok"] and policy.get("capture_token"):
@@ -1014,6 +1070,10 @@ def resolved_config() -> dict[str, Any]:
         "announcement_attempts_path": config.ANNOUNCEMENT_ATTEMPTS_PATH,
         "announcement_watch_claim_path": config.ANNOUNCEMENT_WATCH_CLAIM_PATH,
         "announcement_watch_claim_archive": config.ANNOUNCEMENT_WATCH_CLAIM_ARCHIVE,
+        "candidate_alert_ledger_path": config.CANDIDATE_ALERT_LEDGER_PATH,
+        "official_t0_arming_root": config.OFFICIAL_T0_ARMING_ROOT,
+        "event_bound_plan_proposal_root": config.EVENT_BOUND_PLAN_PROPOSAL_ROOT,
+        "windows_powershell_executable": Path(config.WINDOWS_POWERSHELL_EXECUTABLE),
     }
     return {name: str(path.resolve(strict=False)) for name, path in paths.items()}
 

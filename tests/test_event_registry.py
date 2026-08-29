@@ -535,7 +535,7 @@ class WriteClassTests(unittest.TestCase):
                 self.assertIs(entry["plan_and_capability_scan"], True)
                 self.assertIs(
                     entry["endpoint_allow_list"],
-                    name != "announcement_watch_control",
+                    name not in {"announcement_watch_control", "candidate_alert"},
                 )
 
     def test_the_plan_records_the_same_distinction(self) -> None:

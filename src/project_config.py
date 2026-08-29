@@ -73,7 +73,12 @@ V30_PLAN_PATH = PROJECT_ROOT / "docs/plans/premarket-perp-capture-planonly-20260
 V31_PLAN_PATH = PROJECT_ROOT / "docs/plans/premarket-perp-capture-planonly-20260822-v31.json"
 V32_PLAN_PATH = PROJECT_ROOT / "docs/plans/premarket-perp-capture-planonly-20260822-v32.json"
 V33_PLAN_PATH = PROJECT_ROOT / "docs/plans/premarket-perp-capture-planonly-20260822-v33.json"
-PLAN_PATH = PROJECT_ROOT / "docs/plans/premarket-perp-capture-planonly-20260822-v34.json"
+V34_PLAN_PATH = PROJECT_ROOT / "docs/plans/premarket-perp-capture-planonly-20260822-v34.json"
+V35_PLAN_PATH = PROJECT_ROOT / "docs/plans/premarket-perp-capture-planonly-20260822-v35.json"
+PLAN_PATH = PROJECT_ROOT / "docs/plans/premarket-perp-capture-planonly-20260822-v36.json"
+NEXT_EVENT_BOUND_PLAN_PATH = (
+    PROJECT_ROOT / "docs/plans/premarket-perp-capture-planonly-20260822-v37.json"
+)
 RUN_RECORD_PATH = PROJECT_ROOT / "docs/run/capture-run.json"
 STOP_REQUEST_PATH = PROJECT_ROOT / "docs/run/stop-request.json"
 CAPTURE_TOKEN_PATH = PROJECT_ROOT / "docs/run/capture-token.json"
@@ -84,16 +89,24 @@ ANNOUNCEMENT_CANDIDATE_PATH = (
     PROJECT_ROOT / "docs/announcements/official-listing-candidates-v1.jsonl"
 )
 ANNOUNCEMENT_ATTEMPTS_PATH = (
-    PROJECT_ROOT / "docs/announcements/official-listing-discovery-attempts-v34.jsonl"
+    PROJECT_ROOT / "docs/announcements/official-listing-discovery-attempts-v36.jsonl"
 )
 ANNOUNCEMENT_STATE_PATH = (
-    PROJECT_ROOT / "docs/announcements/official-listing-discovery-state-v34.json"
+    PROJECT_ROOT / "docs/announcements/official-listing-discovery-state-v36.json"
 )
 ANNOUNCEMENT_WATCH_CLAIM_PATH = (
-    PROJECT_ROOT / "docs/announcements/official-listing-watch-claim-v34.json"
+    PROJECT_ROOT / "docs/announcements/official-listing-watch-claim-v36.json"
 )
 ANNOUNCEMENT_WATCH_CLAIM_ARCHIVE = (
-    PROJECT_ROOT / "docs/announcements/official-listing-watch-claim-archive-v34"
+    PROJECT_ROOT / "docs/announcements/official-listing-watch-claim-archive-v36"
+)
+CANDIDATE_ALERT_LEDGER_PATH = (
+    PROJECT_ROOT / "docs/announcements/official-listing-candidate-alerts-v1.jsonl"
+)
+OFFICIAL_T0_ARMING_ROOT = PROJECT_ROOT / "docs/arming/official-t0-v1"
+EVENT_BOUND_PLAN_PROPOSAL_ROOT = PROJECT_ROOT / "docs/arming/event-bound-plan-proposals-v1"
+WINDOWS_POWERSHELL_EXECUTABLE = (
+    "C:/Windows/System32/WindowsPowerShell/v1.0/powershell.exe"
 )
 
 # Exact authority surface copied from a selected registry episode into the capture
@@ -158,6 +171,14 @@ BOUND_RUNTIME_FILES: tuple[tuple[str, str], ...] = (
         "announcement_watch_installer",
         "tools/install_premarket_announcement_watch_scheduler.ps1",
     ),
+    ("candidate_alert", "src/candidate_alert.py"),
+    ("candidate_alert_sidecar", "tools/show_premarket_candidate_alert.ps1"),
+    ("official_t0_arming", "src/official_t0_arming.py"),
+    (
+        "official_t0_arming_launcher",
+        "tools/start_premarket_official_t0_arming_visible.ps1",
+    ),
+    ("event_bound_plan_proposal", "src/event_bound_plan_proposal.py"),
     # The forbidden-capability vocabulary is part of the contract, not a note:
     # widening it must require reissuing the plan like any runtime change.
     ("forbidden_capabilities", "docs/risk/forbidden-capabilities.txt"),
@@ -323,6 +344,38 @@ WRITE_CLASSES: dict[str, dict[str, object]] = {
         "plan_and_capability_scan": True,
         "endpoint_allow_list": True,
         "max_retries_per_request": 0,
+    },
+    "candidate_alert": {
+        "what": "submit one local candidate notification after alert preflight",
+        "requests": "none; local Windows notification only",
+        "exclusive_writer_claim": False,
+        "capture_token": False,
+        "plan_and_capability_scan": True,
+        "endpoint_allow_list": False,
+        "shared_gate_required": False,
+    },
+    "official_t0_arming": {
+        "what": (
+            "seal one human-attested exact seconds-grade official spot t0 "
+            "as immutable no-capture arming evidence"
+        ),
+        "requests": "none; uses already-attested verified registry evidence",
+        "exclusive_writer_claim": False,
+        "capture_token": False,
+        "plan_and_capability_scan": True,
+        "endpoint_allow_list": True,
+        "shared_gate_required": True,
+    },
+    "event_bound_plan_proposal": {
+        "what": (
+            "write one deterministic event-bound plan proposal from an arming receipt"
+        ),
+        "requests": "none; local create-only proposal",
+        "exclusive_writer_claim": False,
+        "capture_token": False,
+        "plan_and_capability_scan": True,
+        "endpoint_allow_list": True,
+        "shared_gate_required": True,
     },
     "registry_quarantine": {
         "what": "archive one failed registry generation before deactivation",

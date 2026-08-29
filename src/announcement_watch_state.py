@@ -311,6 +311,10 @@ class WatchStateStore:
         appended_candidates: int,
         reason: str | None,
         failure_stage: str | None = None,
+        alert_status: str | None = None,
+        submitted_alerts: int = 0,
+        history_confirmed_alerts: int = 0,
+        alert_ledger_head_hash: str | None = None,
     ) -> dict[str, Any]:
         records = self.verify_ledger()
         if not records or records[-1].get("phase") != "STARTED":
@@ -341,6 +345,10 @@ class WatchStateStore:
             "candidate_status": candidate_status,
             "announcement_requests": int(announcement_requests),
             "appended_candidates": int(appended_candidates),
+            "alert_status": alert_status,
+            "submitted_alerts": int(submitted_alerts),
+            "history_confirmed_alerts": int(history_confirmed_alerts),
+            "alert_ledger_head_hash": alert_ledger_head_hash,
             "failure_stage": failure_stage,
             "reason": reason,
             "capture_authorized": False,
@@ -361,6 +369,7 @@ class WatchStateStore:
             "last_attempt_id": terminal.get("attempt_id"),
             "attempt_ledger_head_hash": terminal.get("record_hash"),
             "last_candidate_store_head_hash": terminal.get("candidate_store_head_hash"),
+            "last_alert_ledger_head_hash": terminal.get("alert_ledger_head_hash"),
             "updated_at_utc": terminal.get("finished_at_utc"),
         }
         return _hashed(payload, "state_hash")

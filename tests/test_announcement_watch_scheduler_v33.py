@@ -369,6 +369,7 @@ class ScheduledTickTests(DurableStateTests):
         metadata_refresh=None,
         announcement_discovery=None,
         candidate_inspection=None,
+        candidate_alert=None,
         clock=None,
     ) -> dict:
         tick_now = self.NOW if now_ts is None else now_ts
@@ -393,6 +394,7 @@ class ScheduledTickTests(DurableStateTests):
                     "rejections": [],
                 }
             ),
+            candidate_alert=candidate_alert,
             clock=clock or (lambda: tick_now),
         )
         self.assertIsInstance(result, dict)
@@ -633,10 +635,37 @@ class ScheduledTickTests(DurableStateTests):
         self.assertEqual(result["status"], "PARTIAL_RETRY_NEXT_INTERVAL")
         self.assertEqual(result["failure_stage"], "candidate_inspection")
 
+    def test_unconfirmed_alert_continues_to_inspection_and_completes(self) -> None:
+        inspection = mock.Mock(
+            return_value={
+                "status": "NO_SECONDS_GRADE_CANDIDATE",
+                "candidates": [],
+                "rejections": [],
+            }
+        )
+        result = self.invoke(
+            candidate_alert=lambda **_: {
+                "status": "CANDIDATE_ALERTS_SUBMITTED_UNCONFIRMED",
+                "submitted_alerts": 1,
+                "history_confirmed_alerts": 0,
+                "alert_ledger_head_hash": "a" * 64,
+            },
+            candidate_inspection=inspection,
+        )
+
+        inspection.assert_called_once()
+        self.assertEqual(result["status"], "COMPLETE")
+        self.assertFalse(result["pending_retry"])
+        self.assertEqual(result["submitted_alerts"], 1)
+        self.assertEqual(result["history_confirmed_alerts"], 0)
+        self.assertEqual(result["alert_status"], "CANDIDATE_ALERTS_SUBMITTED_UNCONFIRMED")
+
     def test_network_timestamps_and_next_due_use_fresh_clocks(self) -> None:
         discovery_times: list[int] = []
         inspection_times: list[int] = []
-        fresh_times = iter((self.NOW + 30, self.NOW + 31, self.NOW + 40))
+        fresh_times = iter(
+            (self.NOW + 30, self.NOW + 31, self.NOW + 32, self.NOW + 40)
+        )
 
         result = self.invoke(
             announcement_discovery=lambda **kwargs: (
@@ -661,7 +690,7 @@ class ScheduledTickTests(DurableStateTests):
         )
 
         self.assertEqual(discovery_times, [self.NOW + 30])
-        self.assertEqual(inspection_times, [self.NOW + 31])
+        self.assertEqual(inspection_times, [self.NOW + 32])
         expected_next = datetime.fromtimestamp(
             self.NOW + 40 + 21_600, timezone.utc
         ).isoformat(timespec="seconds").replace("+00:00", "Z")
@@ -898,7 +927,7 @@ class ControlPlaneAuthorizationTests(unittest.TestCase):
             config.ANNOUNCEMENT_WATCH_CLAIM_PATH,
             config.ANNOUNCEMENT_WATCH_CLAIM_ARCHIVE,
         ):
-            self.assertIn("v34", path.name)
+            self.assertIn("v36", path.name)
 
 
 class V33ImmutablePlanTests(unittest.TestCase):
@@ -1011,21 +1040,17 @@ class V34ImmutablePlanTests(unittest.TestCase):
 
     def test_v34_supersedes_exact_immutable_v33(self) -> None:
         self.assertEqual(config.V33_PLAN_PATH, self.V33_PATH)
-        self.assertEqual(config.PLAN_PATH, self.V34_PATH)
+        self.assertEqual(config.V34_PLAN_PATH, self.V34_PATH)
         self.assertEqual(
             hashlib.sha256(self.V33_PATH.read_bytes()).hexdigest(),
             self.V33_FILE_SHA,
         )
-        self.assertEqual(plan_builder.SCHEMA, "premarket_perp_capture_planonly_v34")
-        self.assertEqual(plan_builder.PLAN_ID, "premarket_perp_capture_20260822_v34")
-        self.assertEqual(plan_builder.SUPERSEDES_PLAN_ID, self.V33_ID)
-        self.assertEqual(plan_builder.SUPERSEDES_PLAN_HASH, self.V33_HASH)
-        self.assertEqual(plan_builder.SUPERSEDES_PLAN_PATH, self.V33_RELATIVE)
-
         payload = json.loads(self.V34_PATH.read_text(encoding="utf-8"))
-        self.assertEqual(payload["schema"], plan_builder.SCHEMA)
-        self.assertEqual(payload["plan_id"], plan_builder.PLAN_ID)
+        self.assertEqual(payload["schema"], "premarket_perp_capture_planonly_v34")
+        self.assertEqual(payload["plan_id"], "premarket_perp_capture_20260822_v34")
+        self.assertEqual(payload["supersedes_plan_id"], self.V33_ID)
         self.assertEqual(payload["supersedes_plan_hash"], self.V33_HASH)
+        self.assertEqual(payload["supersedes_plan_path"], self.V33_RELATIVE)
         self.assertEqual(payload["status"], risk_gate.ANNOUNCEMENT_WATCH_PLAN_STATUS)
 
     def test_v34_preregisters_versioned_control_paths_and_fresh_host_install(self) -> None:
@@ -1049,18 +1074,18 @@ class V34ImmutablePlanTests(unittest.TestCase):
             ).hexdigest(),
         )
 
-    def test_v34_is_active_and_v33_is_retired(self) -> None:
+    def test_v34_and_v33_are_retired_byte_identical(self) -> None:
         payload = json.loads(self.V34_PATH.read_text(encoding="utf-8"))
-        self.assertEqual(trust_root.ACTIVE_PLAN["plan_id"], payload["plan_id"])
-        self.assertEqual(trust_root.ACTIVE_PLAN["plan_hash"], payload["plan_hash"])
-        self.assertEqual(
-            trust_root.ACTIVE_PLAN["plan_file_sha256"],
-            hashlib.sha256(self.V34_PATH.read_bytes()).hexdigest(),
-        )
         retired = {item["path"]: item for item in trust_root.RETIRED_PLANS}
         self.assertEqual(retired[self.V33_RELATIVE]["plan_hash"], self.V33_HASH)
         self.assertEqual(
             retired[self.V33_RELATIVE]["plan_file_sha256"], self.V33_FILE_SHA
+        )
+        v34_relative = "docs/plans/premarket-perp-capture-planonly-20260822-v34.json"
+        self.assertEqual(retired[v34_relative]["plan_hash"], payload["plan_hash"])
+        self.assertEqual(
+            retired[v34_relative]["plan_file_sha256"],
+            hashlib.sha256(self.V34_PATH.read_bytes()).hexdigest(),
         )
 
 

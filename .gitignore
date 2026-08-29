@@ -14,5 +14,8 @@ docs/announcements/official-listing-discovery-state-v*.json
 docs/announcements/official-listing-discovery-attempts-v*.jsonl
 docs/announcements/official-listing-watch-claim-v*.json
 docs/announcements/official-listing-watch-claim-archive-v*/
+docs/announcements/official-listing-candidate-alerts-v1.jsonl
+docs/announcements/official-listing-candidate-alerts-v1.jsonl.lock
+docs/announcements/official-listing-candidate-alerts-v1.jsonl.lock.archive/
 
 # docs/evidence/ is deliberately NOT ignored: receipts are the versioned trace.
