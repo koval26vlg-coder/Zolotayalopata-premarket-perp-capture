@@ -71,7 +71,8 @@ V28_PLAN_PATH = PROJECT_ROOT / "docs/plans/premarket-perp-capture-planonly-20260
 V29_PLAN_PATH = PROJECT_ROOT / "docs/plans/premarket-perp-capture-planonly-20260822-v29.json"
 V30_PLAN_PATH = PROJECT_ROOT / "docs/plans/premarket-perp-capture-planonly-20260822-v30.json"
 V31_PLAN_PATH = PROJECT_ROOT / "docs/plans/premarket-perp-capture-planonly-20260822-v31.json"
-PLAN_PATH = PROJECT_ROOT / "docs/plans/premarket-perp-capture-planonly-20260822-v32.json"
+V32_PLAN_PATH = PROJECT_ROOT / "docs/plans/premarket-perp-capture-planonly-20260822-v32.json"
+PLAN_PATH = PROJECT_ROOT / "docs/plans/premarket-perp-capture-planonly-20260822-v33.json"
 RUN_RECORD_PATH = PROJECT_ROOT / "docs/run/capture-run.json"
 STOP_REQUEST_PATH = PROJECT_ROOT / "docs/run/stop-request.json"
 CAPTURE_TOKEN_PATH = PROJECT_ROOT / "docs/run/capture-token.json"
@@ -82,10 +83,16 @@ ANNOUNCEMENT_CANDIDATE_PATH = (
     PROJECT_ROOT / "docs/announcements/official-listing-candidates-v1.jsonl"
 )
 ANNOUNCEMENT_ATTEMPTS_PATH = (
-    PROJECT_ROOT / "docs/announcements/official-listing-discovery-attempts-v1.jsonl"
+    PROJECT_ROOT / "docs/announcements/official-listing-discovery-attempts-v33.jsonl"
 )
 ANNOUNCEMENT_STATE_PATH = (
-    PROJECT_ROOT / "docs/announcements/official-listing-discovery-state-v1.json"
+    PROJECT_ROOT / "docs/announcements/official-listing-discovery-state-v33.json"
+)
+ANNOUNCEMENT_WATCH_CLAIM_PATH = (
+    PROJECT_ROOT / "docs/announcements/official-listing-watch-claim-v33.json"
+)
+ANNOUNCEMENT_WATCH_CLAIM_ARCHIVE = (
+    PROJECT_ROOT / "docs/announcements/official-listing-watch-claim-archive-v33"
 )
 
 # Exact authority surface copied from a selected registry episode into the capture
@@ -139,6 +146,16 @@ BOUND_RUNTIME_FILES: tuple[tuple[str, str], ...] = (
     (
         "announcement_discovery_launcher",
         "tools/start_premarket_announcement_discovery_visible.ps1",
+    ),
+    ("announcement_watch_state", "src/announcement_watch_state.py"),
+    ("announcement_watch_scheduler", "src/announcement_watch_scheduler.py"),
+    (
+        "announcement_watch_launcher",
+        "tools/start_premarket_announcement_watch_scheduler.ps1",
+    ),
+    (
+        "announcement_watch_installer",
+        "tools/install_premarket_announcement_watch_scheduler.ps1",
     ),
     # The forbidden-capability vocabulary is part of the contract, not a note:
     # widening it must require reissuing the plan like any runtime change.
@@ -267,6 +284,17 @@ OFFLINE_PAPER_MODEL: dict[str, object] = {
 # metadata refresh would block a capture for no reason, while letting a sustained
 # capture run without it is the two-writer accident the claim exists to prevent.
 WRITE_CLASSES: dict[str, dict[str, object]] = {
+    "announcement_watch_control": {
+        "what": (
+            "persist only the local adaptive scheduler claim, attempt ledger and state"
+        ),
+        "requests": "none; local control-plane artifacts only",
+        "exclusive_writer_claim": False,
+        "capture_token": False,
+        "plan_and_capability_scan": True,
+        "endpoint_allow_list": False,
+        "shared_gate_required": False,
+    },
     "metadata_registry": {
         "what": "listing-event registry refresh from public instrument endpoints",
         "requests": "a handful, one pass",

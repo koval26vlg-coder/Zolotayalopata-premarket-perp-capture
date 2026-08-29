@@ -529,11 +529,14 @@ class WriteClassTests(unittest.TestCase):
         self.assertIs(capture["exclusive_writer_claim"], True)
         self.assertIs(capture["capture_token"], True)
 
-    def test_both_classes_are_still_bound_by_plan_and_reach(self) -> None:
+    def test_every_class_is_plan_bound_and_only_network_classes_need_endpoints(self) -> None:
         for name, entry in config.WRITE_CLASSES.items():
             with self.subTest(write_class=name):
                 self.assertIs(entry["plan_and_capability_scan"], True)
-                self.assertIs(entry["endpoint_allow_list"], True)
+                self.assertIs(
+                    entry["endpoint_allow_list"],
+                    name != "announcement_watch_control",
+                )
 
     def test_the_plan_records_the_same_distinction(self) -> None:
         plan = json.loads(config.PLAN_PATH.read_text(encoding="utf-8"))

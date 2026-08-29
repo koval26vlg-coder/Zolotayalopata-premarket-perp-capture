@@ -55,6 +55,18 @@ class ResolvedPathBindingTests(unittest.TestCase):
             "registry_quarantine_root": str(
                 risk_gate.config.REGISTRY_QUARANTINE_ROOT.resolve(strict=False)
             ),
+            "announcement_state_path": str(
+                risk_gate.config.ANNOUNCEMENT_STATE_PATH.resolve(strict=False)
+            ),
+            "announcement_attempts_path": str(
+                risk_gate.config.ANNOUNCEMENT_ATTEMPTS_PATH.resolve(strict=False)
+            ),
+            "announcement_watch_claim_path": str(
+                risk_gate.config.ANNOUNCEMENT_WATCH_CLAIM_PATH.resolve(strict=False)
+            ),
+            "announcement_watch_claim_archive": str(
+                risk_gate.config.ANNOUNCEMENT_WATCH_CLAIM_ARCHIVE.resolve(strict=False)
+            ),
         }
         self.assertEqual(
             risk_gate.verify_resolved_path_bindings(

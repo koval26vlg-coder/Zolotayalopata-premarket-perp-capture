@@ -20,13 +20,13 @@ import project_config as config
 from canonical_hash import canonical_hash
 
 
-SCHEMA = "premarket_perp_capture_planonly_v32"
-PLAN_ID = "premarket_perp_capture_20260822_v32"
-SUPERSEDES_PLAN_ID = "premarket_perp_capture_20260822_v31"
-SUPERSEDES_PLAN_HASH = "0359596666d918145af2fe3e172cd9907b9f286b0d25a986671be8113415bb98"
-SUPERSEDES_PLAN_PATH = "docs/plans/premarket-perp-capture-planonly-20260822-v31.json"
+SCHEMA = "premarket_perp_capture_planonly_v33"
+PLAN_ID = "premarket_perp_capture_20260822_v33"
+SUPERSEDES_PLAN_ID = "premarket_perp_capture_20260822_v32"
+SUPERSEDES_PLAN_HASH = "15b84b04cf004834909950846837df9ccef29bb8209e56d7ca58a2b1419e784d"
+SUPERSEDES_PLAN_PATH = "docs/plans/premarket-perp-capture-planonly-20260822-v32.json"
 HASH_METHOD = "sha256_canonical_json_excluding_plan_hash"
-PLAN_STATUS = "ANNOUNCEMENT_DISCOVERY_CANDIDATE_STORE_NO_CAPTURE"
+PLAN_STATUS = "ANNOUNCEMENT_WATCH_SCHEDULED_NO_CAPTURE"
 
 
 class PlanBuildError(ValueError):
@@ -502,6 +502,83 @@ def _announcement_discovery_contract() -> dict[str, Any]:
     }
 
 
+def _announcement_watch_scheduler_contract() -> dict[str, Any]:
+    return {
+        "schema": "premarket_announcement_watch_scheduler_v1",
+        "scheduler": "WINDOWS_TASK_SCHEDULER_NO_MODEL",
+        "wake_interval_sec": 300,
+        "runtime": "src/announcement_watch_scheduler.py",
+        "state_runtime": "src/announcement_watch_state.py",
+        "launcher": "tools/start_premarket_announcement_watch_scheduler.ps1",
+        "installer": "tools/install_premarket_announcement_watch_scheduler.ps1",
+        "task_path": "\\ZolotyayLopata\\",
+        "task_name": "PremarketAnnouncementWatch",
+        "hidden": True,
+        "multiple_instances": "IGNORE_NEW",
+        "cadence_interval_sec": {
+            "SEARCH": 21_600,
+            "ACTIVE_UNATTESTED": 10_800,
+            "UNVERIFIED_CANDIDATE": 10_800,
+            "OFFICIAL_CONFIRMED": 3_600,
+            "EXACT_T0_WITHIN_24H": 300,
+        },
+        "proxy_or_unverified_min_interval_sec": 10_800,
+        "not_due": {
+            "network": False,
+            "writes": False,
+            "preflight": False,
+            "claim": False,
+            "stdout": "NONE_UNLESS_JSON_REQUESTED",
+        },
+        "due_order": [
+            "announcement_watch_control_preflight",
+            "dedicated_watch_claim",
+            "attempt_started_ledger",
+            "metadata_registry_refresh",
+            "announcement_discovery",
+            "candidate_inspection",
+            "attempt_terminal_ledger",
+            "atomic_state",
+            "claim_archive_release",
+        ],
+        "refresh_success_required": "REFRESH_COMPLETE",
+        "incomplete_refresh": "RETRY_NEXT_INTERVAL_NO_DISCOVERY",
+        "partial_discovery": "PARTIAL_RETRY_NEXT_INTERVAL",
+        "discovery_success_statuses": [
+            "NO_ANNOUNCEMENT_TARGETS",
+            "NO_MATCHING_ANNOUNCEMENTS",
+            "CANDIDATES_RECORDED_HUMAN_ATTESTATION_REQUIRED",
+        ],
+        "post_metadata_failure_status": "PARTIAL_RETRY_NEXT_INTERVAL",
+        "retry_interval": "CADENCE_AT_TICK_START_NO_TIGHT_LOOP",
+        "timestamps": "FRESH_CLOCK_AFTER_NETWORK_AND_AT_TERMINAL",
+        "retry_error_reporting": "STDERR_AND_NONZERO_EXIT_TASK_REMAINS_ENABLED",
+        "control_receipt_validation": "EXACT_PLAN_PATH_ACTION_AND_RUN_ID",
+        "control_path_rollover": (
+            "NEW_PLAN_VERSION_REQUIRES_NEW_VERSIONED_CONTROL_PATHS"
+        ),
+        "control_preflight_failure": (
+            "FAIL_CLOSED_NO_WRITE_RECHECK_ON_NEXT_FIVE_MINUTE_WAKE"
+        ),
+        "state_path": "docs/announcements/official-listing-discovery-state-v33.json",
+        "attempt_ledger_path": (
+            "docs/announcements/official-listing-discovery-attempts-v33.jsonl"
+        ),
+        "claim_path": "docs/announcements/official-listing-watch-claim-v33.json",
+        "claim_archive": (
+            "docs/announcements/official-listing-watch-claim-archive-v33"
+        ),
+        "control_write_class": "announcement_watch_control",
+        "shared_gate_required_for_research_writes": True,
+        "shared_gate_required_for_control_logging": False,
+        "global_market_data_claim_used": False,
+        "capture_authorized": False,
+        "paper_execution": False,
+        "live_execution": False,
+        "orders": False,
+    }
+
+
 def build_plan(generated_at_utc: str) -> dict[str, Any]:
     files = [
         {
@@ -524,7 +601,7 @@ def build_plan(generated_at_utc: str) -> dict[str, Any]:
         "generated_at_utc": generated_at_utc,
         "implementation_path_semantics": "repo_path values are relative to the runtime Git root",
         "objective": (
-            "Discover bounded official spot-listing announcement candidates for "
+            "Schedule low-cost bounded discovery of official spot-listing announcement candidates for "
             "current crypto pre-market perpetual episodes, preserving registry and "
             "source lineage for explicit human review. Index timestamps remain "
             "publication metadata only. This plan does not authorize automatic t0 "
@@ -549,6 +626,18 @@ def build_plan(generated_at_utc: str) -> dict[str, Any]:
             "capture_root": str(config.CAPTURE_ROOT.resolve(strict=False)),
             "registry_quarantine_root": str(
                 config.REGISTRY_QUARANTINE_ROOT.resolve(strict=False)
+            ),
+            "announcement_state_path": str(
+                config.ANNOUNCEMENT_STATE_PATH.resolve(strict=False)
+            ),
+            "announcement_attempts_path": str(
+                config.ANNOUNCEMENT_ATTEMPTS_PATH.resolve(strict=False)
+            ),
+            "announcement_watch_claim_path": str(
+                config.ANNOUNCEMENT_WATCH_CLAIM_PATH.resolve(strict=False)
+            ),
+            "announcement_watch_claim_archive": str(
+                config.ANNOUNCEMENT_WATCH_CLAIM_ARCHIVE.resolve(strict=False)
             ),
         },
         "enforcement": {
@@ -583,8 +672,8 @@ def build_plan(generated_at_utc: str) -> dict[str, Any]:
                 "the already validated IP while TLS SNI and Host retain the venue name"
             ),
             "resolved_path_bindings": (
-                "shared gate, shared writer claim and capture root are compared to "
-                "their canonical absolute values before either write class is allowed"
+                "shared controls, capture root and announcement-watch control paths "
+                "are compared to their canonical absolute values before writes"
             ),
         },
         "write_classes": {
@@ -991,6 +1080,7 @@ def build_plan(generated_at_utc: str) -> dict[str, Any]:
             },
         },
         "announcement_discovery": _announcement_discovery_contract(),
+        "announcement_watch_scheduler": _announcement_watch_scheduler_contract(),
         "capture_bounds": {
             "window_before_t0_sec": config.CAPTURE_WINDOW_BEFORE_SEC,
             "window_after_t0_sec": config.CAPTURE_WINDOW_AFTER_SEC,
@@ -1217,6 +1307,7 @@ def build_plan(generated_at_utc: str) -> dict[str, Any]:
             "background or hidden capture runs",
         ],
         "authorized_after_gate_green": [
+            "persist the local adaptive announcement-watch state, ledger and claim",
             "refresh the public metadata event registry after metadata preflight",
             "verify and materialize descriptive proxy observations offline",
             "append one human-verified official spot t0 after attestation preflight",
@@ -1230,7 +1321,8 @@ def build_plan(generated_at_utc: str) -> dict[str, Any]:
         "activation_gate": {
             "capture_authorized": False,
             "reason": (
-                "v32 preserves bounded official announcement-index discovery and "
+                "v33 adds a hidden no-model wake-only scheduler around bounded "
+                "metadata refresh and official announcement-index discovery, while "
                 "hardens the append-only unverified candidate store with an exact "
                 "field schema, fixed non-authority values and venue-bound official "
                 "article URLs. The active status still "
@@ -1316,6 +1408,7 @@ def validate_plan(plan: dict[str, Any]) -> None:
     )
     require(
         plan.get("authorized_after_gate_green") == [
+            "persist the local adaptive announcement-watch state, ledger and claim",
             "refresh the public metadata event registry after metadata preflight",
             "verify and materialize descriptive proxy observations offline",
             "append one human-verified official spot t0 after attestation preflight",
@@ -1332,6 +1425,11 @@ def validate_plan(plan: dict[str, Any]) -> None:
         plan.get("announcement_discovery") == _announcement_discovery_contract(),
         "announcement discovery contract mismatch",
     )
+    require(
+        plan.get("announcement_watch_scheduler")
+        == _announcement_watch_scheduler_contract(),
+        "announcement watch scheduler contract mismatch",
+    )
     require(bool(plan.get("allowed_endpoints")), "plan must declare its endpoint allow-list")
     require(
         set((plan.get("resolved_path_bindings") or {}))
@@ -1340,6 +1438,10 @@ def validate_plan(plan: dict[str, Any]) -> None:
             "shared_writer_claim_path",
             "capture_root",
             "registry_quarantine_root",
+            "announcement_state_path",
+            "announcement_attempts_path",
+            "announcement_watch_claim_path",
+            "announcement_watch_claim_archive",
         },
         "resolved path bindings are incomplete",
     )

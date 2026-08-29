@@ -24,13 +24,15 @@
 - вывод и переводы средств;
 - решения ACCEPT/REJECT по захваченным данным.
 
-`execution_replay` — офлайн-анализ уже лежащих на диске публичных данных. v32
-сохраняет fail-closed offline paper simulation и bounded official
+`execution_replay` — офлайн-анализ уже лежащих на диске публичных данных. v33
+сохраняет fail-closed offline paper simulation, bounded official
 announcement-index discovery: без подходящего official event,
 sealed capture и полного cost model она создаёт ноль виртуальных позиций и не публикует
 net PnL. Discovery-кандидат не является `t0` и не даёт capture-authority. Биржевое
 paper execution остаётся запрещённым. Candidate store принимает только exact schema,
 фиксированные non-authority значения и официальный URL, связанный с listing venue.
+No-model watcher просыпается локально каждые пять минут, но сеть и исследовательские
+записи разрешены только при наступлении adaptive due; `NOT_DUE` ничего не пишет.
 Полный контракт: `RISK_CONTRACT` в `src/project_config.py`, он же записан в PlanOnly.
 
 ## Risk gate
@@ -43,7 +45,7 @@ paper execution остаётся запрещённым. Candidate store при�
   trust-root `src/frozen_plan_bindings.py`;
 - capability scan нашёл в `src/` или `tools/` запрещённую возможность или URL вне
   allow-list;
-- общий active-run gate закрыт или недоступен;
+- общий active-run gate закрыт или недоступен для research/data write-class;
 - для `market_data_capture`: общий market-data writer claim занят либо собственный
   предыдущий capture не завершён.
 
@@ -51,6 +53,14 @@ paper execution остаётся запрещённым. Candidate store при�
 human official attestation, bounded announcement discovery и локальная registry
 quarantine имеют отдельные действия и не заимствуют capture-authority. Capture без
 токена невозможен — флага «я подтверждаю» здесь нет по замыслу.
+
+Исключение только одно: `announcement_watch_control` пишет локальные state/ledger/claim
+после PlanOnly/capability preflight, но не требует shared gate. Это нужно, чтобы
+зафиксировать закрытый gate и отложить retry до следующего interval. Этот класс не
+имеет endpoints, capture token или global market-data claim.
+Если сам PlanOnly/capability preflight не прошёл, control-write запрещён: wake
+завершается до claim, сети и записи с ненулевым кодом и проверяется снова только на
+следующем пятиминутном wake. Подделывать backoff-файл без проверенного плана нельзя.
 
 ## Общий writer
 
@@ -97,12 +107,12 @@ Workspace общий с `ZolotyayLopata`. Этот проект — второй
   mutation receipt, а не по текущему head.
 - Текущий human-attested producer выводит точность из дословного времени источника.
   Minute-only источник остаётся descriptive; только явный `HH:MM:SS` может дать
-  seconds-grade candidate, но v32 всё равно не авторизует capture.
+  seconds-grade candidate, но v33 всё равно не авторизует capture.
 
 ## Статус
 
 Capture ещё **не запускался**. PlanOnly в статусе
-`ANNOUNCEMENT_DISCOVERY_CANDIDATE_STORE_NO_CAPTURE`; активный immutable план — v32.
+`ANNOUNCEMENT_WATCH_SCHEDULED_NO_CAPTURE`; активный immutable план — v33.
 `market_data_capture` этим статусом не авторизован. Discovery сохраняет только
 `UNVERIFIED_ANNOUNCEMENT_DISCOVERY`; index publication time и ticker match не могут
 стать official `t0`. После human attestation нужен отдельный arming/checkpoint, а затем

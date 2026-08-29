@@ -4,8 +4,10 @@ The spot monitor's audit ended with one lesson worth carrying over verbatim: a r
 that lives only in a document is not a rule. Everything below either verifies
 something mechanically or reports that it could not.
 
-Plan identity, capability scan, and the shared active-run gate are mandatory for every
-declared write class.  Sustained market-data capture additionally requires the global
+Plan identity and capability scan are mandatory for every declared write class. The
+shared active-run gate is mandatory for every research/data write. The one local
+announcement-watch control class is deliberately exempt so a closed-gate failure can
+be durably deferred without opening the network. Sustained market-data capture additionally requires the global
 writer claim to be free, the prior capture record to be terminal, and a one-shot token.
 The short metadata registry refresh intentionally does not take those capture-only
 controls, so it cannot claim capture authority by accident or block an active capture.
@@ -64,6 +66,9 @@ ANNOUNCEMENT_DISCOVERY_ACTION = (
     "fetch bounded official announcement indexes and append unverified "
     "announcement candidates"
 )
+ANNOUNCEMENT_WATCH_CONTROL_ACTION = (
+    "persist the local adaptive announcement-watch state, ledger and claim"
+)
 REGISTRY_QUARANTINE_ACTION = (
     "quarantine one failed registry generation after exact recovery preflight"
 )
@@ -72,6 +77,7 @@ OFFLINE_PAPER_SIMULATION_ACTION = (
 )
 CAPTURE_ACTION = "capture one official event in a bounded visible terminal"
 WRITE_CLASS_ACTION = {
+    "announcement_watch_control": ANNOUNCEMENT_WATCH_CONTROL_ACTION,
     "metadata_registry": METADATA_REGISTRY_ACTION,
     "official_attestation": OFFICIAL_ATTESTATION_ACTION,
     "announcement_discovery": ANNOUNCEMENT_DISCOVERY_ACTION,
@@ -91,6 +97,7 @@ PAPER_SIMULATION_PREREGISTERED_PLAN_STATUS = (
 ANNOUNCEMENT_DISCOVERY_PLAN_STATUS = (
     "ANNOUNCEMENT_DISCOVERY_CANDIDATE_STORE_NO_CAPTURE"
 )
+ANNOUNCEMENT_WATCH_PLAN_STATUS = "ANNOUNCEMENT_WATCH_SCHEDULED_NO_CAPTURE"
 # Compatibility name used by version-agnostic no-capture tests. It denotes the
 # current hardened no-capture status; the exact v29 literal remains separately bound.
 REGISTRY_RECOVERY_SECONDS_GRADE_PLAN_STATUS = (
@@ -182,6 +189,24 @@ PLAN_WRITE_AUTHORIZATION: dict[str, dict[str, frozenset[str]]] = {
             "registry_quarantine",
         }),
     },
+    ANNOUNCEMENT_WATCH_PLAN_STATUS: {
+        "authorized_actions": frozenset({
+            METADATA_REGISTRY_ACTION,
+            OFFLINE_DESCRIPTIVE_ACTION,
+            OFFICIAL_ATTESTATION_ACTION,
+            ANNOUNCEMENT_DISCOVERY_ACTION,
+            ANNOUNCEMENT_WATCH_CONTROL_ACTION,
+            REGISTRY_QUARANTINE_ACTION,
+            OFFLINE_PAPER_SIMULATION_ACTION,
+        }),
+        "write_classes": frozenset({
+            "announcement_watch_control",
+            "metadata_registry",
+            "official_attestation",
+            "announcement_discovery",
+            "registry_quarantine",
+        }),
+    },
 }
 
 
@@ -211,6 +236,18 @@ def resolved_path_bindings() -> dict[str, str]:
         "capture_root": str(config.CAPTURE_ROOT.resolve(strict=False)),
         "registry_quarantine_root": str(
             config.REGISTRY_QUARANTINE_ROOT.resolve(strict=False)
+        ),
+        "announcement_state_path": str(
+            config.ANNOUNCEMENT_STATE_PATH.resolve(strict=False)
+        ),
+        "announcement_attempts_path": str(
+            config.ANNOUNCEMENT_ATTEMPTS_PATH.resolve(strict=False)
+        ),
+        "announcement_watch_claim_path": str(
+            config.ANNOUNCEMENT_WATCH_CLAIM_PATH.resolve(strict=False)
+        ),
+        "announcement_watch_claim_archive": str(
+            config.ANNOUNCEMENT_WATCH_CLAIM_ARCHIVE.resolve(strict=False)
         ),
     }
 
@@ -902,10 +939,20 @@ def preflight(
         policy.get("exclusive_writer_claim") or policy.get("capture_token")
     )
 
+    shared_gate_required = bool(policy.get("shared_gate_required", True))
+    gate = (
+        read_shared_gate()
+        if shared_gate_required
+        else {
+            "open": True,
+            "status": "NOT_REQUIRED_LOCAL_CONTROL_PLANE",
+            "detail": None,
+        }
+    )
     decision = evaluate_risk_preflight(
         plan_error=plan_error,
         capability_error=capability_error,
-        gate=read_shared_gate(),
+        gate=gate,
         claim=inspect_claim() if needs_capture_controls else free,
         run_record=inspect_run_record() if needs_capture_controls else free,
     )
@@ -936,6 +983,8 @@ def preflight(
         decision["decision"] = "ALLOW_OFFICIAL_ATTESTATION"
     if decision["ok"] and write_class == "announcement_discovery":
         decision["decision"] = "ALLOW_ANNOUNCEMENT_DISCOVERY"
+    if decision["ok"] and write_class == "announcement_watch_control":
+        decision["decision"] = "ALLOW_ANNOUNCEMENT_WATCH_CONTROL"
     if decision["ok"] and write_class == "registry_quarantine":
         decision["decision"] = "ALLOW_REGISTRY_QUARANTINE"
     if decision["ok"] and policy.get("capture_token"):
@@ -961,8 +1010,53 @@ def resolved_config() -> dict[str, Any]:
         "capture_token_path": config.CAPTURE_TOKEN_PATH,
         "stop_request_path": config.STOP_REQUEST_PATH,
         "registry_quarantine_root": config.REGISTRY_QUARANTINE_ROOT,
+        "announcement_state_path": config.ANNOUNCEMENT_STATE_PATH,
+        "announcement_attempts_path": config.ANNOUNCEMENT_ATTEMPTS_PATH,
+        "announcement_watch_claim_path": config.ANNOUNCEMENT_WATCH_CLAIM_PATH,
+        "announcement_watch_claim_archive": config.ANNOUNCEMENT_WATCH_CLAIM_ARCHIVE,
     }
     return {name: str(path.resolve(strict=False)) for name, path in paths.items()}
+
+
+def validate_control_preflight_receipt(
+    receipt: Mapping[str, Any], *, run_id: str
+) -> dict[str, Any]:
+    """Validate the exact authority receipt before local watcher control writes."""
+    _require(isinstance(receipt, Mapping), "control preflight receipt is not an object")
+    _require(
+        receipt.get("schema") == PREFLIGHT_RESULT_SCHEMA,
+        "control preflight schema mismatch",
+    )
+    _require(receipt.get("ok") is True, "control preflight is not allowed")
+    _require(receipt.get("verified") is True, "control preflight is not verified")
+    _require(
+        receipt.get("decision") == "ALLOW_ANNOUNCEMENT_WATCH_CONTROL",
+        "control preflight decision mismatch",
+    )
+    _require(
+        receipt.get("write_class") == "announcement_watch_control",
+        "control preflight write class mismatch",
+    )
+    _require(receipt.get("run_id") == run_id, "control preflight run id mismatch")
+    _require(
+        receipt.get("action") == ANNOUNCEMENT_WATCH_CONTROL_ACTION,
+        "control preflight action mismatch",
+    )
+    _require(receipt.get("plan_id") == trust_root.PLAN_ID, "control plan id mismatch")
+    _require(
+        receipt.get("plan_hash") == trust_root.PLAN_HASH,
+        "control plan hash mismatch",
+    )
+    expected_paths = resolved_config()
+    _require(
+        receipt.get("resolved_paths") == expected_paths,
+        "control resolved paths mismatch",
+    )
+    _require(
+        receipt.get("resolved_paths_hash") == canonical_hash(expected_paths),
+        "control resolved paths hash mismatch",
+    )
+    return dict(receipt)
 
 
 def main(argv: list[str] | None = None) -> int:

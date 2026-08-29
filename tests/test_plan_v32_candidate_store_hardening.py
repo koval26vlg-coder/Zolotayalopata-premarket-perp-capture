@@ -34,12 +34,7 @@ class V32ImmutableLineageTests(unittest.TestCase):
     def test_v31_is_byte_identical_and_v32_supersedes_it(self) -> None:
         self.assertEqual(hashlib.sha256(V31_PATH.read_bytes()).hexdigest(), V31_FILE_SHA256)
         self.assertEqual(config.V31_PLAN_PATH, V31_PATH)
-        self.assertEqual(config.PLAN_PATH, V32_PATH)
-        self.assertEqual(plan_builder.SCHEMA, V32_SCHEMA)
-        self.assertEqual(plan_builder.PLAN_ID, V32_PLAN_ID)
-        self.assertEqual(plan_builder.SUPERSEDES_PLAN_ID, V31_PLAN_ID)
-        self.assertEqual(plan_builder.SUPERSEDES_PLAN_HASH, V31_PLAN_HASH)
-        self.assertEqual(plan_builder.SUPERSEDES_PLAN_PATH, V31_RELATIVE_PATH)
+        self.assertEqual(config.V32_PLAN_PATH, V32_PATH)
 
         payload = json.loads(V32_PATH.read_text(encoding="utf-8"))
         self.assertEqual(payload["schema"], V32_SCHEMA)
@@ -48,20 +43,21 @@ class V32ImmutableLineageTests(unittest.TestCase):
         self.assertEqual(payload["supersedes_plan_hash"], V31_PLAN_HASH)
         self.assertEqual(payload["supersedes_plan_path"], V31_RELATIVE_PATH)
 
-    def test_v32_is_active_and_v31_is_retired(self) -> None:
+    def test_v32_is_retired_and_v31_remains_retired(self) -> None:
         payload = json.loads(V32_PATH.read_text(encoding="utf-8"))
-        self.assertEqual(trust_root.ACTIVE_PLAN["schema"], V32_SCHEMA)
-        self.assertEqual(trust_root.ACTIVE_PLAN["plan_id"], V32_PLAN_ID)
-        self.assertEqual(trust_root.ACTIVE_PLAN["plan_hash"], payload["plan_hash"])
-        self.assertEqual(
-            trust_root.ACTIVE_PLAN["plan_file_sha256"],
-            hashlib.sha256(V32_PATH.read_bytes()).hexdigest(),
-        )
         retired = {item["path"]: item for item in trust_root.RETIRED_PLANS}
         self.assertEqual(retired[V31_RELATIVE_PATH]["plan_hash"], V31_PLAN_HASH)
         self.assertEqual(
             retired[V31_RELATIVE_PATH]["plan_file_sha256"],
             V31_FILE_SHA256,
+        )
+        v32_relative = V32_PATH.relative_to(ROOT).as_posix()
+        self.assertEqual(retired[v32_relative]["schema"], V32_SCHEMA)
+        self.assertEqual(retired[v32_relative]["plan_id"], V32_PLAN_ID)
+        self.assertEqual(retired[v32_relative]["plan_hash"], payload["plan_hash"])
+        self.assertEqual(
+            retired[v32_relative]["plan_file_sha256"],
+            hashlib.sha256(V32_PATH.read_bytes()).hexdigest(),
         )
 
 

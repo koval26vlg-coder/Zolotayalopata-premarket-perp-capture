@@ -108,13 +108,13 @@ class V29ImmutablePlanTests(unittest.TestCase):
             "32877c7c731bdf63167b20827f373726e34e1fbc1bcd61db26d6975444067ab5",
         )
 
-    def test_operator_docs_identify_v32_as_active_and_v31_as_preserved(self) -> None:
+    def test_operator_docs_identify_v33_as_active_and_v32_as_preserved(self) -> None:
         readme = (ROOT / "README.md").read_text(encoding="utf-8")
         agents = (ROOT / "AGENTS.md").read_text(encoding="utf-8")
-        self.assertIn("premarket_perp_capture_20260822_v32", readme)
-        self.assertIn("v31 сохранён byte-identical", readme)
-        self.assertIn("активный immutable план — v32", agents)
-        self.assertIn("v30 сохранён", readme)
+        self.assertIn("premarket_perp_capture_20260822_v33", readme)
+        self.assertIn("v32 сохранён byte-identical", readme)
+        self.assertIn("активный immutable план — v33", agents)
+        self.assertIn("v30, v31 и v32 сохранены byte-identical", readme)
 
 
 class SecondsGradeAdmissionTests(unittest.TestCase):

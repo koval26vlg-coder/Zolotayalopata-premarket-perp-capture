@@ -6,18 +6,22 @@ Research-only контур для публичных pre-market perpetual дан
 
 Проект наблюдает рынок с плечом, но никогда не берёт плечо: private API, ключи,
 подпись запросов, ордера, margin, real capital и переводы запрещены. Capture не
-запускался и активным PlanOnly v32 не разрешён. v32 сохраняет bounded-поиск
+запускался и активным PlanOnly v33 не разрешён. v33 сохраняет bounded-поиск
 официальных announcement-кандидатов, но принимает их только по точной схеме полей,
 с фиксированными non-authority значениями и venue-bound официальным URL;
-локальная fail-closed paper simulation остаётся отдельным offline-контуром.
+локальная fail-closed paper simulation остаётся отдельным offline-контуром. Новый
+no-model scheduler делает только дешёвый пяти-минутный due-check; фактическая сеть
+работает по adaptive cadence 6ч/3ч/1ч/5мин.
 
-## Состояние v32
+## Состояние v33
 
-- immutable PlanOnly: `premarket_perp_capture_20260822_v32`;
-- status: `ANNOUNCEMENT_DISCOVERY_CANDIDATE_STORE_NO_CAPTURE`;
+- immutable PlanOnly: `premarket_perp_capture_20260822_v33`;
+- status: `ANNOUNCEMENT_WATCH_SCHEDULED_NO_CAPTURE`;
 - разрешены только metadata registry, human official attestation и локальная
   fail-closed registry quarantine, offline paper-readiness и bounded official-index
   discovery без article-body fetch;
+- scheduler не использует модель или токены: Windows Task Scheduler просыпается раз в
+  пять минут, а `NOT_DUE` не делает preflight, claim, сеть, запись или stdout;
 - discovery читает только точные публичные index endpoints Bybit, Bitget и KuCoin;
   время index-записи — publication time, не `official_spot_t0`;
 - candidate store отклоняет любое поле вне точной схемы, повторно связывает article URL
@@ -43,9 +47,9 @@ Research-only контур для публичных pre-market perpetual дан
   `PAPER_NOT_RUN_COST_MODEL_MISSING`; виртуальная позиция и net PnL не создаются;
 - replay descriptive-only и не поддерживает ACCEPT/REJECT стратегии.
 
-Активные v32 plan hash и file SHA-256 закреплены во внешнем trust root
-`src/frozen_plan_bindings.py`; v31 сохранён byte-identical как непосредственный
-предшественник, включая первоначальный candidate-store контракт.
+Активные v33 plan hash и file SHA-256 закреплены во внешнем trust root
+`src/frozen_plan_bindings.py`; v32 сохранён byte-identical как непосредственный
+предшественник.
 
 ## Компоненты
 
@@ -58,12 +62,16 @@ Research-only контур для публичных pre-market perpetual дан
 | `src/official_attestation.py` | human-attested official spot `t0` с дословным evidence |
 | `src/announcement_discovery.py` | bounded official-index discovery без authority на `t0` |
 | `src/announcement_candidate_store.py` | append-only hash-chain непроверенных кандидатов |
+| `src/announcement_watch_state.py` | hash-chained attempts, atomic state и dedicated claim |
+| `src/announcement_watch_scheduler.py` | adaptive wake-only due-controller без модели |
 | `src/registry_quarantine.py` | локальная CAS-bound quarantine повреждённого поколения |
 | `src/capture.py` | bounded collector implementation; активным планом не авторизован |
 | `src/replay.py` | строгий offline loader и causal gross BBO markout |
 | `src/paper_replay.py` | fail-closed offline paper-readiness и deterministic result hash |
 | `tools/start_premarket_perp_paper_only_visible.ps1` | локальный видимый paper-only тик |
 | `tools/start_premarket_announcement_discovery_visible.ps1` | один bounded visible discovery tick |
+| `tools/start_premarket_announcement_watch_scheduler.ps1` | тихий due-tick/status launcher |
+| `tools/install_premarket_announcement_watch_scheduler.ps1` | idempotent hidden Windows task installer |
 | `src/frozen_plan_bindings.py` | внешний trust root PlanOnly lineage |
 
 ## Registry v3
@@ -238,12 +246,29 @@ pwsh -NoProfile -ExecutionPolicy Bypass `
   -ScheduledTick -Json
 ```
 
+Установка и read-only статус no-model watcher:
+
+```powershell
+pwsh -NoProfile -ExecutionPolicy Bypass `
+  -File .\tools\install_premarket_announcement_watch_scheduler.ps1 -Install -Json
+
+pwsh -NoProfile -ExecutionPolicy Bypass `
+  -File .\tools\start_premarket_announcement_watch_scheduler.ps1 -Status -Json
+```
+
+Задача `\ZolotyayLopata\PremarketAnnouncementWatch` скрыта, просыпается каждые пять
+минут и вызывает SHA-bound launcher с закреплённым абсолютным Python runtime.
+`RETRY_NEXT_INTERVAL` и `PARTIAL_RETRY_NEXT_INTERVAL` возвращают ненулевой task result
+и пишутся в stderr, но задача остаётся включённой. Codex/LLM automation для неё не
+включается.
+
 ## Preflight
 
 ```powershell
 & $py src\risk_gate.py --preflight --write-class metadata_registry --run-id <id>
 & $py src\risk_gate.py --preflight --write-class official_attestation --run-id <id>
 & $py src\risk_gate.py --preflight --write-class announcement_discovery --run-id <id>
+& $py src\risk_gate.py --preflight --write-class announcement_watch_control --run-id <id>
 & $py src\risk_gate.py --preflight --write-class registry_quarantine --run-id <id>
 ```
 
@@ -255,9 +280,10 @@ event-bound PlanOnly может связать конкретное событи
 
 ## Immutable lineage
 
-Опубликованы v1–v32. Все прежние планы остаются на диске и проверяются по file SHA,
+Опубликованы v1–v33. Все прежние планы остаются на диске и проверяются по file SHA,
 canonical plan hash и identity. v27 и v28 сохранены; v29 сохранён byte-identical;
-v30 сохранён byte-identical; v31 сохранён byte-identical. v32 отдельно supersede-ит v31 после ужесточения
-candidate-store boundary. Ни один старый PlanOnly не переписывался.
+v30, v31 и v32 сохранены byte-identical. v33 supersede-ит v32 и добавляет только
+adaptive no-model scheduler/control-plane contract без capture-authority. Ни один
+старый PlanOnly не переписывался.
 
 См. `AGENTS.md`, `src/frozen_plan_bindings.py` и решения в `docs/decisions/`.
