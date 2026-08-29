@@ -185,8 +185,11 @@ class AllowListSanityTests(unittest.TestCase):
                 for marker in markers:
                     self.assertNotIn(marker, f"{host}{path}".lower())
 
-    def test_the_allow_list_is_public_market_data_only(self) -> None:
-        for host, path in ALLOWED:
+    def test_the_allow_list_contains_only_public_research_surfaces(self) -> None:
+        market_data = set(config.MARKET_DATA_ALLOWED_ENDPOINTS)
+        announcements = set(config.ANNOUNCEMENT_ALLOWED_ENDPOINTS)
+        self.assertEqual(set(ALLOWED), market_data | announcements)
+        for host, path in market_data:
             with self.subTest(endpoint=f"{host}{path}"):
                 lowered = path.lower()
                 self.assertTrue(
@@ -196,6 +199,10 @@ class AllowListSanityTests(unittest.TestCase):
                     or "trades" in lowered,
                     f"{path} does not look like public market data",
                 )
+        for host, path in announcements:
+            with self.subTest(endpoint=f"{host}{path}"):
+                self.assertIn("ann", path.lower())
+                self.assertTrue(host.startswith("api."))
 
 
 if __name__ == "__main__":

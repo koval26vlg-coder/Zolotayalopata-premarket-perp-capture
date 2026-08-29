@@ -55,6 +55,23 @@ def build(**overrides):
         "now_ts": attestation.parse_announced_utc(ANNOUNCED) - 7 * 24 * 3600,
     }
     fields.update(overrides)
+    listing_venue = fields.get("listing_venue") or fields["venue"]
+    if listing_venue != fields["venue"]:
+        fields.setdefault(
+            "asset_identity",
+            registry.AssetIdentity(
+                asset_class=registry.ASSET_CLASS_CRYPTO_TOKEN,
+                issuer_namespace="crypto_asset",
+                issuer_id="KII",
+                evidence_class=registry.IDENTITY_EVIDENCE_OFFICIAL_ATTESTATION,
+            ),
+        )
+        fields.setdefault("same_underlying_decision", "SAME_UNDERLYING")
+        fields.setdefault(
+            "quoted_identity_sentence",
+            "Kite AI (KII) is the asset being listed for spot trading.",
+        )
+        fields.setdefault("quoted_underlying_text", "Kite AI (KII)")
     return attestation.build_attestation(**fields)
 
 
@@ -118,6 +135,11 @@ class RoleSeparationTests(unittest.TestCase):
                     quoted_time_text=v6.QUOTED_TIME,
                     quoted_symbol_text=v6.QUOTED_SYMBOL,
                     attested_by="cross-venue-test",
+                    same_underlying_decision="SAME_UNDERLYING",
+                    quoted_identity_sentence=(
+                        "Kite AI (KII) is the asset being listed for spot trading."
+                    ),
+                    quoted_underlying_text="Kite AI (KII)",
                 )
 
         self.assertEqual(result["status"], "ATTESTED")
@@ -204,7 +226,9 @@ class ReachIsUnchangedTests(unittest.TestCase):
         # from one host, and did so before this widening. The property that matters is
         # that trusting Binance, Bitget, KuCoin or Upbit to announce gave them no
         # place in the endpoint list.
-        endpoint_hosts = {host for host, _path in config.ALLOWED_ENDPOINTS}
+        endpoint_hosts = {
+            host for host, _path in config.MARKET_DATA_ALLOWED_ENDPOINTS
+        }
         newly_trusted = {
             host
             for venue, hosts in config.OFFICIAL_ANNOUNCEMENT_HOSTS.items()
@@ -216,7 +240,7 @@ class ReachIsUnchangedTests(unittest.TestCase):
 
     def test_the_market_data_allow_list_still_names_three_venues(self):
         self.assertEqual(
-            sorted({host for host, _ in config.ALLOWED_ENDPOINTS}),
+            sorted({host for host, _ in config.MARKET_DATA_ALLOWED_ENDPOINTS}),
             ["api.bybit.com", "api.gateio.ws", "www.okx.com"],
         )
 
@@ -226,6 +250,16 @@ class ReachIsUnchangedTests(unittest.TestCase):
                     "https://www.kucoin.com/announcement"):
             with self.subTest(url=url):
                 self.assertFalse(public_http.endpoint_is_allowed(url))
+
+    def test_only_exact_documented_announcement_indexes_are_reachable(self):
+        for host, path in config.ANNOUNCEMENT_ALLOWED_ENDPOINTS:
+            with self.subTest(host=host, path=path):
+                self.assertTrue(public_http.endpoint_is_allowed(f"https://{host}{path}"))
+        self.assertFalse(
+            public_http.endpoint_is_allowed(
+                "https://www.kucoin.com/announcement/en-some-listing"
+            )
+        )
 
     def test_the_attestation_module_still_fetches_nothing(self):
         source = (ROOT / "src/official_attestation.py").read_text(encoding="utf-8")

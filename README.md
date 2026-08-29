@@ -6,15 +6,25 @@ Research-only контур для публичных pre-market perpetual дан
 
 Проект наблюдает рынок с плечом, но никогда не берёт плечо: private API, ключи,
 подпись запросов, ордера, margin, real capital и переводы запрещены. Capture не
-запускался и активным PlanOnly v30 не разрешён. Разрешена только локальная
-fail-closed paper simulation над заранее запечатанными публичными evidence.
+запускался и активным PlanOnly v32 не разрешён. v32 сохраняет bounded-поиск
+официальных announcement-кандидатов, но принимает их только по точной схеме полей,
+с фиксированными non-authority значениями и venue-bound официальным URL;
+локальная fail-closed paper simulation остаётся отдельным offline-контуром.
 
-## Состояние v30
+## Состояние v32
 
-- immutable PlanOnly: `premarket_perp_capture_20260822_v30`;
-- status: `PAPER_SIMULATION_PREREGISTERED_NO_CAPTURE`;
+- immutable PlanOnly: `premarket_perp_capture_20260822_v32`;
+- status: `ANNOUNCEMENT_DISCOVERY_CANDIDATE_STORE_NO_CAPTURE`;
 - разрешены только metadata registry, human official attestation и локальная
-  fail-closed registry quarantine, а также offline paper-readiness без записи;
+  fail-closed registry quarantine, offline paper-readiness и bounded official-index
+  discovery без article-body fetch;
+- discovery читает только точные публичные index endpoints Bybit, Bitget и KuCoin;
+  время index-записи — publication time, не `official_spot_t0`;
+- candidate store отклоняет любое поле вне точной схемы, повторно связывает article URL
+  с официальным host/path конкретного `listing_venue` и не допускает повышения
+  `identity_authority`, `registry_write` или `human_attestation_required`;
+- тикер в заголовке — только heuristic candidate. Cross-venue связь требует
+  отдельной human `SAME_UNDERLYING` аттестации с дословным названием актива;
 - точность official `t0` выводится только из дословного времени источника: minute-only
   остаётся descriptive, а acceptance candidate требует явных секунд;
 - `event_registry.py --candidate-status` выполняет только read-only проверку и
@@ -33,11 +43,9 @@ fail-closed paper simulation над заранее запечатанными п
   `PAPER_NOT_RUN_COST_MODEL_MISSING`; виртуальная позиция и net PnL не создаются;
 - replay descriptive-only и не поддерживает ACCEPT/REJECT стратегии.
 
-Активные v30 identity: plan hash
-`32877c7c731bdf63167b20827f373726e34e1fbc1bcd61db26d6975444067ab5`, file
-SHA-256 `d68bf90c354063622a33e762a58ec610594af1bcc7359cf8125a28e9f933a192`.
-Они закреплены во внешнем trust root `src/frozen_plan_bindings.py`; v29 сохранён
-byte-identical как непосредственный предшественник.
+Активные v32 plan hash и file SHA-256 закреплены во внешнем trust root
+`src/frozen_plan_bindings.py`; v31 сохранён byte-identical как непосредственный
+предшественник, включая первоначальный candidate-store контракт.
 
 ## Компоненты
 
@@ -48,11 +56,14 @@ byte-identical как непосредственный предшественн�
 | `src/public_http.py` | HTTPS allow-list до DNS/connect, без redirects и скрытых retries |
 | `src/event_registry.py` | append-only registry v3, asset identity, lifecycle и lineage |
 | `src/official_attestation.py` | human-attested official spot `t0` с дословным evidence |
+| `src/announcement_discovery.py` | bounded official-index discovery без authority на `t0` |
+| `src/announcement_candidate_store.py` | append-only hash-chain непроверенных кандидатов |
 | `src/registry_quarantine.py` | локальная CAS-bound quarantine повреждённого поколения |
 | `src/capture.py` | bounded collector implementation; активным планом не авторизован |
 | `src/replay.py` | строгий offline loader и causal gross BBO markout |
 | `src/paper_replay.py` | fail-closed offline paper-readiness и deterministic result hash |
 | `tools/start_premarket_perp_paper_only_visible.ps1` | локальный видимый paper-only тик |
+| `tools/start_premarket_announcement_discovery_visible.ps1` | один bounded visible discovery tick |
 | `src/frozen_plan_bindings.py` | внешний trust root PlanOnly lineage |
 
 ## Registry v3
@@ -123,7 +134,7 @@ Mutation receipt закрепляет полный pre-hash record: registry/sum
 `mutation_run_id`, active/high-water state, venue/surface counts, relevant IDs/hashes и
 terminal IDs. Валидатор PlanOnly сверяет этот словарь целиком.
 
-Official-attestation producer, сохранённый в v29 и связанный v30, выводит точность только из дословно сохранённой
+Official-attestation producer, сохранённый в v29 и усиленный в v31, выводит точность только из дословно сохранённой
 временной формулировки источника: явные секунды дают `1`, а только часы и минуты —
 `60`. Minute-only evidence остаётся descriptive-only; candidate selector допускает
 событие к будущему capture только при official crypto announcement с точностью не хуже
@@ -218,24 +229,35 @@ pwsh -NoProfile -ExecutionPolicy Bypass `
 
 Нормальный текущий результат — `NO_ELIGIBLE_EVENT` и ноль виртуальных позиций.
 
+Один bounded discovery tick (индексы опрашиваются только при свежем активном crypto
+pre-market episode; иначе сеть и candidate store не затрагиваются):
+
+```powershell
+pwsh -NoProfile -ExecutionPolicy Bypass `
+  -File .\tools\start_premarket_announcement_discovery_visible.ps1 `
+  -ScheduledTick -Json
+```
+
 ## Preflight
 
 ```powershell
 & $py src\risk_gate.py --preflight --write-class metadata_registry --run-id <id>
 & $py src\risk_gate.py --preflight --write-class official_attestation --run-id <id>
+& $py src\risk_gate.py --preflight --write-class announcement_discovery --run-id <id>
 & $py src\risk_gate.py --preflight --write-class registry_quarantine --run-id <id>
 ```
 
 Preflight не запускает writer автоматически. Реальные refresh, attestation и
-quarantine являются отдельными операциями. Capture требует будущего immutable PlanOnly,
-v31, который свяжет конкретное official seconds-grade событие и явно добавит ровно один
-`market_data_capture`, плюс отдельное разрешение пользователя на
-видимый запуск.
+quarantine и discovery являются отдельными операциями. После human official
+attestation нужен отдельный minute-grade arming PlanOnly без capture; только следующий
+event-bound PlanOnly может связать конкретное событие и явно добавить ровно один
+`market_data_capture`, плюс отдельное разрешение пользователя на видимый запуск.
 
 ## Immutable lineage
 
-Опубликованы v1–v30. Все прежние планы остаются на диске и проверяются по file SHA,
-canonical plan hash и identity. v27 и v28 сохранены; v29 сохранён byte-identical и
-непосредственно superseded v30. Ни один старый PlanOnly не переписывался.
+Опубликованы v1–v32. Все прежние планы остаются на диске и проверяются по file SHA,
+canonical plan hash и identity. v27 и v28 сохранены; v29 сохранён byte-identical;
+v30 сохранён byte-identical; v31 сохранён byte-identical. v32 отдельно supersede-ит v31 после ужесточения
+candidate-store boundary. Ни один старый PlanOnly не переписывался.
 
 См. `AGENTS.md`, `src/frozen_plan_bindings.py` и решения в `docs/decisions/`.

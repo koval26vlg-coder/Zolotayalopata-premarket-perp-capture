@@ -69,13 +69,24 @@ V26_PLAN_PATH = PROJECT_ROOT / "docs/plans/premarket-perp-capture-planonly-20260
 V27_PLAN_PATH = PROJECT_ROOT / "docs/plans/premarket-perp-capture-planonly-20260822-v27.json"
 V28_PLAN_PATH = PROJECT_ROOT / "docs/plans/premarket-perp-capture-planonly-20260822-v28.json"
 V29_PLAN_PATH = PROJECT_ROOT / "docs/plans/premarket-perp-capture-planonly-20260822-v29.json"
-PLAN_PATH = PROJECT_ROOT / "docs/plans/premarket-perp-capture-planonly-20260822-v30.json"
+V30_PLAN_PATH = PROJECT_ROOT / "docs/plans/premarket-perp-capture-planonly-20260822-v30.json"
+V31_PLAN_PATH = PROJECT_ROOT / "docs/plans/premarket-perp-capture-planonly-20260822-v31.json"
+PLAN_PATH = PROJECT_ROOT / "docs/plans/premarket-perp-capture-planonly-20260822-v32.json"
 RUN_RECORD_PATH = PROJECT_ROOT / "docs/run/capture-run.json"
 STOP_REQUEST_PATH = PROJECT_ROOT / "docs/run/stop-request.json"
 CAPTURE_TOKEN_PATH = PROJECT_ROOT / "docs/run/capture-token.json"
 EVIDENCE_DIR = PROJECT_ROOT / "docs/evidence"
 CLAIM_ARCHIVE_DIR = PROJECT_ROOT / "docs/run/global-writer-claim-archive"
 REGISTRY_QUARANTINE_ROOT = PROJECT_ROOT / "docs/registry/quarantine"
+ANNOUNCEMENT_CANDIDATE_PATH = (
+    PROJECT_ROOT / "docs/announcements/official-listing-candidates-v1.jsonl"
+)
+ANNOUNCEMENT_ATTEMPTS_PATH = (
+    PROJECT_ROOT / "docs/announcements/official-listing-discovery-attempts-v1.jsonl"
+)
+ANNOUNCEMENT_STATE_PATH = (
+    PROJECT_ROOT / "docs/announcements/official-listing-discovery-state-v1.json"
+)
 
 # Exact authority surface copied from a selected registry episode into the capture
 # job, immutable manifest and receipt. Keep it here so the collector, replay loader
@@ -123,6 +134,12 @@ BOUND_RUNTIME_FILES: tuple[tuple[str, str], ...] = (
     ("paper_replay", "src/paper_replay.py"),
     ("paper_only_launcher", "tools/start_premarket_perp_paper_only_visible.ps1"),
     ("official_attestation", "src/official_attestation.py"),
+    ("announcement_candidate_store", "src/announcement_candidate_store.py"),
+    ("announcement_discovery", "src/announcement_discovery.py"),
+    (
+        "announcement_discovery_launcher",
+        "tools/start_premarket_announcement_discovery_visible.ps1",
+    ),
     # The forbidden-capability vocabulary is part of the contract, not a note:
     # widening it must require reissuing the plan like any runtime change.
     ("forbidden_capabilities", "docs/risk/forbidden-capabilities.txt"),
@@ -132,7 +149,7 @@ BOUND_RUNTIME_FILES: tuple[tuple[str, str], ...] = (
 # that is not covered here is a finding, not a feature: the capability scan reads this
 # tuple, so widening the reach of the project means editing this list, reissuing the
 # PlanOnly and passing review - not adding a string somewhere in a collector.
-ALLOWED_ENDPOINTS: tuple[tuple[str, str], ...] = (
+MARKET_DATA_ALLOWED_ENDPOINTS: tuple[tuple[str, str], ...] = (
     # Bybit v5 public market data (linear perpetuals, incl. pre-market instruments)
     ("api.bybit.com", "/v5/market/instruments-info"),
     ("api.bybit.com", "/v5/market/tickers"),
@@ -154,10 +171,33 @@ ALLOWED_ENDPOINTS: tuple[tuple[str, str], ...] = (
     ("api.gateio.ws", "/api/v4/futures/usdt/trades"),
 )
 
+# Discovery reads only bounded JSON indexes.  Article URLs are stored for explicit
+# human review and are never fetched by this runtime.  Keeping this tuple separate
+# prevents an announcement source from silently becoming a market-data venue.
+ANNOUNCEMENT_ALLOWED_ENDPOINTS: tuple[tuple[str, str], ...] = (
+    ("api.bybit.com", "/v5/announcements/index"),
+    ("api.bitget.com", "/api/v2/public/annoucements"),
+    ("api.kucoin.com", "/api/v3/announcements"),
+)
+ALLOWED_ENDPOINTS: tuple[tuple[str, str], ...] = (
+    MARKET_DATA_ALLOWED_ENDPOINTS + ANNOUNCEMENT_ALLOWED_ENDPOINTS
+)
+
+ANNOUNCEMENT_MAX_PAGES = 3
+ANNOUNCEMENT_MAX_ARTICLES_PER_VENUE = 150
+ANNOUNCEMENT_MAX_TARGETS_PER_TICK = 20
+ANNOUNCEMENT_VENUES: tuple[str, ...] = ("bybit", "bitget", "kucoin")
+
 # Provenance policy for human-attested official listing moments.  Registry validation
 # imports this policy rather than the attestation writer, so an arbitrary JSON row
 # cannot become official merely by spelling OFFICIAL_ANNOUNCEMENT correctly.
-OFFICIAL_ATTESTATION_SCHEMA = "premarket_perp_official_attestation_v2"
+OFFICIAL_ATTESTATION_SCHEMA = "premarket_perp_official_attestation_v3"
+LEGACY_OFFICIAL_ATTESTATION_SCHEMAS: tuple[str, ...] = (
+    "premarket_perp_official_attestation_v2",
+)
+SAME_UNDERLYING_ATTESTATION_SCHEMA = (
+    "premarket_perp_same_underlying_attestation_v1"
+)
 # Whose announcement counts as official, keyed by the venue that LISTS the underlying
 # on spot. That is not necessarily the venue trading the pre-market perpetual: a token
 # whose perp sits on Bybit may be spot-listed on Binance or Upbit, and that listing is
@@ -242,6 +282,18 @@ WRITE_CLASSES: dict[str, dict[str, object]] = {
         "capture_token": False,
         "plan_and_capability_scan": True,
         "endpoint_allow_list": True,
+    },
+    "announcement_discovery": {
+        "what": (
+            "fetch bounded official announcement indexes and append unverified "
+            "announcement candidates"
+        ),
+        "requests": "bounded index pages only; article bodies are never fetched",
+        "exclusive_writer_claim": False,
+        "capture_token": False,
+        "plan_and_capability_scan": True,
+        "endpoint_allow_list": True,
+        "max_retries_per_request": 0,
     },
     "registry_quarantine": {
         "what": "archive one failed registry generation before deactivation",

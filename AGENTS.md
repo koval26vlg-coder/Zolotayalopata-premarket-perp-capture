@@ -24,10 +24,13 @@
 - вывод и переводы средств;
 - решения ACCEPT/REJECT по захваченным данным.
 
-`execution_replay` — офлайн-анализ уже лежащих на диске публичных данных. v30
-разрешает только fail-closed offline paper simulation: без подходящего official event,
+`execution_replay` — офлайн-анализ уже лежащих на диске публичных данных. v32
+сохраняет fail-closed offline paper simulation и bounded official
+announcement-index discovery: без подходящего official event,
 sealed capture и полного cost model она создаёт ноль виртуальных позиций и не публикует
-net PnL. Биржевое paper execution остаётся запрещённым.
+net PnL. Discovery-кандидат не является `t0` и не даёт capture-authority. Биржевое
+paper execution остаётся запрещённым. Candidate store принимает только exact schema,
+фиксированные non-authority значения и официальный URL, связанный с listing venue.
 Полный контракт: `RISK_CONTRACT` в `src/project_config.py`, он же записан в PlanOnly.
 
 ## Risk gate
@@ -45,9 +48,9 @@ net PnL. Биржевое paper execution остаётся запрещённы�
   предыдущий capture не завершён.
 
 Только `market_data_capture` может получить одноразовый capture-токен. Metadata refresh,
-human official attestation и локальная registry quarantine имеют отдельные действия и
-не заимствуют capture-authority. Capture без токена невозможен — флага «я подтверждаю»
-здесь нет по замыслу.
+human official attestation, bounded announcement discovery и локальная registry
+quarantine имеют отдельные действия и не заимствуют capture-authority. Capture без
+токена невозможен — флага «я подтверждаю» здесь нет по замыслу.
 
 ## Общий writer
 
@@ -59,7 +62,8 @@ Workspace общий с `ZolotyayLopata`. Этот проект — второй
 
 ## Объём
 
-- Только публичные market-data endpoints Bybit/OKX/Gate из `ALLOWED_ENDPOINTS`.
+- Только публичные market-data endpoints Bybit/OKX/Gate и точные public announcement
+  index endpoints Bybit/Bitget/KuCoin из `ALLOWED_ENDPOINTS`; article bodies не читаются.
 - Хост сам по себе не единица доступа: путь объявляется отдельно.
 - Расширение доступа = правка `ALLOWED_ENDPOINTS` + перевыпуск PlanOnly + ревью.
   Строка URL, добавленная в коллектор, гейт не пройдёт.
@@ -93,13 +97,15 @@ Workspace общий с `ZolotyayLopata`. Этот проект — второй
   mutation receipt, а не по текущему head.
 - Текущий human-attested producer выводит точность из дословного времени источника.
   Minute-only источник остаётся descriptive; только явный `HH:MM:SS` может дать
-  seconds-grade candidate, но v30 всё равно не авторизует capture.
+  seconds-grade candidate, но v32 всё равно не авторизует capture.
 
 ## Статус
 
 Capture ещё **не запускался**. PlanOnly в статусе
-`PAPER_SIMULATION_PREREGISTERED_NO_CAPTURE`; активный immutable план — v30.
-`market_data_capture` этим статусом не авторизован. Первый capture требует отдельного
-v31/checkpoint и отдельного разрешения пользователя на видимый запуск. Текущий
+`ANNOUNCEMENT_DISCOVERY_CANDIDATE_STORE_NO_CAPTURE`; активный immutable план — v32.
+`market_data_capture` этим статусом не авторизован. Discovery сохраняет только
+`UNVERIFIED_ANNOUNCEMENT_DISCOVERY`; index publication time и ticker match не могут
+стать official `t0`. После human attestation нужен отдельный arming/checkpoint, а затем
+event-bound PlanOnly и отдельное разрешение пользователя на видимый capture. Текущий
 paper-only launcher выполняет только проверку готовности и детерминированный offline
 тик; `NO_ELIGIBLE_EVENT` является нормальным нулевым результатом, а не сделкой.

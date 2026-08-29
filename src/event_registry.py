@@ -2350,6 +2350,7 @@ def materialize_episodes(entries: Iterable[Mapping[str, Any]]) -> list[dict[str,
                     head.get("premarket_contract_id") or head.get("symbol")
                 ),
                 "asset_identity_hash": None,
+                "same_underlying_identity_verified": False,
                 "evidence_use": "DESCRIPTIVE_ONLY",
                 "capture_eligible": False,
             },
@@ -2365,6 +2366,11 @@ def materialize_episodes(entries: Iterable[Mapping[str, Any]]) -> list[dict[str,
             continue
         episode["timestamp_observations"].append(
             {
+                "episode_id": episode_id,
+                "venue": head.get("venue"),
+                "premarket_contract_id": head.get("premarket_contract_id")
+                or head.get("symbol"),
+                "spot_symbol": head.get("spot_symbol"),
                 "stream_id": head["stream_id"],
                 "stream_revision": int(
                     head.get("stream_revision", head.get("revision", 0)) or 0
@@ -2463,6 +2469,13 @@ def materialize_episodes(entries: Iterable[Mapping[str, Any]]) -> list[dict[str,
                 ),
             )
             episode["listing_venue"] = official["listing_venue"]
+            same_underlying_verified = _same_underlying_identity_verified(
+                official,
+                official.get("attestation") or {},
+            )
+            episode["same_underlying_identity_verified"] = (
+                same_underlying_verified
+            )
             episode["t0_precision_sec"] = official["t0_precision_sec"]
             episode["caveats"] = list(official["caveats"])
             episode["official_t0_provenance"] = {
@@ -2477,6 +2490,7 @@ def materialize_episodes(entries: Iterable[Mapping[str, Any]]) -> list[dict[str,
                 "t0_precision_sec": official["t0_precision_sec"],
                 "caveats": list(official["caveats"]),
                 "attestation": dict(official["attestation"]),
+                "same_underlying_identity_verified": same_underlying_verified,
             }
             official_identity = identity_key(official)
             metadata_identity_keys = {
@@ -2490,6 +2504,7 @@ def materialize_episodes(entries: Iterable[Mapping[str, Any]]) -> list[dict[str,
                 and official_identity is not None
                 and official_identity[0] == ASSET_CLASS_CRYPTO_TOKEN
                 and metadata_identity_keys == {official_identity}
+                and same_underlying_verified
                 and 0 < int(official.get("t0_precision_sec", 0) or 0) <= 1
             )
             episode["evidence_use"] = (
@@ -2745,6 +2760,101 @@ def _matches_quoted_form(value: str, form: str) -> bool:
     return True
 
 
+def _same_underlying_identity_problems(
+    entry: Mapping[str, Any],
+    attestation: Mapping[str, Any],
+    *,
+    prefix: str,
+) -> list[str]:
+    venue = str(entry.get("venue") or "")
+    listing_venue = str(entry.get("listing_venue") or "")
+    if listing_venue == venue:
+        return []
+    if attestation.get("schema") in config.LEGACY_OFFICIAL_ATTESTATION_SCHEMAS:
+        # Historical cross-venue v2 rows remain readable but never become capture
+        # authority; the materializer applies that downgrade below.
+        return []
+    nested = attestation.get("underlying_identity_attestation")
+    if not isinstance(nested, Mapping):
+        return [prefix + "cross-venue same-underlying attestation is missing"]
+    problems: list[str] = []
+    expected = {
+        "schema": config.SAME_UNDERLYING_ATTESTATION_SCHEMA,
+        "decision": "SAME_UNDERLYING",
+        "attested_by": str(attestation.get("attested_by") or ""),
+        "perpetual_episode_id": str(entry.get("episode_id") or ""),
+        "perpetual_venue": venue,
+        "premarket_contract_id": str(
+            entry.get("premarket_contract_id") or entry.get("symbol") or ""
+        ),
+        "perpetual_asset_class": str(
+            entry.get("asset_class") or ASSET_CLASS_UNCLASSIFIED
+        ),
+        "perpetual_issuer_namespace": str(entry.get("issuer_namespace") or ""),
+        "perpetual_issuer_id": str(entry.get("issuer_id") or ""),
+        "perpetual_asset_identity_hash": str(
+            entry.get("asset_identity_hash") or ""
+        ),
+        "listing_venue": listing_venue,
+        "spot_symbol": str(entry.get("spot_symbol") or ""),
+        "announcement_url": str(entry.get("source_url") or ""),
+    }
+    for field, value in expected.items():
+        if nested.get(field) != value:
+            problems.append(
+                prefix + f"same-underlying {field} does not match official record"
+            )
+    sentence = str(nested.get("quoted_identity_sentence") or "")
+    underlying = str(nested.get("quoted_underlying_text") or "")
+    for field, value in (
+        ("quoted identity sentence", sentence),
+        ("quoted underlying text", underlying),
+    ):
+        if (
+            not value
+            or value != value.strip()
+            or _has_forbidden_unicode_controls(value)
+        ):
+            problems.append(
+                prefix + f"same-underlying {field} is not verbatim canonical text"
+            )
+    if not sentence or not underlying or underlying not in sentence:
+        problems.append(
+            prefix + "quoted underlying text is not present in identity sentence"
+        )
+    base = _normalised_underlying_id(entry.get("spot_symbol"))
+    if not base or re.search(
+        rf"(?<![A-Z0-9]){re.escape(base)}(?![A-Z0-9])",
+        sentence.upper(),
+    ) is None:
+        problems.append(
+            prefix + "identity sentence has no exact underlying ticker token"
+        )
+    if _normalise_symbol(underlying) in {
+        base,
+        _normalise_symbol(entry.get("spot_symbol")),
+        _normalise_symbol(entry.get("premarket_contract_id")),
+    }:
+        problems.append(
+            prefix + "quoted underlying identity is only the market ticker"
+        )
+    return problems
+
+
+def _same_underlying_identity_verified(
+    entry: Mapping[str, Any], attestation: Mapping[str, Any]
+) -> bool:
+    venue = str(entry.get("venue") or "")
+    listing_venue = str(entry.get("listing_venue") or "")
+    if listing_venue == venue:
+        return True
+    if attestation.get("schema") != config.OFFICIAL_ATTESTATION_SCHEMA:
+        return False
+    return not _same_underlying_identity_problems(
+        entry, attestation, prefix=""
+    )
+
+
 def _official_record_problems(
     entry: Mapping[str, Any],
     *,
@@ -2843,7 +2953,10 @@ def _official_record_problems(
     if not isinstance(attestation, Mapping):
         problems.append(prefix + "official attestation object is missing")
         return problems
-    if attestation.get("schema") != config.OFFICIAL_ATTESTATION_SCHEMA:
+    if attestation.get("schema") not in {
+        config.OFFICIAL_ATTESTATION_SCHEMA,
+        *config.LEGACY_OFFICIAL_ATTESTATION_SCHEMAS,
+    }:
         problems.append(prefix + "official attestation schema is invalid")
     if str(attestation.get("announcement_url") or "") != source_url:
         problems.append(prefix + "attestation announcement_url does not match source_url")
@@ -2851,6 +2964,13 @@ def _official_record_problems(
         problems.append(prefix + "attestation listing_venue does not match official record")
     if str(attestation.get("perpetual_venue") or "") != venue:
         problems.append(prefix + "attestation perpetual_venue does not match official record")
+    problems.extend(
+        _same_underlying_identity_problems(
+            entry,
+            attestation,
+            prefix=prefix,
+        )
+    )
     raw_attested_by = str(attestation.get("attested_by") or "")
     attested_by = raw_attested_by.strip()
     if (
@@ -3341,6 +3461,252 @@ def _count(entries: Iterable[Mapping[str, Any]], key: str) -> dict[str, int]:
         value = str(entry.get(key))
         counts[value] = counts.get(value, 0) + 1
     return dict(sorted(counts.items()))
+
+
+def select_unattested_crypto_premarket_episodes(
+    *,
+    now_ts: int,
+    registry_path: Path | None = None,
+) -> dict[str, Any]:
+    """Select current crypto pre-market episodes for announcement discovery.
+
+    This is deliberately not ``events_for_capture``.  No selected row has an official
+    t0 yet, and returning it creates neither official provenance nor capture authority.
+    The verified registry, summary and mutation receipt are read as one authority
+    snapshot so a discovery candidate can later prove exactly which lifecycle it was
+    heuristically matched against.
+    """
+    path = Path(registry_path) if registry_path is not None else REGISTRY_PATH
+    if path.resolve(strict=False) != REGISTRY_PATH.resolve(strict=False):
+        raise EventRegistryError(
+            "VERIFIED_PRODUCTION_REGISTRY_REQUIRED: announcement discovery only "
+            "reads the production registry"
+        )
+    try:
+        entries, report = _verify_registry_snapshot(path)
+    except (EventRegistryError, OSError, ValueError, TypeError) as exc:
+        return {
+            "status": "REGISTRY_RECOVERY_REQUIRED",
+            "targets": [],
+            "capture_authorized": False,
+            "problems": [f"{type(exc).__name__}: {exc}"],
+        }
+    if report["status"] != "REGISTRY_OK" or (
+        report["summary_required"] and not report["summary_verified"]
+    ):
+        return {
+            "status": "REGISTRY_RECOVERY_REQUIRED",
+            "targets": [],
+            "capture_authorized": False,
+            "problems": list(report.get("problems") or ["registry is not verified"]),
+        }
+
+    summary_path = path.with_suffix(".summary.json")
+    try:
+        summary = json.loads(summary_path.read_text(encoding="utf-8"))
+    except (OSError, ValueError) as exc:
+        return {
+            "status": "REGISTRY_RECOVERY_REQUIRED",
+            "targets": [],
+            "capture_authorized": False,
+            "problems": [f"summary is unreadable: {exc}"],
+        }
+    if not isinstance(summary, Mapping):
+        return {
+            "status": "REGISTRY_RECOVERY_REQUIRED",
+            "targets": [],
+            "capture_authorized": False,
+            "problems": ["summary root is not an object"],
+        }
+    metadata_refresh_received = _parse_explicit_utc(
+        summary.get(LAST_COMPLETE_METADATA_REFRESH_RECEIVED_AT_FIELD)
+    )
+    if metadata_refresh_received is None:
+        return {
+            "status": "METADATA_REFRESH_REQUIRED",
+            "targets": [],
+            "capture_authorized": False,
+            "problems": ["complete metadata refresh anchor is missing"],
+        }
+    metadata_age_sec = int(now_ts) - int(metadata_refresh_received.timestamp())
+    if not 0 <= metadata_age_sec <= MAX_COMPLETE_METADATA_REFRESH_AGE_SEC:
+        return {
+            "status": "METADATA_REFRESH_REQUIRED",
+            "targets": [],
+            "capture_authorized": False,
+            "metadata_age_sec": metadata_age_sec,
+            "max_metadata_age_sec": MAX_COMPLETE_METADATA_REFRESH_AGE_SEC,
+            "problems": ["latest complete metadata refresh is stale or future-dated"],
+        }
+
+    try:
+        active_generations, _high_water = _load_lifecycle_generation_state(
+            summary_path,
+            existing=entries,
+        )
+        receipts, receipt_problems = _load_mutation_receipt_chain(path)
+    except (EventRegistryError, OSError, ValueError, TypeError) as exc:
+        return {
+            "status": "REGISTRY_RECOVERY_REQUIRED",
+            "targets": [],
+            "capture_authorized": False,
+            "problems": [f"authority state is unreadable: {exc}"],
+        }
+    if receipt_problems or not receipts:
+        return {
+            "status": "REGISTRY_RECOVERY_REQUIRED",
+            "targets": [],
+            "capture_authorized": False,
+            "problems": list(receipt_problems or ["mutation receipt is missing"]),
+        }
+    receipt = receipts[-1]
+    if (
+        receipt.get("plan_id") != trust_root.PLAN_ID
+        or receipt.get("plan_hash") != trust_root.PLAN_HASH
+    ):
+        return {
+            "status": "METADATA_REFRESH_REQUIRED",
+            "targets": [],
+            "capture_authorized": False,
+            "problems": [
+                "latest registry mutation is not bound to the active PlanOnly"
+            ],
+        }
+
+    expected_surfaces = {surface.surface_id for surface in SURFACES}
+    raw_surface_counts = receipt.get(RAW_UNIVERSE_ROWS_BY_SURFACE_FIELD)
+    identity_hashes = receipt.get(RELEVANT_IDENTITY_HASHES_BY_SURFACE_FIELD)
+    terminal_ids = receipt.get(EXPLICIT_TERMINAL_IDS_BY_SURFACE_FIELD)
+    if (
+        not isinstance(raw_surface_counts, Mapping)
+        or set(raw_surface_counts) != expected_surfaces
+        or not isinstance(identity_hashes, Mapping)
+        or set(identity_hashes) != expected_surfaces
+        or not all(_is_sha256_text(value) for value in identity_hashes.values())
+        or not isinstance(terminal_ids, Mapping)
+        or set(terminal_ids) != expected_surfaces
+    ):
+        return {
+            "status": "REGISTRY_RECOVERY_REQUIRED",
+            "targets": [],
+            "capture_authorized": False,
+            "problems": ["latest mutation receipt lacks surface authority anchors"],
+        }
+    authority_hash = registry_authority_state_hash(
+        active_generations=receipt.get(ACTIVE_LIFECYCLE_GENERATIONS_FIELD),
+        lifecycle_high_water=receipt.get(LIFECYCLE_GENERATION_HIGH_WATER_FIELD),
+        metadata_refresh_received_at=str(
+            receipt.get(LAST_COMPLETE_METADATA_REFRESH_RECEIVED_AT_FIELD) or ""
+        ),
+        raw_universe_rows_by_surface=raw_surface_counts,
+        relevant_identity_hashes_by_surface=identity_hashes,
+        explicit_terminal_ids_by_surface=terminal_ids,
+    )
+
+    recovery_problems: list[str] = []
+    targets: list[dict[str, Any]] = []
+    for episode in materialize_episodes(entries):
+        venue = str(episode.get("venue") or "")
+        contract = str(episode.get("premarket_contract_id") or "")
+        active_generation = active_generations.get(venue, {}).get(contract)
+        if active_generation is None or int(
+            episode.get("lifecycle_generation", -1)
+        ) != int(active_generation):
+            continue
+        official_observations = [
+            observation
+            for observation in episode.get("timestamp_observations") or []
+            if observation.get("source_class") == SOURCE_OFFICIAL_ANNOUNCEMENT
+            or observation.get("timestamp_kind") == TIMESTAMP_OFFICIAL_SPOT_T0
+        ]
+        if episode.get("official_conflict") is True:
+            recovery_problems.append(
+                f"{episode.get('episode_id')}: conflicting official observations"
+            )
+            continue
+        if official_observations:
+            # Already-attested episodes are not search targets.  An unusable official
+            # row is an authority problem and must not be hidden by searching afresh.
+            if not episode.get("official_spot_t0"):
+                recovery_problems.append(
+                    f"{episode.get('episode_id')}: unusable official observation"
+                )
+            continue
+        metadata_identities = {
+            (
+                str(observation.get("asset_class") or ASSET_CLASS_UNCLASSIFIED),
+                str(observation.get("issuer_namespace") or ""),
+                str(observation.get("issuer_id") or ""),
+                str(observation.get("asset_identity_hash") or ""),
+            )
+            for observation in episode.get("timestamp_observations") or []
+            if observation.get("source_class") == SOURCE_VENUE_INSTRUMENT_METADATA
+            and observation.get("identity_evidence_class")
+            == IDENTITY_EVIDENCE_VENUE_EXPLICIT_METADATA
+        }
+        if (
+            episode.get("asset_class") != ASSET_CLASS_CRYPTO_TOKEN
+            or episode.get("asset_identity_conflict") is not False
+            or len(metadata_identities) != 1
+        ):
+            continue
+        asset_class, namespace, issuer_id, identity_hash = next(
+            iter(metadata_identities)
+        )
+        if (
+            asset_class != ASSET_CLASS_CRYPTO_TOKEN
+            or namespace != "crypto_asset"
+            or not issuer_id
+            or not _is_sha256_text(identity_hash)
+        ):
+            continue
+        targets.append({
+            "episode_id": episode["episode_id"],
+            "perpetual_venue": venue,
+            "premarket_contract_id": contract,
+            "lifecycle_generation": int(active_generation),
+            "asset_class": asset_class,
+            "issuer_namespace": namespace,
+            "issuer_id": issuer_id,
+            "asset_identity_hash": identity_hash,
+            "normalized_contract_market": _normalise_contract_market(venue, contract),
+            "registry_sha256": report.get("registry_sha256"),
+            "registry_tail_record_hash": report.get("head_record_hash"),
+            "mutation_receipt_seq": receipt.get("mutation_seq"),
+            "mutation_receipt_hash": receipt.get("receipt_hash"),
+            "summary_content_hash": receipt.get("summary_content_hash"),
+            "registry_authority_state_hash": authority_hash,
+            "plan_id": trust_root.PLAN_ID,
+            "plan_hash": trust_root.PLAN_HASH,
+            "metadata_refresh_received_at": str(
+                receipt.get(LAST_COMPLETE_METADATA_REFRESH_RECEIVED_AT_FIELD) or ""
+            ),
+            "listing_venue": None,
+            "proposed_spot_symbol": None,
+        })
+    if recovery_problems:
+        return {
+            "status": "REGISTRY_RECOVERY_REQUIRED",
+            "targets": [],
+            "capture_authorized": False,
+            "problems": sorted(recovery_problems),
+        }
+    targets.sort(
+        key=lambda item: (
+            item["perpetual_venue"],
+            item["premarket_contract_id"],
+            item["lifecycle_generation"],
+        )
+    )
+    deferred = max(0, len(targets) - config.ANNOUNCEMENT_MAX_TARGETS_PER_TICK)
+    targets = targets[: config.ANNOUNCEMENT_MAX_TARGETS_PER_TICK]
+    return {
+        "status": "TARGETS_READY" if targets else "NO_ANNOUNCEMENT_TARGETS",
+        "targets": targets,
+        "deferred_targets": deferred,
+        "metadata_age_sec": metadata_age_sec,
+        "capture_authorized": False,
+    }
 
 
 def events_for_capture(

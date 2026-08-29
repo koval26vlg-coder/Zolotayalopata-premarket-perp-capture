@@ -1,0 +1,17 @@
+{
+  "archive_manifest_sha256": "3a1c03219f65c65101942dc5d517ab23f3209436ff148ba518e8301e88aef742",
+  "details": {
+    "retained_source_tombstones": {
+      "mutation_receipts": ".q-20260829T110433Z-2c7d5d8219-b878d6b4-receipts.deactivated",
+      "registry": ".q-20260829T110433Z-2c7d5d8219-b878d6b4-registry.deactivated",
+      "summary": ".q-20260829T110433Z-2c7d5d8219-b878d6b4-summary.deactivated"
+    }
+  },
+  "previous_state_hash": "90822f74650de867fbee8748d6ddff848ac5f9a76fe7bb3308ffbc019e2582d7",
+  "recorded_at_utc": "2026-08-29T11:04:34Z",
+  "schema": "premarket_perp_registry_quarantine_state_v1",
+  "source_generation_cas": "bcdd69a1163fa54131716af33487e549e8beff5dc25fa75887668e8ed1042ee8",
+  "state": "SOURCE_DEACTIVATED",
+  "state_hash": "38c1865d7880ebcfb9a8b967c89804aa9c644f08fb0684889e3f913ed2a5a411",
+  "transaction_id": "20260829T110433Z-2c7d5d8219-b878d6b4"
+}

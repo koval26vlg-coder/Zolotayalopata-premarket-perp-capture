@@ -247,6 +247,113 @@ def require_quotation(
     return text
 
 
+def _spot_base_token(value: str) -> str:
+    normalized = _normalise_symbol(value)
+    for quote in ("USDT", "USDC", "USD", "BTC", "ETH"):
+        if normalized.endswith(quote) and len(normalized) > len(quote):
+            return normalized[: -len(quote)]
+    return normalized
+
+
+def _same_underlying_evidence(
+    *,
+    venue: str,
+    listing_venue: str,
+    spot_symbol: str,
+    premarket_contract_id: str,
+    episode_id: str,
+    announcement_url: str,
+    attested_by: str,
+    decision: str | None,
+    quoted_identity_sentence: str | None,
+    quoted_underlying_text: str | None,
+    asset_identity: registry.AssetIdentity | None,
+    allow_unresolved_identity: bool,
+) -> dict[str, Any] | None:
+    supplied = (
+        decision is not None,
+        quoted_identity_sentence is not None,
+        quoted_underlying_text is not None,
+    )
+    if listing_venue == venue:
+        if any(supplied):
+            raise AttestationError(
+                "same-underlying evidence is only valid for a cross-venue attestation"
+            )
+        return None
+    if decision != "SAME_UNDERLYING":
+        raise AttestationError(
+            "cross-venue attestation requires SAME_UNDERLYING decision"
+        )
+    sentence = _canonical_text(
+        quoted_identity_sentence,
+        field="quoted identity sentence",
+        allow_internal_space=True,
+    )
+    underlying_text = _canonical_text(
+        quoted_underlying_text,
+        field="quoted underlying text",
+        allow_internal_space=True,
+    )
+    if len(sentence) < 18 or underlying_text not in sentence:
+        raise AttestationError(
+            "quoted underlying text must be a verbatim fragment of the identity sentence"
+        )
+    base = _spot_base_token(spot_symbol)
+    if not base or re.search(
+        rf"(?<![A-Z0-9]){re.escape(base)}(?![A-Z0-9])",
+        sentence.upper(),
+    ) is None:
+        raise AttestationError(
+            "quoted identity sentence carries no exact underlying ticker token"
+        )
+    normalized_underlying = _normalise_symbol(underlying_text)
+    if normalized_underlying in {
+        base,
+        _normalise_symbol(spot_symbol),
+        _normalise_symbol(premarket_contract_id),
+    }:
+        raise AttestationError(
+            "quoted underlying identity must be richer than the market ticker"
+        )
+    if asset_identity is None:
+        if allow_unresolved_identity:
+            return {
+                "schema": config.SAME_UNDERLYING_ATTESTATION_SCHEMA,
+                "decision": decision,
+                "quoted_identity_sentence": sentence,
+                "quoted_underlying_text": underlying_text,
+            }
+        raise AttestationError(
+            "cross-venue attestation requires a registry-derived asset identity"
+        )
+    if (
+        asset_identity.asset_class != registry.ASSET_CLASS_CRYPTO_TOKEN
+        or _normalise_symbol(asset_identity.issuer_id) != base
+    ):
+        raise AttestationError(
+            "registry-derived asset identity does not match the exact spot base token"
+        )
+    identity_fields = asset_identity.as_record_fields()
+    return {
+        "schema": config.SAME_UNDERLYING_ATTESTATION_SCHEMA,
+        "decision": decision,
+        "attested_by": attested_by,
+        "perpetual_episode_id": episode_id,
+        "perpetual_venue": venue,
+        "premarket_contract_id": premarket_contract_id,
+        "perpetual_asset_class": identity_fields["asset_class"],
+        "perpetual_issuer_namespace": identity_fields["issuer_namespace"],
+        "perpetual_issuer_id": identity_fields["issuer_id"],
+        "perpetual_asset_identity_hash": identity_fields["asset_identity_hash"],
+        "listing_venue": listing_venue,
+        "spot_symbol": spot_symbol,
+        "announcement_url": announcement_url,
+        "quoted_identity_sentence": sentence,
+        "quoted_underlying_text": underlying_text,
+    }
+
+
 def _build_attestation(
     *,
     venue: str,
@@ -263,6 +370,10 @@ def _build_attestation(
     now_ts: int,
     enforce_min_lead: bool,
     asset_identity: registry.AssetIdentity | None = None,
+    same_underlying_decision: str | None = None,
+    quoted_identity_sentence: str | None = None,
+    quoted_underlying_text: str | None = None,
+    allow_unresolved_identity: bool = False,
 ) -> dict[str, Any]:
     venue = _canonical_text(venue, field="venue", allow_internal_space=False)
     spot_symbol = _canonical_text(
@@ -315,6 +426,20 @@ def _build_attestation(
     episode_id = registry.make_episode_id(
         venue, premarket_contract_id, lifecycle_generation
     )
+    same_underlying = _same_underlying_evidence(
+        venue=venue,
+        listing_venue=listing_venue,
+        spot_symbol=spot_symbol,
+        premarket_contract_id=premarket_contract_id,
+        episode_id=episode_id,
+        announcement_url=url,
+        attested_by=attested_by,
+        decision=same_underlying_decision,
+        quoted_identity_sentence=quoted_identity_sentence,
+        quoted_underlying_text=quoted_underlying_text,
+        asset_identity=asset_identity,
+        allow_unresolved_identity=allow_unresolved_identity,
+    )
     received_at_utc = datetime.fromtimestamp(now_ts, timezone.utc).isoformat(
         timespec="seconds"
     ).replace("+00:00", "Z")
@@ -354,6 +479,10 @@ def _build_attestation(
         "announcement_url": url,
         "lead_sec_at_attestation": lead,
     }
+    if same_underlying is not None:
+        observation["attestation"]["underlying_identity_attestation"] = (
+            same_underlying
+        )
     return observation
 
 
@@ -372,6 +501,9 @@ def build_attestation(
     attested_by: str,
     now_ts: int,
     asset_identity: registry.AssetIdentity | None = None,
+    same_underlying_decision: str | None = None,
+    quoted_identity_sentence: str | None = None,
+    quoted_underlying_text: str | None = None,
 ) -> dict[str, Any]:
     """Build a new acceptance anchor and enforce usable causal lead."""
     return _build_attestation(
@@ -389,6 +521,9 @@ def build_attestation(
         now_ts=now_ts,
         enforce_min_lead=True,
         asset_identity=asset_identity,
+        same_underlying_decision=same_underlying_decision,
+        quoted_identity_sentence=quoted_identity_sentence,
+        quoted_underlying_text=quoted_underlying_text,
     )
 
 
@@ -406,6 +541,9 @@ def attest(
     quoted_time_text: str,
     quoted_symbol_text: str,
     attested_by: str,
+    same_underlying_decision: str | None = None,
+    quoted_identity_sentence: str | None = None,
+    quoted_underlying_text: str | None = None,
     path: Path | None = None,
 ) -> dict[str, Any]:
     """Preflight, lock, append. Recording an official t0 is a registry write."""
@@ -438,6 +576,10 @@ def attest(
         attested_by=attested_by,
         now_ts=prelock_now_ts,
         enforce_min_lead=False,
+        same_underlying_decision=same_underlying_decision,
+        quoted_identity_sentence=quoted_identity_sentence,
+        quoted_underlying_text=quoted_underlying_text,
+        allow_unresolved_identity=True,
     )
 
     target = path or registry.REGISTRY_PATH
@@ -536,6 +678,9 @@ def attest(
             now_ts=prelock_now_ts,
             enforce_min_lead=False,
             asset_identity=asset_identity,
+            same_underlying_decision=same_underlying_decision,
+            quoted_identity_sentence=quoted_identity_sentence,
+            quoted_underlying_text=quoted_underlying_text,
         )
         mapped_spot_symbols = {
             str(entry.get("spot_symbol") or "").strip()
@@ -640,6 +785,9 @@ def attest(
             now_ts=writer_now_ts,
             enforce_min_lead=True,
             asset_identity=asset_identity,
+            same_underlying_decision=same_underlying_decision,
+            quoted_identity_sentence=quoted_identity_sentence,
+            quoted_underlying_text=quoted_underlying_text,
         )
         appended = registry.merge_observations(existing, [observation])
         if not appended:
@@ -777,6 +925,21 @@ def main(argv: list[str] | None = None) -> int:
                         help="exact UTC time fragment copied from --quote")
     parser.add_argument("--quoted-symbol", default="",
                         help="exact market-symbol fragment copied from --quote")
+    parser.add_argument(
+        "--same-underlying-decision",
+        choices=("SAME_UNDERLYING",),
+        help="required only when --listing-venue differs from --venue",
+    )
+    parser.add_argument(
+        "--identity-quote",
+        default="",
+        help="verbatim official sentence that identifies the cross-venue underlying",
+    )
+    parser.add_argument(
+        "--quoted-underlying",
+        default="",
+        help="verbatim asset-name fragment copied from --identity-quote",
+    )
     parser.add_argument("--attested-by", default="")
     parser.add_argument("--why", action="store_true",
                         help="explain why an official t0 cannot be fetched")
@@ -819,6 +982,22 @@ def main(argv: list[str] | None = None) -> int:
     ]
     if missing:
         raise SystemExit("--attest requires " + ", ".join(missing))
+    listing_venue = args.listing_venue or args.venue
+    if listing_venue != args.venue:
+        cross_required = {
+            "--same-underlying-decision": args.same_underlying_decision,
+            "--identity-quote": args.identity_quote,
+            "--quoted-underlying": args.quoted_underlying,
+        }
+        cross_missing = [
+            flag
+            for flag, value in cross_required.items()
+            if value is None or (isinstance(value, str) and not value.strip())
+        ]
+        if cross_missing:
+            raise SystemExit(
+                "cross-venue --attest requires " + ", ".join(cross_missing)
+            )
 
     result = attest(
         run_id=args.run_id,
@@ -833,6 +1012,9 @@ def main(argv: list[str] | None = None) -> int:
         quoted_time_text=args.quoted_time,
         quoted_symbol_text=args.quoted_symbol,
         attested_by=args.attested_by,
+        same_underlying_decision=args.same_underlying_decision,
+        quoted_identity_sentence=args.identity_quote or None,
+        quoted_underlying_text=args.quoted_underlying or None,
     )
     print(json.dumps(result, ensure_ascii=False))
     return 0

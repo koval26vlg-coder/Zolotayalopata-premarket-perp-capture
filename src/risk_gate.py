@@ -60,6 +60,10 @@ OFFLINE_DESCRIPTIVE_ACTION = (
 OFFICIAL_ATTESTATION_ACTION = (
     "append one human-verified official spot t0 after attestation preflight"
 )
+ANNOUNCEMENT_DISCOVERY_ACTION = (
+    "fetch bounded official announcement indexes and append unverified "
+    "announcement candidates"
+)
 REGISTRY_QUARANTINE_ACTION = (
     "quarantine one failed registry generation after exact recovery preflight"
 )
@@ -70,6 +74,7 @@ CAPTURE_ACTION = "capture one official event in a bounded visible terminal"
 WRITE_CLASS_ACTION = {
     "metadata_registry": METADATA_REGISTRY_ACTION,
     "official_attestation": OFFICIAL_ATTESTATION_ACTION,
+    "announcement_discovery": ANNOUNCEMENT_DISCOVERY_ACTION,
     "registry_quarantine": REGISTRY_QUARANTINE_ACTION,
     "market_data_capture": CAPTURE_ACTION,
 }
@@ -82,6 +87,9 @@ V29_REGISTRY_RECOVERY_SECONDS_GRADE_PLAN_STATUS = (
 )
 PAPER_SIMULATION_PREREGISTERED_PLAN_STATUS = (
     "PAPER_SIMULATION_PREREGISTERED_NO_CAPTURE"
+)
+ANNOUNCEMENT_DISCOVERY_PLAN_STATUS = (
+    "ANNOUNCEMENT_DISCOVERY_CANDIDATE_STORE_NO_CAPTURE"
 )
 # Compatibility name used by version-agnostic no-capture tests. It denotes the
 # current hardened no-capture status; the exact v29 literal remains separately bound.
@@ -155,6 +163,22 @@ PLAN_WRITE_AUTHORIZATION: dict[str, dict[str, frozenset[str]]] = {
         "write_classes": frozenset({
             "metadata_registry",
             "official_attestation",
+            "registry_quarantine",
+        }),
+    },
+    ANNOUNCEMENT_DISCOVERY_PLAN_STATUS: {
+        "authorized_actions": frozenset({
+            METADATA_REGISTRY_ACTION,
+            OFFLINE_DESCRIPTIVE_ACTION,
+            OFFICIAL_ATTESTATION_ACTION,
+            ANNOUNCEMENT_DISCOVERY_ACTION,
+            REGISTRY_QUARANTINE_ACTION,
+            OFFLINE_PAPER_SIMULATION_ACTION,
+        }),
+        "write_classes": frozenset({
+            "metadata_registry",
+            "official_attestation",
+            "announcement_discovery",
             "registry_quarantine",
         }),
     },
@@ -910,6 +934,8 @@ def preflight(
         decision["decision"] = "ALLOW_METADATA_REGISTRY"
     if decision["ok"] and write_class == "official_attestation":
         decision["decision"] = "ALLOW_OFFICIAL_ATTESTATION"
+    if decision["ok"] and write_class == "announcement_discovery":
+        decision["decision"] = "ALLOW_ANNOUNCEMENT_DISCOVERY"
     if decision["ok"] and write_class == "registry_quarantine":
         decision["decision"] = "ALLOW_REGISTRY_QUARANTINE"
     if decision["ok"] and policy.get("capture_token"):

@@ -265,6 +265,9 @@ class ObservationAdmissionTests(unittest.TestCase):
                 evidence=registry.IDENTITY_EVIDENCE_OFFICIAL_ATTESTATION,
             ),
         )
+        # v31 makes the spot-listing venue explicit even for a same-venue anchor;
+        # this test is about asset identity, not legacy role inference.
+        official["listing_venue"] = "bybit"
 
         episode = registry.materialize_episodes([metadata, official])[0]
 

@@ -20,13 +20,13 @@ import project_config as config
 from canonical_hash import canonical_hash
 
 
-SCHEMA = "premarket_perp_capture_planonly_v30"
-PLAN_ID = "premarket_perp_capture_20260822_v30"
-SUPERSEDES_PLAN_ID = "premarket_perp_capture_20260822_v29"
-SUPERSEDES_PLAN_HASH = "63f4173a4d3662e6eed15f9ba1f372c8771f635b84291ed2439e076d6975a8d5"
-SUPERSEDES_PLAN_PATH = "docs/plans/premarket-perp-capture-planonly-20260822-v29.json"
+SCHEMA = "premarket_perp_capture_planonly_v32"
+PLAN_ID = "premarket_perp_capture_20260822_v32"
+SUPERSEDES_PLAN_ID = "premarket_perp_capture_20260822_v31"
+SUPERSEDES_PLAN_HASH = "0359596666d918145af2fe3e172cd9907b9f286b0d25a986671be8113415bb98"
+SUPERSEDES_PLAN_PATH = "docs/plans/premarket-perp-capture-planonly-20260822-v31.json"
 HASH_METHOD = "sha256_canonical_json_excluding_plan_hash"
-PLAN_STATUS = "PAPER_SIMULATION_PREREGISTERED_NO_CAPTURE"
+PLAN_STATUS = "ANNOUNCEMENT_DISCOVERY_CANDIDATE_STORE_NO_CAPTURE"
 
 
 class PlanBuildError(ValueError):
@@ -358,6 +358,150 @@ def _mutation_receipt_chain_contract() -> dict[str, Any]:
     }
 
 
+def _announcement_discovery_contract() -> dict[str, Any]:
+    """Exact no-authority contract for bounded official index discovery."""
+    return {
+        "schema": "premarket_official_announcement_discovery_v1",
+        "write_class": "announcement_discovery",
+        "runtime": "src/announcement_discovery.py",
+        "launcher": "tools/start_premarket_announcement_discovery_visible.ps1",
+        "target_selector": {
+            "registry": "docs/registry/listing-events-v3.jsonl",
+            "asset_class": "CRYPTO_TOKEN",
+            "lifecycle": "CURRENT_ACTIVE_PREMARKET_GENERATION_ONLY",
+            "official_anchor": "ABSENT",
+            "fresh_metadata_max_age_sec": config.MAX_COMPLETE_METADATA_REFRESH_AGE_SEC,
+            "max_targets_per_tick": config.ANNOUNCEMENT_MAX_TARGETS_PER_TICK,
+            "stale_or_invalid_registry": "ZERO_ANNOUNCEMENT_REQUESTS_FAIL_CLOSED",
+            "zero_targets": "ZERO_ANNOUNCEMENT_REQUESTS_NO_STORE_MUTATION",
+        },
+        "sources": [
+            {
+                "venue": "bybit",
+                "endpoint": "https://api.bybit.com/v5/announcements/index",
+                "fixed_query": {
+                    "locale": "en-US",
+                    "type": "new_crypto",
+                    "limit": "20",
+                },
+                "pagination": "page_1_based",
+                "spot_filter": "type.key=new_crypto AND tags CONTAINS spot",
+                "publication_timestamp_field": "publishTime",
+            },
+            {
+                "venue": "bitget",
+                "endpoint": "https://api.bitget.com/api/v2/public/annoucements",
+                "fixed_query": {
+                    "language": "en_US",
+                    "annType": "coin_listings",
+                    "limit": "10",
+                },
+                "pagination": "cursor_from_last_annId",
+                "spot_filter": "annType=coin_listings AND annSubType=spot",
+                "publication_timestamp_field": "cTime",
+            },
+            {
+                "venue": "kucoin",
+                "endpoint": "https://api.kucoin.com/api/v3/announcements",
+                "fixed_query": {
+                    "pageSize": "50",
+                    "annType": "new-listings",
+                    "lang": "en_US",
+                },
+                "pagination": "currentPage_1_based_until_totalPage",
+                "spot_filter": "annType CONTAINS new-listings",
+                "publication_timestamp_field": "cTime",
+            },
+        ],
+        "bounds": {
+            "max_pages_per_venue": config.ANNOUNCEMENT_MAX_PAGES,
+            "max_articles_per_venue": config.ANNOUNCEMENT_MAX_ARTICLES_PER_VENUE,
+            "max_retries_per_request": 0,
+            "article_body_requests": 0,
+            "redirects": "FORBIDDEN_BY_PUBLIC_HTTP",
+        },
+        "candidate_store": {
+            "schema": "premarket_official_announcement_candidate_v1",
+            "path": "docs/announcements/official-listing-candidates-v1.jsonl",
+            "record_type": "unverified_announcement_candidate",
+            "evidence_class": "UNVERIFIED_ANNOUNCEMENT_DISCOVERY",
+            "identity_match_basis": "EXACT_TICKER_TOKEN_HEURISTIC_ONLY",
+            "review_state": "HUMAN_ATTESTATION_REQUIRED",
+            "global_hash_chain": True,
+            "per_candidate_revision_chain": True,
+            "duplicate_content": "NO_APPEND",
+            "lock": "O_EXCL_HELD_ACROSS_NETWORK_SELECTION_AND_APPEND",
+            "fsync_before_success": True,
+            "exact_fields": [
+                "article_body_fetched",
+                "article_id",
+                "article_published_at_ms",
+                "article_title",
+                "article_url",
+                "asset_class",
+                "asset_identity_hash",
+                "candidate_id",
+                "detected_at_utc",
+                "episode_id",
+                "evidence_class",
+                "human_attestation_required",
+                "identity_authority",
+                "identity_match_basis",
+                "issuer_id",
+                "issuer_namespace",
+                "lifecycle_generation",
+                "listing_venue",
+                "metadata_refresh_received_at",
+                "mutation_receipt_hash",
+                "mutation_receipt_seq",
+                "perpetual_venue",
+                "plan_hash",
+                "plan_id",
+                "premarket_contract_id",
+                "registry_authority_state_hash",
+                "registry_sha256",
+                "registry_tail_record_hash",
+                "registry_write",
+                "review_state",
+                "schema",
+                "source_page",
+                "source_payload_sha256",
+                "summary_content_hash",
+            ],
+            "unknown_fields": "REJECT_BEFORE_LOCK_OR_WRITE",
+            "fixed_boundary_fields": {
+                "article_body_fetched": False,
+                "human_attestation_required": True,
+                "identity_authority": (
+                    "NONE_UNTIL_HUMAN_SAME_UNDERLYING_ATTESTATION"
+                ),
+                "registry_write": False,
+            },
+            "article_url_binding": (
+                "EXACT_LISTING_VENUE_OFFICIAL_HOST_AND_ARTICLE_PATH"
+            ),
+        },
+        "authority_boundary": {
+            "index_timestamp_semantics": "PUBLICATION_TIME_ONLY_NOT_OFFICIAL_SPOT_T0",
+            "ticker_match": "DISCOVERY_HEURISTIC_NOT_ASSET_IDENTITY_PROOF",
+            "automatic_attestation": False,
+            "registry_write": False,
+            "official_spot_t0": "NEVER_PRODUCED",
+            "capture_eligible": False,
+            "capture_token": False,
+            "exclusive_market_data_writer_claim": False,
+            "market_data_capture": False,
+            "orders_or_venue_execution": False,
+        },
+        "recovery": {
+            "all_sources_failed": "RETRY_NEXT_INTERVAL",
+            "partial_source_failure": "PARTIAL_RETRY_NEXT_INTERVAL",
+            "authority_changed_before_append": "RETRY_NEXT_INTERVAL_NO_APPEND",
+            "tight_loop": "FORBIDDEN",
+        },
+    }
+
+
 def build_plan(generated_at_utc: str) -> dict[str, Any]:
     files = [
         {
@@ -380,10 +524,12 @@ def build_plan(generated_at_utc: str) -> dict[str, Any]:
         "generated_at_utc": generated_at_utc,
         "implementation_path_semantics": "repo_path values are relative to the runtime Git root",
         "objective": (
-            "Preregister a deterministic offline paper-simulation readiness model "
-            "for public pre-market perpetual evidence around a listing t0 on Bybit, "
-            "OKX and Gate. This plan does not authorize market-data capture, venue "
-            "paper/testnet execution, live execution, orders, leverage or capital."
+            "Discover bounded official spot-listing announcement candidates for "
+            "current crypto pre-market perpetual episodes, preserving registry and "
+            "source lineage for explicit human review. Index timestamps remain "
+            "publication metadata only. This plan does not authorize automatic t0 "
+            "attestation, market-data capture, venue paper/testnet execution, live "
+            "execution, orders, leverage or capital."
         ),
         "hypothesis_under_study": (
             "LONG before the listing, exit at t0, +5s, +15s or +60s - stated here so "
@@ -601,8 +747,21 @@ def build_plan(generated_at_utc: str) -> dict[str, Any]:
                     "receipt time, author, exact quoted time and symbol fragments, "
                     "and a quoted time equal to official_spot_t0. received_at_utc is "
                     "taken from the writer's own UTC clock, the lead is recomputed, "
-                    "and the full candidate chain is validated before append."
+                    "and the full candidate chain is validated before append. A "
+                    "cross-venue announcement additionally requires an explicit "
+                    "SAME_UNDERLYING decision plus a verbatim asset-name sentence; "
+                    "ticker equality alone is never identity authority."
                 ),
+                "cross_venue_identity": {
+                    "schema": config.SAME_UNDERLYING_ATTESTATION_SCHEMA,
+                    "decision": "SAME_UNDERLYING",
+                    "human_only": True,
+                    "verbatim_identity_sentence_required": True,
+                    "verbatim_underlying_fragment_required": True,
+                    "ticker_only": "FORBIDDEN",
+                    "metadata_identity_fields": "DERIVED_UNDER_REGISTRY_LOCK",
+                    "legacy_v2_cross_venue": "DESCRIPTIVE_ONLY_NOT_CAPTURE_ELIGIBLE",
+                },
                 "quotation_evidence": {
                     "storage": "VERBATIM_UTF8",
                     "normalization": "FORBIDDEN",
@@ -831,6 +990,7 @@ def build_plan(generated_at_utc: str) -> dict[str, Any]:
                 },
             },
         },
+        "announcement_discovery": _announcement_discovery_contract(),
         "capture_bounds": {
             "window_before_t0_sec": config.CAPTURE_WINDOW_BEFORE_SEC,
             "window_after_t0_sec": config.CAPTURE_WINDOW_AFTER_SEC,
@@ -1060,23 +1220,29 @@ def build_plan(generated_at_utc: str) -> dict[str, Any]:
             "refresh the public metadata event registry after metadata preflight",
             "verify and materialize descriptive proxy observations offline",
             "append one human-verified official spot t0 after attestation preflight",
+            (
+                "fetch bounded official announcement indexes and append unverified "
+                "announcement candidates"
+            ),
             "quarantine one failed registry generation after exact recovery preflight",
             "run deterministic offline paper simulation over verified sealed capture evidence",
         ],
         "activation_gate": {
             "capture_authorized": False,
             "reason": (
-                "v30 preregisters a fail-closed offline paper model, but status "
-                "PAPER_SIMULATION_PREREGISTERED_NO_CAPTURE intentionally excludes "
-                "market_data_capture; no candidate, capture token, network capture or "
-                "venue execution is implied by activating the paper-only launcher"
+                "v32 preserves bounded official announcement-index discovery and "
+                "hardens the append-only unverified candidate store with an exact "
+                "field schema, fixed non-authority values and venue-bound official "
+                "article URLs. The active status still "
+                "excludes market_data_capture: index publication time and ticker "
+                "matches cannot create an official t0, capture token, venue paper "
+                "execution, live execution or order authority"
             ),
             "required_next_checkpoint": (
-                "after one current-generation CRYPTO_TOKEN candidate has an official "
-                "source-derived t0 precision of at most one second, a new immutable v31 "
-                "PlanOnly must explicitly authorize exactly one market_data_capture; "
-                "activating a scheduler or collector remains a separate user-approved "
-                "visible-run action"
+                "after human review creates one current-generation CRYPTO_TOKEN "
+                "official attestation, issue a separate immutable minute-grade arming "
+                "plan without capture; only a later event-bound PlanOnly may explicitly "
+                "authorize exactly one visible market_data_capture"
             ),
         },
         "acceptance_policy": {
@@ -1153,10 +1319,18 @@ def validate_plan(plan: dict[str, Any]) -> None:
             "refresh the public metadata event registry after metadata preflight",
             "verify and materialize descriptive proxy observations offline",
             "append one human-verified official spot t0 after attestation preflight",
+            (
+                "fetch bounded official announcement indexes and append unverified "
+                "announcement candidates"
+            ),
             "quarantine one failed registry generation after exact recovery preflight",
             "run deterministic offline paper simulation over verified sealed capture evidence",
         ],
         "authorized action set differs from the capture-disabled active contract",
+    )
+    require(
+        plan.get("announcement_discovery") == _announcement_discovery_contract(),
+        "announcement discovery contract mismatch",
     )
     require(bool(plan.get("allowed_endpoints")), "plan must declare its endpoint allow-list")
     require(
@@ -1426,7 +1600,7 @@ def validate_plan(plan: dict[str, Any]) -> None:
     )
     attestation = registry.get("official_attestation") or {}
     require(
-        attestation.get("schema") == "premarket_perp_official_attestation_v2"
+        attestation.get("schema") == config.OFFICIAL_ATTESTATION_SCHEMA
         and attestation.get("writer_clock_recheck")
         == "UNDER_REGISTRY_LOCK_BEFORE_APPEND"
         and attestation.get("metadata_freshness_required") is True
@@ -1440,6 +1614,20 @@ def validate_plan(plan: dict[str, Any]) -> None:
         and attestation.get("locked_rebuild_field_preservation")
         == ["venue", "listing_venue"],
         "official attestation lock/freshness contract mismatch",
+    )
+    require(
+        attestation.get("cross_venue_identity")
+        == {
+            "schema": config.SAME_UNDERLYING_ATTESTATION_SCHEMA,
+            "decision": "SAME_UNDERLYING",
+            "human_only": True,
+            "verbatim_identity_sentence_required": True,
+            "verbatim_underlying_fragment_required": True,
+            "ticker_only": "FORBIDDEN",
+            "metadata_identity_fields": "DERIVED_UNDER_REGISTRY_LOCK",
+            "legacy_v2_cross_venue": "DESCRIPTIVE_ONLY_NOT_CAPTURE_ELIGIBLE",
+        },
+        "cross-venue underlying identity contract mismatch",
     )
     require(
         attestation.get("precision_policy")

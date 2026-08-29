@@ -34,6 +34,8 @@ V30_RELATIVE_PATH = "docs/plans/premarket-perp-capture-planonly-20260822-v30.jso
 V30_PLAN_ID = "premarket_perp_capture_20260822_v30"
 V30_SCHEMA = "premarket_perp_capture_planonly_v30"
 V30_STATUS = "PAPER_SIMULATION_PREREGISTERED_NO_CAPTURE"
+V30_PLAN_HASH = "32877c7c731bdf63167b20827f373726e34e1fbc1bcd61db26d6975444067ab5"
+V30_FILE_SHA256 = "d68bf90c354063622a33e762a58ec610594af1bcc7359cf8125a28e9f933a192"
 
 
 def sha256_file(path: Path) -> str:
@@ -49,23 +51,22 @@ class V29PredecessorGuardTests(unittest.TestCase):
         self.assertEqual(payload["plan_hash"], V29_PLAN_HASH)
 
 
-class V30IdentityRedTests(unittest.TestCase):
-    def test_project_config_selects_a_new_v30_path_and_preserves_v29(self) -> None:
+class V30ImmutableHistoryTests(unittest.TestCase):
+    def test_project_config_preserves_v30_and_v29_paths(self) -> None:
         self.assertEqual(config.V29_PLAN_PATH, ROOT / V29_RELATIVE_PATH)
-        self.assertEqual(config.PLAN_PATH, ROOT / V30_RELATIVE_PATH)
-        self.assertNotEqual(config.PLAN_PATH, config.V29_PLAN_PATH)
+        self.assertEqual(config.V30_PLAN_PATH, ROOT / V30_RELATIVE_PATH)
+        self.assertNotEqual(config.V30_PLAN_PATH, config.V29_PLAN_PATH)
 
-    def test_builder_declares_exact_v29_to_v30_lineage(self) -> None:
-        self.assertEqual(plan_builder.SCHEMA, V30_SCHEMA)
-        self.assertEqual(plan_builder.PLAN_ID, V30_PLAN_ID)
-        self.assertEqual(plan_builder.SUPERSEDES_PLAN_ID, V29_PLAN_ID)
-        self.assertEqual(plan_builder.SUPERSEDES_PLAN_HASH, V29_PLAN_HASH)
-        self.assertEqual(plan_builder.SUPERSEDES_PLAN_PATH, V29_RELATIVE_PATH)
-        self.assertEqual(plan_builder.PLAN_STATUS, V30_STATUS)
+    def test_v30_artifact_preserves_exact_v29_lineage(self) -> None:
+        payload = json.loads((ROOT / V30_RELATIVE_PATH).read_text(encoding="utf-8"))
+        self.assertEqual(payload["schema"], V30_SCHEMA)
+        self.assertEqual(payload["plan_id"], V30_PLAN_ID)
+        self.assertEqual(payload["supersedes_plan_id"], V29_PLAN_ID)
+        self.assertEqual(payload["supersedes_plan_hash"], V29_PLAN_HASH)
+        self.assertEqual(payload["supersedes_plan_path"], V29_RELATIVE_PATH)
+        self.assertEqual(payload["status"], V30_STATUS)
 
-    def test_external_trust_root_activates_v30_and_retires_exact_v29(self) -> None:
-        self.assertEqual(trust_root.ACTIVE_PLAN["schema"], V30_SCHEMA)
-        self.assertEqual(trust_root.ACTIVE_PLAN["plan_id"], V30_PLAN_ID)
+    def test_external_trust_root_retires_exact_v29_and_v30(self) -> None:
         retired = {
             str(item["path"]).replace("\\", "/"): item
             for item in trust_root.RETIRED_PLANS
@@ -76,14 +77,20 @@ class V30IdentityRedTests(unittest.TestCase):
         self.assertEqual(
             retired[V29_RELATIVE_PATH]["plan_file_sha256"], V29_FILE_SHA256
         )
+        self.assertIn(V30_RELATIVE_PATH, retired)
+        self.assertEqual(retired[V30_RELATIVE_PATH]["plan_id"], V30_PLAN_ID)
+        self.assertEqual(retired[V30_RELATIVE_PATH]["plan_hash"], V30_PLAN_HASH)
+        self.assertEqual(
+            retired[V30_RELATIVE_PATH]["plan_file_sha256"], V30_FILE_SHA256
+        )
 
-    def test_checked_in_v30_artifact_matches_the_external_trust_root(self) -> None:
-        self.assertTrue(config.PLAN_PATH.is_file(), "v30 immutable artifact is missing")
-        payload = json.loads(config.PLAN_PATH.read_text(encoding="utf-8"))
+    def test_checked_in_v30_artifact_is_byte_identical(self) -> None:
+        self.assertTrue(config.V30_PLAN_PATH.is_file(), "v30 immutable artifact is missing")
+        payload = json.loads(config.V30_PLAN_PATH.read_text(encoding="utf-8"))
         self.assertEqual(payload["schema"], V30_SCHEMA)
         self.assertEqual(payload["plan_id"], V30_PLAN_ID)
-        self.assertEqual(payload["plan_hash"], trust_root.PLAN_HASH)
-        self.assertEqual(sha256_file(config.PLAN_PATH), trust_root.PLAN_FILE_SHA256)
+        self.assertEqual(payload["plan_hash"], V30_PLAN_HASH)
+        self.assertEqual(sha256_file(config.V30_PLAN_PATH), V30_FILE_SHA256)
 
 
 class V30PaperRiskContractRedTests(unittest.TestCase):

@@ -77,8 +77,8 @@ class V29ImmutablePlanTests(unittest.TestCase):
         self.assertEqual(verifier["source_class"], "OFFICIAL_ANNOUNCEMENT")
         self.assertEqual(verifier["cli"], "event_registry.py --candidate-status")
 
-    def test_v29_is_retired_exactly_beneath_the_v30_trust_root(self) -> None:
-        self.assertEqual(trust_root.PLAN_ID, "premarket_perp_capture_20260822_v30")
+    def test_v29_and_v30_are_retired_beneath_the_current_trust_root(self) -> None:
+        self.assertEqual(trust_root.PLAN_ID, plan_builder.PLAN_ID)
         plan = risk_gate.load_and_verify_plan()
         self.assertEqual(plan["plan_hash"], trust_root.PLAN_HASH)
         self.assertEqual(
@@ -101,13 +101,20 @@ class V29ImmutablePlanTests(unittest.TestCase):
             retired[v29_relative]["plan_file_sha256"],
             "7c93aebec952ec1d52def42ce5ac4165b6b3c8c608436ed702f50dbfb012b822",
         )
+        v30_relative = "docs/plans/premarket-perp-capture-planonly-20260822-v30.json"
+        self.assertIn(v30_relative, retired)
+        self.assertEqual(
+            retired[v30_relative]["plan_hash"],
+            "32877c7c731bdf63167b20827f373726e34e1fbc1bcd61db26d6975444067ab5",
+        )
 
-    def test_operator_docs_identify_v30_as_active_and_v29_as_preserved(self) -> None:
+    def test_operator_docs_identify_v32_as_active_and_v31_as_preserved(self) -> None:
         readme = (ROOT / "README.md").read_text(encoding="utf-8")
         agents = (ROOT / "AGENTS.md").read_text(encoding="utf-8")
-        self.assertIn("premarket_perp_capture_20260822_v30", readme)
-        self.assertIn("активный immutable план — v30", agents)
-        self.assertIn("v29 сохранён", readme)
+        self.assertIn("premarket_perp_capture_20260822_v32", readme)
+        self.assertIn("v31 сохранён byte-identical", readme)
+        self.assertIn("активный immutable план — v32", agents)
+        self.assertIn("v30 сохранён", readme)
 
 
 class SecondsGradeAdmissionTests(unittest.TestCase):

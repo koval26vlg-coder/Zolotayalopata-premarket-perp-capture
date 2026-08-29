@@ -1,0 +1,70 @@
+{
+  "archive_files": [
+    {
+      "archive_name": "registry.bin",
+      "role": "registry",
+      "sha256": "6017526b0d9dc5617c948ea3d1c4a186ed608afae0fb2bee85e54879962ab494",
+      "size": 32177
+    },
+    {
+      "archive_name": "summary.bin",
+      "role": "summary",
+      "sha256": "2debc59035d532311def010767729e5b92f05a84ff3d6da27f5a2d457136aada",
+      "size": 5179
+    },
+    {
+      "archive_name": "mutation-receipts.jsonl",
+      "role": "mutation_receipt_archive",
+      "sha256": "2abb7d94e2c31781dfe9c786698a7128c7d394dde6bf6927b03f5f7474f6d153",
+      "size": 14360
+    }
+  ],
+  "authority": {
+    "plan_hash": "0359596666d918145af2fe3e172cd9907b9f286b0d25a986671be8113415bb98",
+    "plan_id": "premarket_perp_capture_20260822_v31",
+    "registry_lock_name": "listing-events-v3.lock",
+    "registry_lock_sha256": "fe45c9a7f1bba43159ef78546f50210e92151dd42473c038ba6e05f86406b8fa",
+    "resolved_paths_hash": "bedb2feeafc8b1d7c499bf6fd2fb6ec6f89377887914e167a1e2d14c9a180b5c"
+  },
+  "created_at_utc": "2026-08-29T11:04:33Z",
+  "reason": "v31 official attestation v3 and announcement discovery registry-contract rollover",
+  "receipt_entries": [
+    {
+      "original_name": "00000000000000000000-0e356af574f8f9de86949fd91adc7e9b89005a5d77ce25583b791975c1a53944.json",
+      "sha256": "04cc2f2dcba1c09d7dfb6d8f4b5fefbaa90c8e12530660e9dbc6bccff71941f0",
+      "size": 3346
+    },
+    {
+      "original_name": "00000000000000000001-853efc16173e51406d9023c3772bb3f82716fe1af8970528b57bd85f687ae92e.json",
+      "sha256": "355ccbd94a01cbcb9926434867a2db7c150427e5bdaafb069ce0af3b4002c915",
+      "size": 3412
+    },
+    {
+      "original_name": "00000000000000000002-f6cd0efbacd298c0114036121f1e86580d9f9a337436f9c08475c2ac27253610.json",
+      "sha256": "023e4f16ff9ebf023a8fd290eeecd224269ef5822d5b9e99df05d04fcb16c9f3",
+      "size": 3403
+    }
+  ],
+  "run_id": "v31_registry_contract_rollover_20260829",
+  "schema": "premarket_perp_registry_quarantine_v2",
+  "source": {
+    "receipt_dir_name": "listing-events-v3.jsonl.mutation-receipts",
+    "receipt_dir_present": true,
+    "registry_name": "listing-events-v3.jsonl",
+    "summary_name": "listing-events-v3.summary.json",
+    "summary_plan_identity": {
+      "plan_hash": "32877c7c731bdf63167b20827f373726e34e1fbc1bcd61db26d6975444067ab5",
+      "plan_id": "premarket_perp_capture_20260822_v30"
+    },
+    "summary_present": true
+  },
+  "source_generation_cas": "bcdd69a1163fa54131716af33487e549e8beff5dc25fa75887668e8ed1042ee8",
+  "transaction_id": "20260829T110433Z-2c7d5d8219-b878d6b4",
+  "verifier": {
+    "problem_count": 1,
+    "problems_hash": "2994ec84200f009b1bb9e87fe694f5f9c14dfaa51944c186f63bb3b67e287cc3",
+    "recovery_action": "RESTORE_MATCHING_SUMMARY_OR_QUARANTINE_AND_BOOTSTRAP_NEW_GENERATION",
+    "status": "REGISTRY_PROBLEMS",
+    "summary_verified": false
+  }
+}

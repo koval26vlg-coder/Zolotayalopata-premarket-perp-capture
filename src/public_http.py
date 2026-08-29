@@ -84,6 +84,15 @@ ALLOWED_QUERY_KEYS_BY_ENDPOINT: Mapping[tuple[str, str], frozenset[str]] = Mappi
     ("api.gateio.ws", "/api/v4/futures/usdt/trades"): frozenset(
         {"contract", "from", "to", "limit", "last_id", "reverse"}
     ),
+    ("api.bybit.com", "/v5/announcements/index"): frozenset(
+        {"locale", "type", "tag", "limit", "page"}
+    ),
+    ("api.bitget.com", "/api/v2/public/annoucements"): frozenset(
+        {"language", "annType", "startTime", "endTime", "cursor", "limit"}
+    ),
+    ("api.kucoin.com", "/api/v3/announcements"): frozenset(
+        {"currentPage", "pageSize", "annType", "lang", "startTime", "endTime"}
+    ),
 })
 
 

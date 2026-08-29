@@ -7,7 +7,7 @@ Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
 $projectRoot = Split-Path -Parent $PSScriptRoot
-$activePlan = Join-Path $projectRoot 'docs\plans\premarket-perp-capture-planonly-20260822-v30.json'
+$activePlan = Join-Path $projectRoot 'docs\plans\premarket-perp-capture-planonly-20260822-v32.json'
 $paperRuntime = Join-Path $projectRoot 'src\paper_replay.py'
 $registryRuntime = Join-Path $projectRoot 'src\event_registry.py'
 $gateRuntime = Join-Path $projectRoot 'src\risk_gate.py'
@@ -65,9 +65,9 @@ try {
         exit $paperExit
     }
 
-    # Future event-bound v31 controls are deliberately named only after the v30
-    # NO_ELIGIBLE_EVENT terminal branch. v30 never invokes market_data_capture,
-    # never consumes a capture-token, and never calls Start-Process.
+    # v32 remains capture-disabled. Even when discovery later yields a human-reviewed
+    # official candidate, this launcher only evaluates already sealed evidence; it
+    # never invokes market_data_capture, consumes a capture-token, or calls Start-Process.
     $paperRaw = $candidateRaw | & $python $paperRuntime `
         --candidate-stdin --output-dir $paperOutput --json
     $paperExit = $LASTEXITCODE
