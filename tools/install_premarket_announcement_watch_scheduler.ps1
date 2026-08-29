@@ -30,14 +30,24 @@ function Ensure-ScheduledTaskFolder {
     try {
         $null = $service.GetFolder($folderPath)
         return
-    } catch [System.Runtime.InteropServices.COMException] {
+    } catch {
+        $missingFolderHResult = 0x80070002L
+        $actualHResult = $_.Exception.HResult -band 0xffffffffL
+        if ($actualHResult -ne $missingFolderHResult) {
+            throw
+        }
         $root = $service.GetFolder('\')
         try {
             $null = $root.CreateFolder('ZolotyayLopata')
-        } catch [System.Runtime.InteropServices.COMException] {
-            # A concurrent installer may have created the exact folder.
-            $null = $service.GetFolder($folderPath)
-            return
+        } catch {
+            $creationError = $_
+            try {
+                # A concurrent installer may have created the exact folder.
+                $null = $service.GetFolder($folderPath)
+                return
+            } catch {
+                throw $creationError
+            }
         }
         $null = $service.GetFolder($folderPath)
     }

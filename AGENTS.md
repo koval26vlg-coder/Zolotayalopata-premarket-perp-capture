@@ -24,7 +24,7 @@
 - вывод и переводы средств;
 - решения ACCEPT/REJECT по захваченным данным.
 
-`execution_replay` — офлайн-анализ уже лежащих на диске публичных данных. v33
+`execution_replay` — офлайн-анализ уже лежащих на диске публичных данных. v34
 сохраняет fail-closed offline paper simulation, bounded official
 announcement-index discovery: без подходящего official event,
 sealed capture и полного cost model она создаёт ноль виртуальных позиций и не публикует
@@ -107,12 +107,12 @@ Workspace общий с `ZolotyayLopata`. Этот проект — второй
   mutation receipt, а не по текущему head.
 - Текущий human-attested producer выводит точность из дословного времени источника.
   Minute-only источник остаётся descriptive; только явный `HH:MM:SS` может дать
-  seconds-grade candidate, но v33 всё равно не авторизует capture.
+  seconds-grade candidate, но v34 всё равно не авторизует capture.
 
 ## Статус
 
 Capture ещё **не запускался**. PlanOnly в статусе
-`ANNOUNCEMENT_WATCH_SCHEDULED_NO_CAPTURE`; активный immutable план — v33.
+`ANNOUNCEMENT_WATCH_SCHEDULED_NO_CAPTURE`; активный immutable план — v34.
 `market_data_capture` этим статусом не авторизован. Discovery сохраняет только
 `UNVERIFIED_ANNOUNCEMENT_DISCOVERY`; index publication time и ticker match не могут
 стать official `t0`. После human attestation нужен отдельный arming/checkpoint, а затем

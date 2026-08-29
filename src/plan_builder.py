@@ -20,11 +20,11 @@ import project_config as config
 from canonical_hash import canonical_hash
 
 
-SCHEMA = "premarket_perp_capture_planonly_v33"
-PLAN_ID = "premarket_perp_capture_20260822_v33"
-SUPERSEDES_PLAN_ID = "premarket_perp_capture_20260822_v32"
-SUPERSEDES_PLAN_HASH = "15b84b04cf004834909950846837df9ccef29bb8209e56d7ca58a2b1419e784d"
-SUPERSEDES_PLAN_PATH = "docs/plans/premarket-perp-capture-planonly-20260822-v32.json"
+SCHEMA = "premarket_perp_capture_planonly_v34"
+PLAN_ID = "premarket_perp_capture_20260822_v34"
+SUPERSEDES_PLAN_ID = "premarket_perp_capture_20260822_v33"
+SUPERSEDES_PLAN_HASH = "9db73dc2e15ec266472d0cf0693f5db935f26e6b6dd3633885214e8cc965980e"
+SUPERSEDES_PLAN_PATH = "docs/plans/premarket-perp-capture-planonly-20260822-v33.json"
 HASH_METHOD = "sha256_canonical_json_excluding_plan_hash"
 PLAN_STATUS = "ANNOUNCEMENT_WATCH_SCHEDULED_NO_CAPTURE"
 
@@ -560,13 +560,13 @@ def _announcement_watch_scheduler_contract() -> dict[str, Any]:
         "control_preflight_failure": (
             "FAIL_CLOSED_NO_WRITE_RECHECK_ON_NEXT_FIVE_MINUTE_WAKE"
         ),
-        "state_path": "docs/announcements/official-listing-discovery-state-v33.json",
+        "state_path": "docs/announcements/official-listing-discovery-state-v34.json",
         "attempt_ledger_path": (
-            "docs/announcements/official-listing-discovery-attempts-v33.jsonl"
+            "docs/announcements/official-listing-discovery-attempts-v34.jsonl"
         ),
-        "claim_path": "docs/announcements/official-listing-watch-claim-v33.json",
+        "claim_path": "docs/announcements/official-listing-watch-claim-v34.json",
         "claim_archive": (
-            "docs/announcements/official-listing-watch-claim-archive-v33"
+            "docs/announcements/official-listing-watch-claim-archive-v34"
         ),
         "control_write_class": "announcement_watch_control",
         "shared_gate_required_for_research_writes": True,
@@ -1321,8 +1321,8 @@ def build_plan(generated_at_utc: str) -> dict[str, Any]:
         "activation_gate": {
             "capture_authorized": False,
             "reason": (
-                "v33 adds a hidden no-model wake-only scheduler around bounded "
-                "metadata refresh and official announcement-index discovery, while "
+                "v34 preserves the v33 no-model watcher contract and fixes exact "
+                "fresh-host Task Scheduler folder creation before registration, while "
                 "hardens the append-only unverified candidate store with an exact "
                 "field schema, fixed non-authority values and venue-bound official "
                 "article URLs. The active status still "

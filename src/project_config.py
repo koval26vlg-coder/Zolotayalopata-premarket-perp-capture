@@ -72,7 +72,8 @@ V29_PLAN_PATH = PROJECT_ROOT / "docs/plans/premarket-perp-capture-planonly-20260
 V30_PLAN_PATH = PROJECT_ROOT / "docs/plans/premarket-perp-capture-planonly-20260822-v30.json"
 V31_PLAN_PATH = PROJECT_ROOT / "docs/plans/premarket-perp-capture-planonly-20260822-v31.json"
 V32_PLAN_PATH = PROJECT_ROOT / "docs/plans/premarket-perp-capture-planonly-20260822-v32.json"
-PLAN_PATH = PROJECT_ROOT / "docs/plans/premarket-perp-capture-planonly-20260822-v33.json"
+V33_PLAN_PATH = PROJECT_ROOT / "docs/plans/premarket-perp-capture-planonly-20260822-v33.json"
+PLAN_PATH = PROJECT_ROOT / "docs/plans/premarket-perp-capture-planonly-20260822-v34.json"
 RUN_RECORD_PATH = PROJECT_ROOT / "docs/run/capture-run.json"
 STOP_REQUEST_PATH = PROJECT_ROOT / "docs/run/stop-request.json"
 CAPTURE_TOKEN_PATH = PROJECT_ROOT / "docs/run/capture-token.json"
@@ -83,16 +84,16 @@ ANNOUNCEMENT_CANDIDATE_PATH = (
     PROJECT_ROOT / "docs/announcements/official-listing-candidates-v1.jsonl"
 )
 ANNOUNCEMENT_ATTEMPTS_PATH = (
-    PROJECT_ROOT / "docs/announcements/official-listing-discovery-attempts-v33.jsonl"
+    PROJECT_ROOT / "docs/announcements/official-listing-discovery-attempts-v34.jsonl"
 )
 ANNOUNCEMENT_STATE_PATH = (
-    PROJECT_ROOT / "docs/announcements/official-listing-discovery-state-v33.json"
+    PROJECT_ROOT / "docs/announcements/official-listing-discovery-state-v34.json"
 )
 ANNOUNCEMENT_WATCH_CLAIM_PATH = (
-    PROJECT_ROOT / "docs/announcements/official-listing-watch-claim-v33.json"
+    PROJECT_ROOT / "docs/announcements/official-listing-watch-claim-v34.json"
 )
 ANNOUNCEMENT_WATCH_CLAIM_ARCHIVE = (
-    PROJECT_ROOT / "docs/announcements/official-listing-watch-claim-archive-v33"
+    PROJECT_ROOT / "docs/announcements/official-listing-watch-claim-archive-v34"
 )
 
 # Exact authority surface copied from a selected registry episode into the capture

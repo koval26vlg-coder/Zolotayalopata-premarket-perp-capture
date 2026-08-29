@@ -6,16 +6,16 @@ Research-only контур для публичных pre-market perpetual дан
 
 Проект наблюдает рынок с плечом, но никогда не берёт плечо: private API, ключи,
 подпись запросов, ордера, margin, real capital и переводы запрещены. Capture не
-запускался и активным PlanOnly v33 не разрешён. v33 сохраняет bounded-поиск
+запускался и активным PlanOnly v34 не разрешён. v34 сохраняет bounded-поиск
 официальных announcement-кандидатов, но принимает их только по точной схеме полей,
 с фиксированными non-authority значениями и venue-bound официальным URL;
 локальная fail-closed paper simulation остаётся отдельным offline-контуром. Новый
 no-model scheduler делает только дешёвый пяти-минутный due-check; фактическая сеть
 работает по adaptive cadence 6ч/3ч/1ч/5мин.
 
-## Состояние v33
+## Состояние v34
 
-- immutable PlanOnly: `premarket_perp_capture_20260822_v33`;
+- immutable PlanOnly: `premarket_perp_capture_20260822_v34`;
 - status: `ANNOUNCEMENT_WATCH_SCHEDULED_NO_CAPTURE`;
 - разрешены только metadata registry, human official attestation и локальная
   fail-closed registry quarantine, offline paper-readiness и bounded official-index
@@ -47,8 +47,8 @@ no-model scheduler делает только дешёвый пяти-минут�
   `PAPER_NOT_RUN_COST_MODEL_MISSING`; виртуальная позиция и net PnL не создаются;
 - replay descriptive-only и не поддерживает ACCEPT/REJECT стратегии.
 
-Активные v33 plan hash и file SHA-256 закреплены во внешнем trust root
-`src/frozen_plan_bindings.py`; v32 сохранён byte-identical как непосредственный
+Активные v34 plan hash и file SHA-256 закреплены во внешнем trust root
+`src/frozen_plan_bindings.py`; v33 сохранён byte-identical как непосредственный
 предшественник.
 
 ## Компоненты
@@ -280,10 +280,10 @@ event-bound PlanOnly может связать конкретное событи
 
 ## Immutable lineage
 
-Опубликованы v1–v33. Все прежние планы остаются на диске и проверяются по file SHA,
+Опубликованы v1–v34. Все прежние планы остаются на диске и проверяются по file SHA,
 canonical plan hash и identity. v27 и v28 сохранены; v29 сохранён byte-identical;
-v30, v31 и v32 сохранены byte-identical. v33 supersede-ит v32 и добавляет только
-adaptive no-model scheduler/control-plane contract без capture-authority. Ни один
-старый PlanOnly не переписывался.
+v30–v33 сохранены byte-identical. v34 supersede-ит v33, сохраняя adaptive no-model
+scheduler/control-plane contract и исправляя fresh-host создание Task Scheduler folder
+без capture-authority. Ни один старый PlanOnly не переписывался.
 
 См. `AGENTS.md`, `src/frozen_plan_bindings.py` и решения в `docs/decisions/`.

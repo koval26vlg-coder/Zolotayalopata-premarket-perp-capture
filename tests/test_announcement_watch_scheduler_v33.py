@@ -773,6 +773,7 @@ class CliAndWindowsTaskTests(DurableStateTests):
         self.assertNotIn("codex exec", lowered)
         self.assertIn("schedule.service", lowered)
         self.assertIn("createfolder('zolotyaylopata')", lowered)
+        self.assertIn("0x80070002", lowered)
         self.assertIn("ensure-scheduledtaskfolder -path $taskpath", lowered)
         self.assertLess(
             lowered.index("ensure-scheduledtaskfolder -path $taskpath"),
@@ -852,7 +853,7 @@ class ControlPlaneAuthorizationTests(unittest.TestCase):
         authorization = risk_gate.PLAN_WRITE_AUTHORIZATION[status]
         plan = {
             "status": status,
-            "plan_id": "premarket_perp_capture_20260822_v33",
+            "plan_id": "premarket_perp_capture_20260822_v34",
             "plan_hash": "a" * 64,
             "authorized_after_gate_green": sorted(authorization["authorized_actions"]),
             "resolved_path_bindings": risk_gate.resolved_path_bindings(),
@@ -897,7 +898,7 @@ class ControlPlaneAuthorizationTests(unittest.TestCase):
             config.ANNOUNCEMENT_WATCH_CLAIM_PATH,
             config.ANNOUNCEMENT_WATCH_CLAIM_ARCHIVE,
         ):
-            self.assertIn("v33", path.name)
+            self.assertIn("v34", path.name)
 
 
 class V33ImmutablePlanTests(unittest.TestCase):
@@ -906,7 +907,11 @@ class V33ImmutablePlanTests(unittest.TestCase):
     V32_ID = "premarket_perp_capture_20260822_v32"
     V32_HASH = "15b84b04cf004834909950846837df9ccef29bb8209e56d7ca58a2b1419e784d"
     V32_FILE_SHA = "d0c4a3625ff9a526166694db67d329e3d1e650fdfcbf4c60e36553983175018d"
+    V33_RELATIVE = "docs/plans/premarket-perp-capture-planonly-20260822-v33.json"
     V33_PATH = ROOT / "docs/plans/premarket-perp-capture-planonly-20260822-v33.json"
+    V33_ID = "premarket_perp_capture_20260822_v33"
+    V33_HASH = "9db73dc2e15ec266472d0cf0693f5db935f26e6b6dd3633885214e8cc965980e"
+    V33_FILE_SHA = "55bab73391016340ef07d705503e13ab5cd94f5677555c5dda3b6b85766ea89d"
 
     def test_v32_is_preserved_byte_identical(self) -> None:
         self.assertEqual(
@@ -920,16 +925,16 @@ class V33ImmutablePlanTests(unittest.TestCase):
     def test_v33_has_a_new_identity_and_exact_v32_lineage(self) -> None:
         self.assertTrue(self.V33_PATH.is_file())
         self.assertEqual(config.V32_PLAN_PATH, self.V32_PATH)
-        self.assertEqual(config.PLAN_PATH, self.V33_PATH)
-        self.assertEqual(plan_builder.SCHEMA, "premarket_perp_capture_planonly_v33")
-        self.assertEqual(plan_builder.PLAN_ID, "premarket_perp_capture_20260822_v33")
-        self.assertEqual(plan_builder.SUPERSEDES_PLAN_ID, self.V32_ID)
-        self.assertEqual(plan_builder.SUPERSEDES_PLAN_HASH, self.V32_HASH)
-        self.assertEqual(plan_builder.SUPERSEDES_PLAN_PATH, self.V32_RELATIVE)
+        self.assertEqual(config.V33_PLAN_PATH, self.V33_PATH)
+        self.assertEqual(
+            hashlib.sha256(self.V33_PATH.read_bytes()).hexdigest(),
+            self.V33_FILE_SHA,
+        )
 
         payload = json.loads(self.V33_PATH.read_text(encoding="utf-8"))
-        self.assertEqual(payload["schema"], plan_builder.SCHEMA)
-        self.assertEqual(payload["plan_id"], plan_builder.PLAN_ID)
+        self.assertEqual(payload["schema"], "premarket_perp_capture_planonly_v33")
+        self.assertEqual(payload["plan_id"], self.V33_ID)
+        self.assertEqual(payload["plan_hash"], self.V33_HASH)
         self.assertEqual(payload["supersedes_plan_hash"], self.V32_HASH)
         self.assertEqual(payload["status"], risk_gate.ANNOUNCEMENT_WATCH_PLAN_STATUS)
 
@@ -984,18 +989,78 @@ class V33ImmutablePlanTests(unittest.TestCase):
         self.assertIs(contract["capture_authorized"], False)
         self.assertIs(contract["global_market_data_claim_used"], False)
 
-    def test_v33_is_active_and_v32_is_retired(self) -> None:
-        payload = json.loads(self.V33_PATH.read_text(encoding="utf-8"))
-        self.assertEqual(trust_root.ACTIVE_PLAN["plan_id"], payload["plan_id"])
-        self.assertEqual(trust_root.ACTIVE_PLAN["plan_hash"], payload["plan_hash"])
-        self.assertEqual(
-            trust_root.ACTIVE_PLAN["plan_file_sha256"],
-            hashlib.sha256(self.V33_PATH.read_bytes()).hexdigest(),
-        )
+    def test_v33_and_v32_are_retired_byte_identical(self) -> None:
         retired = {item["path"]: item for item in trust_root.RETIRED_PLANS}
         self.assertEqual(retired[self.V32_RELATIVE]["plan_hash"], self.V32_HASH)
         self.assertEqual(
             retired[self.V32_RELATIVE]["plan_file_sha256"], self.V32_FILE_SHA
+        )
+        self.assertEqual(retired[self.V33_RELATIVE]["plan_hash"], self.V33_HASH)
+        self.assertEqual(
+            retired[self.V33_RELATIVE]["plan_file_sha256"], self.V33_FILE_SHA
+        )
+
+
+class V34ImmutablePlanTests(unittest.TestCase):
+    V33_RELATIVE = "docs/plans/premarket-perp-capture-planonly-20260822-v33.json"
+    V33_PATH = ROOT / V33_RELATIVE
+    V33_ID = "premarket_perp_capture_20260822_v33"
+    V33_HASH = "9db73dc2e15ec266472d0cf0693f5db935f26e6b6dd3633885214e8cc965980e"
+    V33_FILE_SHA = "55bab73391016340ef07d705503e13ab5cd94f5677555c5dda3b6b85766ea89d"
+    V34_PATH = ROOT / "docs/plans/premarket-perp-capture-planonly-20260822-v34.json"
+
+    def test_v34_supersedes_exact_immutable_v33(self) -> None:
+        self.assertEqual(config.V33_PLAN_PATH, self.V33_PATH)
+        self.assertEqual(config.PLAN_PATH, self.V34_PATH)
+        self.assertEqual(
+            hashlib.sha256(self.V33_PATH.read_bytes()).hexdigest(),
+            self.V33_FILE_SHA,
+        )
+        self.assertEqual(plan_builder.SCHEMA, "premarket_perp_capture_planonly_v34")
+        self.assertEqual(plan_builder.PLAN_ID, "premarket_perp_capture_20260822_v34")
+        self.assertEqual(plan_builder.SUPERSEDES_PLAN_ID, self.V33_ID)
+        self.assertEqual(plan_builder.SUPERSEDES_PLAN_HASH, self.V33_HASH)
+        self.assertEqual(plan_builder.SUPERSEDES_PLAN_PATH, self.V33_RELATIVE)
+
+        payload = json.loads(self.V34_PATH.read_text(encoding="utf-8"))
+        self.assertEqual(payload["schema"], plan_builder.SCHEMA)
+        self.assertEqual(payload["plan_id"], plan_builder.PLAN_ID)
+        self.assertEqual(payload["supersedes_plan_hash"], self.V33_HASH)
+        self.assertEqual(payload["status"], risk_gate.ANNOUNCEMENT_WATCH_PLAN_STATUS)
+
+    def test_v34_preregisters_versioned_control_paths_and_fresh_host_install(self) -> None:
+        payload = json.loads(self.V34_PATH.read_text(encoding="utf-8"))
+        contract = payload["announcement_watch_scheduler"]
+        self.assertIn("v34", Path(contract["state_path"]).name)
+        self.assertIn("v34", Path(contract["attempt_ledger_path"]).name)
+        self.assertIn("v34", Path(contract["claim_path"]).name)
+        self.assertIn("v34", Path(contract["claim_archive"]).name)
+        installer = (
+            ROOT / "tools/install_premarket_announcement_watch_scheduler.ps1"
+        ).read_text(encoding="utf-8").lower()
+        self.assertIn("0x80070002", installer)
+        bound = {
+            item["role"]: item for item in payload["implementation"]["files"]
+        }
+        self.assertEqual(
+            bound["announcement_watch_installer"]["sha256"],
+            hashlib.sha256(
+                (ROOT / "tools/install_premarket_announcement_watch_scheduler.ps1").read_bytes()
+            ).hexdigest(),
+        )
+
+    def test_v34_is_active_and_v33_is_retired(self) -> None:
+        payload = json.loads(self.V34_PATH.read_text(encoding="utf-8"))
+        self.assertEqual(trust_root.ACTIVE_PLAN["plan_id"], payload["plan_id"])
+        self.assertEqual(trust_root.ACTIVE_PLAN["plan_hash"], payload["plan_hash"])
+        self.assertEqual(
+            trust_root.ACTIVE_PLAN["plan_file_sha256"],
+            hashlib.sha256(self.V34_PATH.read_bytes()).hexdigest(),
+        )
+        retired = {item["path"]: item for item in trust_root.RETIRED_PLANS}
+        self.assertEqual(retired[self.V33_RELATIVE]["plan_hash"], self.V33_HASH)
+        self.assertEqual(
+            retired[self.V33_RELATIVE]["plan_file_sha256"], self.V33_FILE_SHA
         )
 
 
