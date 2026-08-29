@@ -8,4 +8,11 @@ docs/run/global-writer-claim-archive/
 captures/
 *.log
 
+# Local adaptive-scheduler control state is durable on this host but changes on
+# every due tick. Research registry/candidate evidence under docs/ remains tracked.
+docs/announcements/official-listing-discovery-state-v*.json
+docs/announcements/official-listing-discovery-attempts-v*.jsonl
+docs/announcements/official-listing-watch-claim-v*.json
+docs/announcements/official-listing-watch-claim-archive-v*/
+
 # docs/evidence/ is deliberately NOT ignored: receipts are the versioned trace.
