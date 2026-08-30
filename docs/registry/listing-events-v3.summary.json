@@ -2,14 +2,14 @@
   "schema": "premarket_perp_event_registry_v3",
   "status": "REFRESH_COMPLETE",
   "mutation_type": "metadata_refresh",
-  "mutation_run_id": "announcement_watch_20260830T002048Z_9c41c47e",
-  "refresh_run_id": "announcement_watch_20260830T002048Z_9c41c47e",
+  "mutation_run_id": "announcement_watch_20260830T062338Z_27ead37b",
+  "refresh_run_id": "announcement_watch_20260830T062338Z_27ead37b",
   "plan_id": "premarket_perp_capture_20260822_v38",
   "plan_hash": "f2132603e3a3e8403a20cbceeb273cbb9f8c6804b7e5d81aaacac3b97626095b",
   "registry_contract_hash": "a6c0db8ddf6aa344980ca9dcd3aac218220a80de2d0116402a86cd272e2bd4c0",
   "resolved_paths_hash": "5c447a6347a0591efc8404b05a8d08db6f2cd396d6e020f8529a2ccb9db4be5a",
-  "refreshed_at_utc": "2026-08-30T00:21:03Z",
-  "last_complete_metadata_refresh_received_at_utc": "2026-08-30T00:21:03Z",
+  "refreshed_at_utc": "2026-08-30T06:23:53Z",
+  "last_complete_metadata_refresh_received_at_utc": "2026-08-30T06:23:53Z",
   "observed_events": 18,
   "observed_by_venue": {
     "bybit": 5,
@@ -106,13 +106,13 @@
   "production_eligible": true,
   "raw_universe_rows_by_venue": {
     "bybit": 809,
-    "gate": 942,
+    "gate": 943,
     "okx": 646
   },
   "raw_universe_rows_by_surface": {
     "bybit_linear_prelaunch": 5,
     "bybit_linear_trading": 804,
-    "gate_usdt_contracts": 942,
+    "gate_usdt_contracts": 943,
     "okx_futures": 187,
     "okx_swap": 459
   },
@@ -184,7 +184,7 @@
     }
   },
   "mutation_receipt_schema": "premarket_perp_registry_mutation_receipt_v1",
-  "mutation_seq": 6,
-  "previous_mutation_receipt_hash": "be9d82d867506403618c76da56855106263bd62412cd4a1a2e4ea18cb1c757de",
-  "mutation_receipt_hash": "bec939e560833a9052dcf509a847569277c23dab5af8bc611d6bda3b749df62f"
+  "mutation_seq": 7,
+  "previous_mutation_receipt_hash": "bec939e560833a9052dcf509a847569277c23dab5af8bc611d6bda3b749df62f",
+  "mutation_receipt_hash": "71a5f83ebf7b8456f4fd0ea18e3020c98750c833bf3831cfca36003eb323987b"
 }
