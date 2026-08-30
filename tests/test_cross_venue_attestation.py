@@ -238,10 +238,10 @@ class ReachIsUnchangedTests(unittest.TestCase):
         self.assertTrue(newly_trusted, "the widening added no venue at all")
         self.assertEqual(endpoint_hosts & newly_trusted, set())
 
-    def test_the_market_data_allow_list_still_names_three_venues(self):
+    def test_the_market_data_allow_list_names_three_venues_plus_gate_archive(self):
         self.assertEqual(
             sorted({host for host, _ in config.MARKET_DATA_ALLOWED_ENDPOINTS}),
-            ["api.bybit.com", "api.gateio.ws", "www.okx.com"],
+            ["api.bybit.com", "api.gateio.ws", "download.gatedata.org", "www.okx.com"],
         )
 
     def test_an_announcement_host_is_not_reachable_through_public_http(self):

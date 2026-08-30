@@ -77,9 +77,11 @@ V34_PLAN_PATH = PROJECT_ROOT / "docs/plans/premarket-perp-capture-planonly-20260
 V35_PLAN_PATH = PROJECT_ROOT / "docs/plans/premarket-perp-capture-planonly-20260822-v35.json"
 V36_PLAN_PATH = PROJECT_ROOT / "docs/plans/premarket-perp-capture-planonly-20260822-v36.json"
 V37_PLAN_PATH = PROJECT_ROOT / "docs/plans/premarket-perp-capture-planonly-20260822-v37.json"
-PLAN_PATH = PROJECT_ROOT / "docs/plans/premarket-perp-capture-planonly-20260822-v38.json"
+V38_PLAN_PATH = PROJECT_ROOT / "docs/plans/premarket-perp-capture-planonly-20260822-v38.json"
+V39_PLAN_PATH = PROJECT_ROOT / "docs/plans/premarket-perp-capture-planonly-20260822-v39.json"
+PLAN_PATH = PROJECT_ROOT / "docs/plans/premarket-perp-capture-planonly-20260822-v40.json"
 NEXT_EVENT_BOUND_PLAN_PATH = (
-    PROJECT_ROOT / "docs/plans/premarket-perp-capture-planonly-20260822-v39.json"
+    PROJECT_ROOT / "docs/plans/premarket-perp-capture-planonly-20260822-v41.json"
 )
 RUN_RECORD_PATH = PROJECT_ROOT / "docs/run/capture-run.json"
 STOP_REQUEST_PATH = PROJECT_ROOT / "docs/run/stop-request.json"
@@ -91,22 +93,26 @@ ANNOUNCEMENT_CANDIDATE_PATH = (
     PROJECT_ROOT / "docs/announcements/official-listing-candidates-v1.jsonl"
 )
 ANNOUNCEMENT_ATTEMPTS_PATH = (
-    PROJECT_ROOT / "docs/announcements/official-listing-discovery-attempts-v38.jsonl"
+    PROJECT_ROOT / "docs/announcements/official-listing-discovery-attempts-v40.jsonl"
 )
 ANNOUNCEMENT_STATE_PATH = (
-    PROJECT_ROOT / "docs/announcements/official-listing-discovery-state-v38.json"
+    PROJECT_ROOT / "docs/announcements/official-listing-discovery-state-v40.json"
 )
 ANNOUNCEMENT_WATCH_CLAIM_PATH = (
-    PROJECT_ROOT / "docs/announcements/official-listing-watch-claim-v38.json"
+    PROJECT_ROOT / "docs/announcements/official-listing-watch-claim-v40.json"
 )
 ANNOUNCEMENT_WATCH_CLAIM_ARCHIVE = (
-    PROJECT_ROOT / "docs/announcements/official-listing-watch-claim-archive-v38"
+    PROJECT_ROOT / "docs/announcements/official-listing-watch-claim-archive-v40"
 )
 CANDIDATE_ALERT_LEDGER_PATH = (
     PROJECT_ROOT / "docs/announcements/official-listing-candidate-alerts-v1.jsonl"
 )
 OFFICIAL_T0_ARMING_ROOT = PROJECT_ROOT / "docs/arming/official-t0-v1"
 EVENT_BOUND_PLAN_PROPOSAL_ROOT = PROJECT_ROOT / "docs/arming/event-bound-plan-proposals-v1"
+HISTORICAL_EVIDENCE_ROOT = PROJECT_ROOT / "docs/historical/v40"
+HISTORICAL_RAW_ROOT = HISTORICAL_EVIDENCE_ROOT / "raw"
+HISTORICAL_MANIFEST_ROOT = HISTORICAL_EVIDENCE_ROOT / "manifests"
+HISTORICAL_RECEIPT_ROOT = HISTORICAL_EVIDENCE_ROOT / "receipts"
 WINDOWS_POWERSHELL_EXECUTABLE = (
     "C:/Windows/System32/WindowsPowerShell/v1.0/powershell.exe"
 )
@@ -186,6 +192,11 @@ BOUND_RUNTIME_FILES: tuple[tuple[str, str], ...] = (
         "fixture_rehearsal_launcher",
         "tools/start_premarket_fixture_rehearsal.ps1",
     ),
+    ("historical_event_builder", "src/historical_event_builder.py"),
+    ("historical_event_seeds", "docs/historical/historical-event-seeds-v1.json"),
+    ("execution_replay", "src/execution_replay.py"),
+    ("historical_acquisition", "src/historical_acquisition.py"),
+    ("historical_causal_replay", "src/historical_causal_replay.py"),
     # The forbidden-capability vocabulary is part of the contract, not a note:
     # widening it must require reissuing the plan like any runtime change.
     ("forbidden_capabilities", "docs/risk/forbidden-capabilities.txt"),
@@ -207,6 +218,7 @@ MARKET_DATA_ALLOWED_ENDPOINTS: tuple[tuple[str, str], ...] = (
     ("www.okx.com", "/api/v5/market/tickers"),
     ("www.okx.com", "/api/v5/market/ticker"),
     ("www.okx.com", "/api/v5/market/candles"),
+    ("www.okx.com", "/api/v5/market/history-candles"),
     ("www.okx.com", "/api/v5/market/books"),
     ("www.okx.com", "/api/v5/market/trades"),
     # Gate v4 public USDT-margined futures market data
@@ -215,6 +227,10 @@ MARKET_DATA_ALLOWED_ENDPOINTS: tuple[tuple[str, str], ...] = (
     ("api.gateio.ws", "/api/v4/futures/usdt/candlesticks"),
     ("api.gateio.ws", "/api/v4/futures/usdt/order_book"),
     ("api.gateio.ws", "/api/v4/futures/usdt/trades"),
+    (
+        "download.gatedata.org",
+        "/futures_usdt/candlesticks_1m/202602/AZTEC_USDT-202602.csv.gz",
+    ),
 )
 
 # Discovery reads only bounded JSON indexes.  Article URLs are stored for explicit
@@ -300,12 +316,16 @@ RISK_CONTRACT: dict[str, object] = {
 # descriptive feasibility research only; it is neither a venue testnet executor nor
 # an instruction to place an order.
 OFFLINE_PAPER_MODEL: dict[str, object] = {
-    "direction": "LONG",
-    "virtual_notional_usdt": 25,
-    "leverage_equivalent": 1,
-    "entry_lead_sec": 60,
+    "side": "LONG",
+    "paper_notional_usdt": 25.0,
+    "leverage_equivalent": 1.0,
+    "entry_offset_sec": -60,
     "exit_offsets_sec": [0, 5, 15, 60],
-    "execution_style": "TAKER_LIKE_CAUSAL_DEPTH",
+    "latency_ms": 200,
+    "order_ttl_ms": 500,
+    "stress_leverages": [2, 5],
+    "entry_liquidity": "TAKER_ASKS",
+    "exit_liquidity": "TAKER_BIDS",
 }
 
 # Not everything that writes a file is the same kind of write, and treating them alike
@@ -392,6 +412,19 @@ WRITE_CLASSES: dict[str, dict[str, object]] = {
         "plan_and_capability_scan": True,
         "endpoint_allow_list": True,
     },
+    "historical_market_data_acquisition": {
+        "what": (
+            "acquire bounded post-hoc public OHLCV evidence into a separate "
+            "append-only namespace"
+        ),
+        "requests": "bounded historical public market-data requests; zero retries",
+        "exclusive_writer_claim": True,
+        "capture_token": False,
+        "plan_and_capability_scan": True,
+        "endpoint_allow_list": True,
+        "shared_gate_required": True,
+        "writer_claim": "GLOBAL_ACTIVE_MARKET_DATA_WRITER_CLAIM",
+    },
     "market_data_capture": {
         "what": "continuous capture around a listing t0",
         "requests": "sustained, while a market is moving",
@@ -411,6 +444,13 @@ MAX_REQUESTS_PER_CAPTURE = 20000
 MAX_EVENTS_PER_CAPTURE = 1
 CAPTURE_LAUNCH_EARLY_GRACE_SEC = 30
 CAPTURE_LAUNCH_LATE_GRACE_SEC = 5
+
+# A historical pass is deliberately small and non-retrying.  It is useful for
+# descriptive markouts, but cannot substitute for seconds-grade contemporaneous L2.
+MAX_HISTORICAL_EVENTS_PER_RUN = 12
+MAX_HISTORICAL_REQUESTS_PER_RUN = 36
+MAX_HISTORICAL_RUNTIME_SEC = 300
+MAX_HISTORICAL_RETRIES_PER_REQUEST = 0
 
 # A contract is current only when a complete, writer-timestamped venue-universe
 # refresh is recent.  A sharp universe collapse is acquisition failure rather than

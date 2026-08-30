@@ -36,7 +36,7 @@ class PaperOnlyLauncherNoCaptureTests(unittest.TestCase):
         )
         return LAUNCHER.read_text(encoding="utf-8")
 
-    def test_launcher_uses_the_active_v38_plan_and_never_delegates_to_legacy_v5(self) -> None:
+    def test_launcher_uses_the_active_v40_plan_and_never_delegates_to_legacy_v5(self) -> None:
         text = self.launcher_text()
         lowered = text.lower()
 
@@ -45,7 +45,7 @@ class PaperOnlyLauncherNoCaptureTests(unittest.TestCase):
             lowered,
         )
         self.assertNotIn("trading_mvp\\src\\premarket_automation.py", lowered)
-        self.assertIn("premarket-perp-capture-planonly-20260822-v38.json", lowered)
+        self.assertIn("premarket-perp-capture-planonly-20260822-v40.json", lowered)
         self.assertIn("src\\paper_replay.py", lowered)
 
     def test_launcher_contains_no_private_or_order_endpoint_markers(self) -> None:

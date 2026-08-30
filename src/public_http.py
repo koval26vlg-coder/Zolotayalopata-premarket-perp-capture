@@ -71,6 +71,9 @@ ALLOWED_QUERY_KEYS_BY_ENDPOINT: Mapping[tuple[str, str], frozenset[str]] = Mappi
     ("www.okx.com", "/api/v5/market/candles"): frozenset(
         {"instId", "after", "before", "bar", "limit"}
     ),
+    ("www.okx.com", "/api/v5/market/history-candles"): frozenset(
+        {"instId", "after", "before", "bar", "limit"}
+    ),
     ("www.okx.com", "/api/v5/market/books"): frozenset({"instId", "sz"}),
     ("www.okx.com", "/api/v5/market/trades"): frozenset({"instId", "limit"}),
     ("api.gateio.ws", "/api/v4/futures/usdt/contracts"): frozenset(),
@@ -84,6 +87,10 @@ ALLOWED_QUERY_KEYS_BY_ENDPOINT: Mapping[tuple[str, str], frozenset[str]] = Mappi
     ("api.gateio.ws", "/api/v4/futures/usdt/trades"): frozenset(
         {"contract", "from", "to", "limit", "last_id", "reverse"}
     ),
+    (
+        "download.gatedata.org",
+        "/futures_usdt/candlesticks_1m/202602/AZTEC_USDT-202602.csv.gz",
+    ): frozenset(),
     ("api.bybit.com", "/v5/announcements/index"): frozenset(
         {"locale", "type", "tag", "limit", "page"}
     ),
@@ -512,6 +519,80 @@ def get_json(
             raise  # the venue understood us and said no
         except (EndpointNotAllowed, DnsAddressNotAllowed, RedirectNotAllowed):
             raise  # capability failures are permanent and must not be retried
+        except PublicHttpError:
+            raise
+        except (OSError, ValueError) as exc:
+            last_error = exc
+
+        if attempt >= max_retries:
+            break
+        delay = retry_after if retry_after is not None else backoff_delay(attempt, rng=rng)
+        if total_slept + delay > MAX_TOTAL_BACKOFF_SEC:
+            break
+        total_slept += delay
+        sleep_fn(delay)
+
+    if isinstance(last_error, PublicHttpError):
+        raise last_error
+    raise PublicHttpError(f"GET failed: {request_url}") from last_error
+
+
+def get_bytes(
+    url: str,
+    *,
+    params: Mapping[str, Any] | None = None,
+    timeout_sec: int = 20,
+    max_retries: int = DEFAULT_MAX_RETRIES,
+    sleep_fn: Callable[[float], None] = time.sleep,
+    rng: random.Random | None = None,
+) -> bytes:
+    """Fetch one allow-listed immutable binary public-data object.
+
+    This is intentionally separate from :func:`get_json`: historical venue
+    archives are gzip files, while all endpoint, DNS, redirect, retry, and body
+    ceilings remain identical to the JSON path.
+    """
+
+    request_url = _build_request_url(url, params)
+    rng = rng or random.Random()
+    total_slept = 0.0
+    last_error: Exception | None = None
+    for attempt in range(max_retries + 1):
+        retry_after: float | None = None
+        try:
+            validated_addresses = require_public_dns(request_url)
+            opener = build_bound_opener(
+                request_url,
+                validated_addresses,
+                attempt=attempt,
+            )
+            request = urllib.request.Request(
+                request_url,
+                headers={"Accept": "application/octet-stream", "User-Agent": USER_AGENT},
+            )
+            with opener.open(request, timeout=timeout_sec) as response:
+                final_url = response.geturl()
+                require_allowed_endpoint(final_url)
+                if final_url != request_url:
+                    raise RedirectNotAllowed(
+                        f"redirected response URL is forbidden: {final_url}",
+                        url=request_url,
+                    )
+                body = response.read(MAX_RESPONSE_BYTES + 1)
+            if len(body) > MAX_RESPONSE_BYTES:
+                raise PublicHttpError(
+                    f"response exceeds {MAX_RESPONSE_BYTES} bytes", url=request_url
+                )
+            return body
+        except urllib.error.HTTPError as exc:
+            last_error = PublicHttpError(
+                f"HTTP {exc.code} for {request_url}", status=exc.code, url=request_url
+            )
+            if exc.code not in RETRYABLE_STATUS:
+                raise last_error from exc
+            retry_after = _retry_after_sec(getattr(exc, "headers", None))
+        except (EndpointNotAllowed, DnsAddressNotAllowed, RedirectNotAllowed):
+            raise
         except PublicHttpError:
             raise
         except (OSError, ValueError) as exc:

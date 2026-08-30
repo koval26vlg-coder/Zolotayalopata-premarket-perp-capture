@@ -85,6 +85,13 @@ REGISTRY_QUARANTINE_ACTION = (
 OFFLINE_PAPER_SIMULATION_ACTION = (
     "run deterministic offline paper simulation over verified sealed capture evidence"
 )
+HISTORICAL_ACQUISITION_ACTION = (
+    "acquire bounded historical public pre-market evidence into a separate "
+    "append-only namespace"
+)
+HISTORICAL_REPLAY_ACTION = (
+    "run deterministic offline causal replay over sealed historical evidence"
+)
 CAPTURE_ACTION = "capture one official event in a bounded visible terminal"
 WRITE_CLASS_ACTION = {
     "announcement_watch_control": ANNOUNCEMENT_WATCH_CONTROL_ACTION,
@@ -95,6 +102,7 @@ WRITE_CLASS_ACTION = {
     "official_t0_arming": OFFICIAL_T0_ARMING_ACTION,
     "event_bound_plan_proposal": EVENT_BOUND_PLAN_PROPOSAL_ACTION,
     "registry_quarantine": REGISTRY_QUARANTINE_ACTION,
+    "historical_market_data_acquisition": HISTORICAL_ACQUISITION_ACTION,
     "market_data_capture": CAPTURE_ACTION,
 }
 REGISTRY_QUARANTINE_PLAN_STATUS = "REGISTRY_QUARANTINE_HARDENED_NO_CAPTURE"
@@ -112,6 +120,9 @@ ANNOUNCEMENT_DISCOVERY_PLAN_STATUS = (
 )
 ANNOUNCEMENT_WATCH_PLAN_STATUS = "ANNOUNCEMENT_WATCH_SCHEDULED_NO_CAPTURE"
 OFFICIAL_T0_ARMING_READY_PLAN_STATUS = "OFFICIAL_T0_ARMING_READY_NO_CAPTURE"
+HISTORICAL_ACQUISITION_REPLAY_PLAN_STATUS = (
+    "HISTORICAL_ACQUISITION_REPLAY_READY_NO_CAPTURE"
+)
 # Compatibility name used by version-agnostic no-capture tests. It denotes the
 # current hardened no-capture status; the exact v29 literal remains separately bound.
 REGISTRY_RECOVERY_SECONDS_GRADE_PLAN_STATUS = (
@@ -245,6 +256,33 @@ PLAN_WRITE_AUTHORIZATION: dict[str, dict[str, frozenset[str]]] = {
             "registry_quarantine",
         }),
     },
+    HISTORICAL_ACQUISITION_REPLAY_PLAN_STATUS: {
+        "authorized_actions": frozenset({
+            METADATA_REGISTRY_ACTION,
+            OFFLINE_DESCRIPTIVE_ACTION,
+            OFFICIAL_ATTESTATION_ACTION,
+            ANNOUNCEMENT_DISCOVERY_ACTION,
+            ANNOUNCEMENT_WATCH_CONTROL_ACTION,
+            CANDIDATE_ALERT_ACTION,
+            OFFICIAL_T0_ARMING_ACTION,
+            EVENT_BOUND_PLAN_PROPOSAL_ACTION,
+            REGISTRY_QUARANTINE_ACTION,
+            OFFLINE_PAPER_SIMULATION_ACTION,
+            HISTORICAL_ACQUISITION_ACTION,
+            HISTORICAL_REPLAY_ACTION,
+        }),
+        "write_classes": frozenset({
+            "announcement_watch_control",
+            "metadata_registry",
+            "official_attestation",
+            "announcement_discovery",
+            "candidate_alert",
+            "official_t0_arming",
+            "event_bound_plan_proposal",
+            "registry_quarantine",
+            "historical_market_data_acquisition",
+        }),
+    },
 }
 
 
@@ -295,6 +333,15 @@ def resolved_path_bindings() -> dict[str, str]:
         ),
         "event_bound_plan_proposal_root": str(
             config.EVENT_BOUND_PLAN_PROPOSAL_ROOT.resolve(strict=False)
+        ),
+        "historical_raw_root": str(
+            config.HISTORICAL_RAW_ROOT.resolve(strict=False)
+        ),
+        "historical_manifest_root": str(
+            config.HISTORICAL_MANIFEST_ROOT.resolve(strict=False)
+        ),
+        "historical_receipt_root": str(
+            config.HISTORICAL_RECEIPT_ROOT.resolve(strict=False)
         ),
         "windows_powershell_executable": str(
             Path(config.WINDOWS_POWERSHELL_EXECUTABLE).resolve(strict=False)

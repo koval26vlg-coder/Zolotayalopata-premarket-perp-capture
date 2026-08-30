@@ -37,16 +37,14 @@ class V38ImmutableLineageTests(unittest.TestCase):
         self.assertEqual(hashlib.sha256(V37_PATH.read_bytes()).hexdigest(), V37_FILE_SHA)
         self.assertEqual(json.loads(V37_PATH.read_text(encoding="utf-8"))["plan_hash"], V37_PLAN_HASH)
         self.assertEqual(getattr(config, "V37_PLAN_PATH", None), V37_PATH)
-        self.assertEqual(config.PLAN_PATH, V38_PATH)
+        self.assertEqual(config.V38_PLAN_PATH, V38_PATH)
         self.assertEqual(self.plan["supersedes_plan_id"], V37_ID)
         self.assertEqual(self.plan["supersedes_plan_hash"], V37_PLAN_HASH)
         self.assertEqual(self.plan["supersedes_plan_path"], V37_RELATIVE)
 
     def test_v38_has_a_new_identity_and_no_capture_status(self) -> None:
-        self.assertEqual(plan_builder.SCHEMA, "premarket_perp_capture_planonly_v38")
-        self.assertEqual(plan_builder.PLAN_ID, "premarket_perp_capture_20260822_v38")
-        self.assertEqual(self.plan["schema"], plan_builder.SCHEMA)
-        self.assertEqual(self.plan["plan_id"], plan_builder.PLAN_ID)
+        self.assertEqual(self.plan["schema"], "premarket_perp_capture_planonly_v38")
+        self.assertEqual(self.plan["plan_id"], "premarket_perp_capture_20260822_v38")
         self.assertEqual(
             self.plan["status"], risk_gate.OFFICIAL_T0_ARMING_READY_PLAN_STATUS
         )
@@ -167,26 +165,27 @@ class V38ImmutableLineageTests(unittest.TestCase):
             "LAUNCHER_AND_RUNTIME_ACTIVE_PLAN_SHA_AND_CAPABILITY_SCAN_BEFORE_TEMPORARY_WRITE",
         )
 
-    def test_control_paths_roll_to_v38_but_alert_and_arming_namespaces_are_stable(self) -> None:
+    def test_control_paths_roll_to_v40_but_alert_and_arming_namespaces_are_stable(self) -> None:
         for path in (
             config.ANNOUNCEMENT_STATE_PATH,
             config.ANNOUNCEMENT_ATTEMPTS_PATH,
             config.ANNOUNCEMENT_WATCH_CLAIM_PATH,
             config.ANNOUNCEMENT_WATCH_CLAIM_ARCHIVE,
         ):
-            self.assertIn("v38", path.name)
+            self.assertIn("v40", path.name)
         self.assertEqual(
             config.CANDIDATE_ALERT_LEDGER_PATH.name,
             "official-listing-candidate-alerts-v1.jsonl",
         )
         self.assertEqual(config.OFFICIAL_T0_ARMING_ROOT.name, "official-t0-v1")
 
-    def test_active_trust_root_is_v38_and_v37_is_retired(self) -> None:
-        self.assertEqual(trust_root.PLAN_ID, self.plan["plan_id"])
-        self.assertEqual(trust_root.PLAN_HASH, self.plan["plan_hash"])
+    def test_v38_is_retired_and_active_trust_root_is_v40(self) -> None:
+        self.assertEqual(trust_root.PLAN_ID, "premarket_perp_capture_20260822_v40")
         retired = {item["path"]: item for item in trust_root.RETIRED_PLANS}
         self.assertEqual(retired[V37_RELATIVE]["plan_hash"], V37_PLAN_HASH)
         self.assertEqual(retired[V37_RELATIVE]["plan_file_sha256"], V37_FILE_SHA)
+        v38_relative = "docs/plans/premarket-perp-capture-planonly-20260822-v38.json"
+        self.assertEqual(retired[v38_relative]["plan_hash"], self.plan["plan_hash"])
 
 
 class V38RiskClassTests(unittest.TestCase):

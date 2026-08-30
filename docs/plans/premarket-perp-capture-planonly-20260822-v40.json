@@ -1,0 +1,1763 @@
+{
+  "schema": "premarket_perp_capture_planonly_v40",
+  "plan_id": "premarket_perp_capture_20260822_v40",
+  "supersedes_plan_id": "premarket_perp_capture_20260822_v39",
+  "supersedes_plan_hash": "d3e410f550ccf84c985924120c9970be28c87e3c788dba00ba55cde112406512",
+  "supersedes_plan_path": "docs/plans/premarket-perp-capture-planonly-20260822-v39.json",
+  "project": "ZolotyayLopata-premarket-perp-capture",
+  "strategy_branch": "premarket_perpetual_listing_impulse",
+  "mode": "PlanOnly",
+  "status": "HISTORICAL_ACQUISITION_REPLAY_READY_NO_CAPTURE",
+  "generated_at_utc": "2026-08-30T07:28:26.065Z",
+  "implementation_path_semantics": "repo_path values are relative to the runtime Git root",
+  "objective": "Run low-cost bounded discovery, alert once on a current official-listing candidate, and allow an explicitly reviewed seconds-grade official t0 to be sealed as no-capture arming evidence. Acquire a bounded post-hoc Bybit/OKX/Gate OHLCV cohort in a separate append-only namespace and run deterministic descriptive or sealed-L2 causal replay. A deterministic v41 proposal may then be prepared, but cannot activate a plan or start forward capture. Post-hoc OHLCV remains descriptive-only. This plan does not authorize automatic t0 attestation, market-data capture, venue paper/testnet execution, live execution, orders, leverage or capital.",
+  "hypothesis_under_study": "LONG before the listing, exit at t0, +5s, +15s or +60s - stated here so the capture design can be judged against it, not so it can be traded",
+  "risk_contract": {
+    "observed_instrument_class": "crypto_perpetual_futures",
+    "research_only": true,
+    "public_data_only": true,
+    "private_api": false,
+    "api_keys": false,
+    "request_signing": false,
+    "orders": false,
+    "offline_paper_simulation": true,
+    "paper_execution": false,
+    "live_execution": false,
+    "uses_leverage": false,
+    "uses_margin": false,
+    "real_capital": false,
+    "withdrawals_or_transfers": false,
+    "execution_replay": "offline_simulation_over_captured_public_data_only",
+    "acceptance_decision": "NONE_CAPTURE_ONLY"
+  },
+  "allowed_endpoints": [
+    [
+      "api.bybit.com",
+      "/v5/market/instruments-info"
+    ],
+    [
+      "api.bybit.com",
+      "/v5/market/tickers"
+    ],
+    [
+      "api.bybit.com",
+      "/v5/market/kline"
+    ],
+    [
+      "api.bybit.com",
+      "/v5/market/orderbook"
+    ],
+    [
+      "api.bybit.com",
+      "/v5/market/recent-trade"
+    ],
+    [
+      "www.okx.com",
+      "/api/v5/public/instruments"
+    ],
+    [
+      "www.okx.com",
+      "/api/v5/market/tickers"
+    ],
+    [
+      "www.okx.com",
+      "/api/v5/market/ticker"
+    ],
+    [
+      "www.okx.com",
+      "/api/v5/market/candles"
+    ],
+    [
+      "www.okx.com",
+      "/api/v5/market/history-candles"
+    ],
+    [
+      "www.okx.com",
+      "/api/v5/market/books"
+    ],
+    [
+      "www.okx.com",
+      "/api/v5/market/trades"
+    ],
+    [
+      "api.gateio.ws",
+      "/api/v4/futures/usdt/contracts"
+    ],
+    [
+      "api.gateio.ws",
+      "/api/v4/futures/usdt/tickers"
+    ],
+    [
+      "api.gateio.ws",
+      "/api/v4/futures/usdt/candlesticks"
+    ],
+    [
+      "api.gateio.ws",
+      "/api/v4/futures/usdt/order_book"
+    ],
+    [
+      "api.gateio.ws",
+      "/api/v4/futures/usdt/trades"
+    ],
+    [
+      "download.gatedata.org",
+      "/futures_usdt/candlesticks_1m/202602/AZTEC_USDT-202602.csv.gz"
+    ],
+    [
+      "api.bybit.com",
+      "/v5/announcements/index"
+    ],
+    [
+      "api.bitget.com",
+      "/api/v2/public/annoucements"
+    ],
+    [
+      "api.kucoin.com",
+      "/api/v3/announcements"
+    ]
+  ],
+  "resolved_path_bindings": {
+    "shared_gate_path": "C:\\Users\\koval\\Documents\\ZolotyayLopata\\tools\\check_active_run_gate.ps1",
+    "shared_writer_claim_path": "C:\\Users\\koval\\Documents\\ZolotyayLopata\\docs\\agent-log\\active-market-data-writer-claim.json",
+    "capture_root": "E:\\trading_mvp\\premarket-perp-capture\\captures",
+    "registry_quarantine_root": "C:\\Users\\koval\\Documents\\ZolotyayLopata-premarket-perp-capture\\docs\\registry\\quarantine",
+    "announcement_state_path": "C:\\Users\\koval\\Documents\\ZolotyayLopata-premarket-perp-capture\\docs\\announcements\\official-listing-discovery-state-v40.json",
+    "announcement_attempts_path": "C:\\Users\\koval\\Documents\\ZolotyayLopata-premarket-perp-capture\\docs\\announcements\\official-listing-discovery-attempts-v40.jsonl",
+    "announcement_watch_claim_path": "C:\\Users\\koval\\Documents\\ZolotyayLopata-premarket-perp-capture\\docs\\announcements\\official-listing-watch-claim-v40.json",
+    "announcement_watch_claim_archive": "C:\\Users\\koval\\Documents\\ZolotyayLopata-premarket-perp-capture\\docs\\announcements\\official-listing-watch-claim-archive-v40",
+    "candidate_alert_ledger_path": "C:\\Users\\koval\\Documents\\ZolotyayLopata-premarket-perp-capture\\docs\\announcements\\official-listing-candidate-alerts-v1.jsonl",
+    "official_t0_arming_root": "C:\\Users\\koval\\Documents\\ZolotyayLopata-premarket-perp-capture\\docs\\arming\\official-t0-v1",
+    "event_bound_plan_proposal_root": "C:\\Users\\koval\\Documents\\ZolotyayLopata-premarket-perp-capture\\docs\\arming\\event-bound-plan-proposals-v1",
+    "historical_raw_root": "C:\\Users\\koval\\Documents\\ZolotyayLopata-premarket-perp-capture\\docs\\historical\\v40\\raw",
+    "historical_manifest_root": "C:\\Users\\koval\\Documents\\ZolotyayLopata-premarket-perp-capture\\docs\\historical\\v40\\manifests",
+    "historical_receipt_root": "C:\\Users\\koval\\Documents\\ZolotyayLopata-premarket-perp-capture\\docs\\historical\\v40\\receipts",
+    "windows_powershell_executable": "C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe"
+  },
+  "enforcement": {
+    "capability_scan": "src/ and tools/ are scanned against docs/risk/forbidden-capabilities.txt and against allowed_endpoints; any order, signing, credential, leverage-changing or off-list URL marker blocks the gate",
+    "plan_bindings": "every bound file's SHA-256 is verified against this plan, and this plan against the external trust root src/frozen_plan_bindings.py, which sits outside the plan-binds-runtime cycle on purpose",
+    "shared_single_writer": {
+      "preflight_checks": [
+        "SHARED_WRITER_CLAIM",
+        "ACTIVE_RUN_RECORD"
+      ],
+      "stale_claim": "REPORT_NEVER_CLEAR_AUTOMATICALLY",
+      "registry_quarantine": {
+        "initial_and_commit_preflight": true,
+        "global_claim_acquisition": "AFTER_COMMIT_PREFLIGHT_AND_SOURCE_CAS_BEFORE_ARCHIVE_PUBLISH",
+        "hold_until": "SOURCE_DEACTIVATED_EXACT_BOUNDARY_VERIFIED",
+        "release_order": [
+          "GLOBAL_MARKET_WRITER_CLAIM",
+          "REGISTRY_LOCK_TO_DURABLE_TERMINAL_PROOF"
+        ],
+        "claim_release_failure": "RETAIN_BOTH_LOCKS_MANUAL_RECOVERY"
+      }
+    },
+    "shared_gate_process": "the gate subprocess must exit with code zero before its JSON status can open any write class; nonzero exit, malformed output or stderr-only failure is UNAVAILABLE and fail-closed",
+    "capture_token": "a capture requires a one-shot token minted only by a passing market_data_capture preflight and bound to the exact run, event, official source class, PlanOnly identity, resolved paths, gate and capability-scan hash; consumption atomically takes it once and rechecks the current plan, paths, capability scan, gate, writer claim and run record",
+    "runtime_http_allow_list": "GET requests require HTTPS, an exact declared host/path and declared query keys; userinfo, redirects, dot/encoded paths, non-public DNS answers and caller-supplied allow-lists fail closed; TCP connects to the already validated IP while TLS SNI and Host retain the venue name",
+    "resolved_path_bindings": "shared controls, capture root, announcement-watch controls, alert ledger, arming/proposal roots, historical evidence roots and the Windows notification runtime are compared to their canonical absolute values before writes"
+  },
+  "write_classes": {
+    "announcement_watch_control": {
+      "what": "persist only the local adaptive scheduler claim, attempt ledger and state",
+      "requests": "none; local control-plane artifacts only",
+      "exclusive_writer_claim": false,
+      "capture_token": false,
+      "plan_and_capability_scan": true,
+      "endpoint_allow_list": false,
+      "shared_gate_required": false
+    },
+    "metadata_registry": {
+      "what": "listing-event registry refresh from public instrument endpoints",
+      "requests": "a handful, one pass",
+      "exclusive_writer_claim": false,
+      "capture_token": false,
+      "plan_and_capability_scan": true,
+      "endpoint_allow_list": true
+    },
+    "official_attestation": {
+      "what": "append one human-verified official spot t0 to the event registry",
+      "requests": "none; records already-read announcement evidence",
+      "exclusive_writer_claim": false,
+      "capture_token": false,
+      "plan_and_capability_scan": true,
+      "endpoint_allow_list": true
+    },
+    "announcement_discovery": {
+      "what": "fetch bounded official announcement indexes and append unverified announcement candidates",
+      "requests": "bounded index pages only; article bodies are never fetched",
+      "exclusive_writer_claim": false,
+      "capture_token": false,
+      "plan_and_capability_scan": true,
+      "endpoint_allow_list": true,
+      "max_retries_per_request": 0
+    },
+    "candidate_alert": {
+      "what": "submit one local candidate notification after alert preflight",
+      "requests": "none; local Windows notification only",
+      "exclusive_writer_claim": false,
+      "capture_token": false,
+      "plan_and_capability_scan": true,
+      "endpoint_allow_list": false,
+      "shared_gate_required": false
+    },
+    "official_t0_arming": {
+      "what": "seal one human-attested exact seconds-grade official spot t0 as immutable no-capture arming evidence",
+      "requests": "none; uses already-attested verified registry evidence",
+      "exclusive_writer_claim": false,
+      "capture_token": false,
+      "plan_and_capability_scan": true,
+      "endpoint_allow_list": true,
+      "shared_gate_required": true
+    },
+    "event_bound_plan_proposal": {
+      "what": "write one deterministic event-bound plan proposal from an arming receipt",
+      "requests": "none; local create-only proposal",
+      "exclusive_writer_claim": false,
+      "capture_token": false,
+      "plan_and_capability_scan": true,
+      "endpoint_allow_list": true,
+      "shared_gate_required": true
+    },
+    "registry_quarantine": {
+      "what": "archive one failed registry generation before deactivation",
+      "requests": "none; local recovery transaction only",
+      "exclusive_writer_claim": true,
+      "capture_token": false,
+      "plan_and_capability_scan": true,
+      "endpoint_allow_list": true
+    },
+    "historical_market_data_acquisition": {
+      "what": "acquire bounded post-hoc public OHLCV evidence into a separate append-only namespace",
+      "requests": "bounded historical public market-data requests; zero retries",
+      "exclusive_writer_claim": true,
+      "capture_token": false,
+      "plan_and_capability_scan": true,
+      "endpoint_allow_list": true,
+      "shared_gate_required": true,
+      "writer_claim": "GLOBAL_ACTIVE_MARKET_DATA_WRITER_CLAIM"
+    },
+    "market_data_capture": {
+      "what": "continuous capture around a listing t0",
+      "requests": "sustained, while a market is moving",
+      "exclusive_writer_claim": true,
+      "capture_token": true,
+      "plan_and_capability_scan": true,
+      "endpoint_allow_list": true
+    }
+  },
+  "event_registry": {
+    "schema": "premarket_perp_event_registry_v3",
+    "path": "docs/registry/listing-events-v3.jsonl",
+    "legacy_v1_path": "docs/registry/listing-events.jsonl",
+    "immutable_v2_projection": {
+      "schema": "premarket_perp_event_registry_v2",
+      "path": "docs/registry/listing-events-v2.jsonl",
+      "registry_entries": 16,
+      "registry_sha256": "fd3b864bc4b1b311b49a904246edd8980008ab5f1830df9042087df9619bc9a4",
+      "registry_head_record_hash": "7d3459943cf2122c0eb39a27452a4ab28eb41a08ceb61e19011730e14d6e8696",
+      "summary_path": "docs/registry/listing-events-v2.summary.json",
+      "summary_sha256": "72a619aa893cd794dbc0e3702f2f6fd9ccd3a495c8b610dfa564c8e20b6df176",
+      "mutation_receipt_path": "docs/registry/listing-events-v2.jsonl.mutation-receipts/00000000000000000000-d86913b6af93d3487ef3cdbe09a3b47f3519188eea65ebf2f18aaa8fd5976282.json",
+      "mutation_receipt_file_sha256": "1c8eab6576a2d4452dfbcd9aba87563a0a50da4382da0447012e6f95cb1d865b",
+      "mutation_receipt_hash": "d86913b6af93d3487ef3cdbe09a3b47f3519188eea65ebf2f18aaa8fd5976282",
+      "summary_content_hash": "ba4e8bbc99391cc0049810d3fd0e430f6806407b43347f4e5c6e0d1dd29b08a8",
+      "policy": "READ_ONLY_BYTE_IDENTICAL_MIGRATION_SOURCE"
+    },
+    "asset_identity": {
+      "classes": [
+        "CRYPTO_TOKEN",
+        "EQUITY_ISSUER",
+        "TOKENIZED_EQUITY",
+        "TRADFI_OTHER",
+        "UNCLASSIFIED"
+      ],
+      "identity_fields": [
+        "asset_class",
+        "issuer_namespace",
+        "issuer_id",
+        "asset_identity_hash"
+      ],
+      "capture_eligible_asset_class": "CRYPTO_TOKEN",
+      "all_other_classes": "DESCRIPTIVE_ONLY",
+      "ambiguous_identity": "FAIL_CLOSED_UNCLASSIFIED",
+      "cross_class_merge": "FORBIDDEN"
+    },
+    "discovery_surfaces": [
+      {
+        "surface_id": "bybit_linear_prelaunch",
+        "venue": "bybit",
+        "endpoint_url": "https://api.bybit.com/v5/market/instruments-info",
+        "query_params": {
+          "category": "linear",
+          "status": "PreLaunch",
+          "limit": "1000"
+        },
+        "rows_path": [
+          "result",
+          "list"
+        ],
+        "native_id_field": "symbol",
+        "instrument_type_field": "contractType",
+        "expected_instrument_type": "LinearPerpetual",
+        "unexpected_instrument_type_policy": "REJECT",
+        "payload_contract": {
+          "root_type": "MAPPING_REQUIRED",
+          "success_code": "EXACT_INT_0_OR_STRING_0_BOOL_AND_FLOAT_FORBIDDEN",
+          "rows_type": "ARRAY_REQUIRED",
+          "category": "EXACT_STRING_LINEAR_REQUIRED",
+          "failure": "ACQUISITION_FAILURE_NO_MUTATION"
+        },
+        "row_contract": {
+          "row_type": "MAPPING_REQUIRED",
+          "non_object_row": "ACQUISITION_FAILURE_NO_MUTATION",
+          "native_id_field": "symbol",
+          "native_id_contract": "NONEMPTY_CANONICAL_STRING_NO_WHITESPACE",
+          "missing_or_noncanonical_native_id": "ACQUISITION_FAILURE_NO_MUTATION",
+          "duplicate_native_id": "ACQUISITION_FAILURE_NO_MUTATION",
+          "lifecycle_fields": {
+            "status": "EXACT_STRING_PRELAUNCH_REQUIRED",
+            "isPreListing": "EXACT_BOOLEAN_TRUE_REQUIRED",
+            "launchTime": "OPTIONAL_POSITIVE_NUMERIC_EPOCH_MILLISECONDS"
+          },
+          "invalid_lifecycle_field": "ACQUISITION_FAILURE_NO_MUTATION",
+          "queried_surface_predicate": "status=PreLaunch AND isPreListing=true"
+        },
+        "pagination_contract": {
+          "cursor_path": [
+            "result",
+            "nextPageCursor"
+          ],
+          "cursor_param": "cursor",
+          "cursor_contract": "CANONICAL_STRING_REQUIRED_EMPTY_ALLOWED",
+          "empty_cursor": "COMPLETE",
+          "nonempty_cursor": "FOLLOW_UNTIL_EMPTY",
+          "repeated_cursor": "ACQUISITION_FAILURE_NO_MUTATION",
+          "max_pages": 20,
+          "page_cap": "TRUNCATED_INCOMPLETE_NO_MUTATION"
+        }
+      },
+      {
+        "surface_id": "bybit_linear_trading",
+        "venue": "bybit",
+        "endpoint_url": "https://api.bybit.com/v5/market/instruments-info",
+        "query_params": {
+          "category": "linear",
+          "status": "Trading",
+          "limit": "1000"
+        },
+        "rows_path": [
+          "result",
+          "list"
+        ],
+        "native_id_field": "symbol",
+        "instrument_type_field": "contractType",
+        "expected_instrument_type": "LinearPerpetual",
+        "unexpected_instrument_type_policy": "FILTER",
+        "payload_contract": {
+          "root_type": "MAPPING_REQUIRED",
+          "success_code": "EXACT_INT_0_OR_STRING_0_BOOL_AND_FLOAT_FORBIDDEN",
+          "rows_type": "ARRAY_REQUIRED",
+          "category": "EXACT_STRING_LINEAR_REQUIRED",
+          "failure": "ACQUISITION_FAILURE_NO_MUTATION"
+        },
+        "row_contract": {
+          "row_type": "MAPPING_REQUIRED",
+          "non_object_row": "ACQUISITION_FAILURE_NO_MUTATION",
+          "native_id_field": "symbol",
+          "native_id_contract": "NONEMPTY_CANONICAL_STRING_NO_WHITESPACE",
+          "missing_or_noncanonical_native_id": "ACQUISITION_FAILURE_NO_MUTATION",
+          "duplicate_native_id": "ACQUISITION_FAILURE_NO_MUTATION",
+          "lifecycle_fields": {
+            "status": "EXACT_STRING_TRADING_REQUIRED",
+            "isPreListing": "EXACT_BOOLEAN_FALSE_REQUIRED",
+            "launchTime": "OPTIONAL_POSITIVE_NUMERIC_EPOCH_MILLISECONDS"
+          },
+          "invalid_lifecycle_field": "ACQUISITION_FAILURE_NO_MUTATION",
+          "queried_surface_predicate": "status=Trading AND isPreListing=false"
+        },
+        "pagination_contract": {
+          "cursor_path": [
+            "result",
+            "nextPageCursor"
+          ],
+          "cursor_param": "cursor",
+          "cursor_contract": "CANONICAL_STRING_REQUIRED_EMPTY_ALLOWED",
+          "empty_cursor": "COMPLETE",
+          "nonempty_cursor": "FOLLOW_UNTIL_EMPTY",
+          "repeated_cursor": "ACQUISITION_FAILURE_NO_MUTATION",
+          "max_pages": 20,
+          "page_cap": "TRUNCATED_INCOMPLETE_NO_MUTATION"
+        }
+      },
+      {
+        "surface_id": "okx_swap",
+        "venue": "okx",
+        "endpoint_url": "https://www.okx.com/api/v5/public/instruments",
+        "query_params": {
+          "instType": "SWAP"
+        },
+        "rows_path": [
+          "data"
+        ],
+        "native_id_field": "instId",
+        "instrument_type_field": "instType",
+        "expected_instrument_type": "SWAP",
+        "unexpected_instrument_type_policy": "REJECT",
+        "payload_contract": {
+          "root_type": "MAPPING_REQUIRED",
+          "success_code": "STRING_COERCION_EXACT_ZERO",
+          "rows_type": "ARRAY_REQUIRED",
+          "failure": "ACQUISITION_FAILURE_NO_MUTATION"
+        },
+        "row_contract": {
+          "row_type": "MAPPING_REQUIRED",
+          "non_object_row": "ACQUISITION_FAILURE_NO_MUTATION",
+          "native_id_field": "instId",
+          "native_id_contract": "NONEMPTY_CANONICAL_STRING_NO_WHITESPACE",
+          "missing_or_noncanonical_native_id": "ACQUISITION_FAILURE_NO_MUTATION",
+          "duplicate_native_id": "ACQUISITION_FAILURE_NO_MUTATION",
+          "lifecycle_fields": {
+            "state": "NONEMPTY_CANONICAL_STRING_REQUIRED",
+            "ruleType": "NONEMPTY_CANONICAL_STRING_REQUIRED",
+            "listTime": "OPTIONAL_POSITIVE_NUMERIC_EPOCH_MILLISECONDS",
+            "preMktSwTime": "OPTIONAL_POSITIVE_NUMERIC_EPOCH_MILLISECONDS"
+          },
+          "invalid_lifecycle_field": "ACQUISITION_FAILURE_NO_MUTATION",
+          "queried_surface_predicate": "instType=SWAP"
+        },
+        "pagination_contract": "NONE_SINGLE_RESPONSE"
+      },
+      {
+        "surface_id": "okx_futures",
+        "venue": "okx",
+        "endpoint_url": "https://www.okx.com/api/v5/public/instruments",
+        "query_params": {
+          "instType": "FUTURES"
+        },
+        "rows_path": [
+          "data"
+        ],
+        "native_id_field": "instId",
+        "instrument_type_field": "instType",
+        "expected_instrument_type": "FUTURES",
+        "unexpected_instrument_type_policy": "REJECT",
+        "payload_contract": {
+          "root_type": "MAPPING_REQUIRED",
+          "success_code": "STRING_COERCION_EXACT_ZERO",
+          "rows_type": "ARRAY_REQUIRED",
+          "failure": "ACQUISITION_FAILURE_NO_MUTATION"
+        },
+        "row_contract": {
+          "row_type": "MAPPING_REQUIRED",
+          "non_object_row": "ACQUISITION_FAILURE_NO_MUTATION",
+          "native_id_field": "instId",
+          "native_id_contract": "NONEMPTY_CANONICAL_STRING_NO_WHITESPACE",
+          "missing_or_noncanonical_native_id": "ACQUISITION_FAILURE_NO_MUTATION",
+          "duplicate_native_id": "ACQUISITION_FAILURE_NO_MUTATION",
+          "lifecycle_fields": {
+            "state": "NONEMPTY_CANONICAL_STRING_REQUIRED",
+            "ruleType": "NONEMPTY_CANONICAL_STRING_REQUIRED",
+            "listTime": "OPTIONAL_POSITIVE_NUMERIC_EPOCH_MILLISECONDS",
+            "preMktSwTime": "OPTIONAL_POSITIVE_NUMERIC_EPOCH_MILLISECONDS"
+          },
+          "invalid_lifecycle_field": "ACQUISITION_FAILURE_NO_MUTATION",
+          "queried_surface_predicate": "instType=FUTURES"
+        },
+        "pagination_contract": "NONE_SINGLE_RESPONSE"
+      },
+      {
+        "surface_id": "gate_usdt_contracts",
+        "venue": "gate",
+        "endpoint_url": "https://api.gateio.ws/api/v4/futures/usdt/contracts",
+        "query_params": {},
+        "rows_path": [],
+        "native_id_field": "name",
+        "instrument_type_field": null,
+        "expected_instrument_type": null,
+        "unexpected_instrument_type_policy": "REJECT",
+        "payload_contract": {
+          "root_type": "ARRAY_REQUIRED",
+          "failure": "ACQUISITION_FAILURE_NO_MUTATION"
+        },
+        "row_contract": {
+          "row_type": "MAPPING_REQUIRED",
+          "non_object_row": "ACQUISITION_FAILURE_NO_MUTATION",
+          "native_id_field": "name",
+          "native_id_contract": "NONEMPTY_CANONICAL_STRING_NO_WHITESPACE",
+          "missing_or_noncanonical_native_id": "ACQUISITION_FAILURE_NO_MUTATION",
+          "duplicate_native_id": "ACQUISITION_FAILURE_NO_MUTATION",
+          "lifecycle_fields": {
+            "status": "NONEMPTY_CANONICAL_STRING_REQUIRED",
+            "is_pre_market": "BOOLEAN_REQUIRED",
+            "in_delisting": "OPTIONAL_BOOLEAN",
+            "create_time": "OPTIONAL_POSITIVE_NUMERIC_EPOCH_SECONDS"
+          },
+          "invalid_lifecycle_field": "ACQUISITION_FAILURE_NO_MUTATION",
+          "queried_surface_predicate": "PUBLIC_USDT_CONTRACT_ARRAY"
+        },
+        "pagination_contract": "NONE_SINGLE_RESPONSE"
+      }
+    ],
+    "lifecycle_states": [
+      "SCHEDULED",
+      "ACTIVE_PREMARKET",
+      "TRANSITION_SCHEDULED",
+      "TRANSITIONED_STANDARD",
+      "CANCELLED",
+      "DELISTING",
+      "DELISTED",
+      "UNKNOWN"
+    ],
+    "relevant_identity_authority": {
+      "retention_scope": "ALL_RELEVANT_IDENTITIES_PER_SURFACE",
+      "persisted_fields": [
+        "raw_universe_rows_by_surface",
+        "relevant_identity_ids_by_surface",
+        "relevant_identity_set_sha256_by_surface",
+        "explicit_terminal_ids_by_surface"
+      ],
+      "missing_tracked_identity": "ACQUISITION_FAILURE_NO_MUTATION",
+      "identity_set_hash_mismatch": "FAIL_CLOSED_NO_MUTATION",
+      "bybit_cross_surface_trading": "TERMINAL_TRANSITION",
+      "okx_cross_surface_xperp": "TERMINAL_TRANSITION",
+      "okx_cross_surface_normal": "TERMINAL_TRANSITION",
+      "untracked_terminal_row": "NO_GENERATION_ALLOCATION",
+      "bybit_terminal_status_surface": "NOT_PREREGISTERED_IN_V17",
+      "bybit_unobserved_cancelled_or_closed": "MISSING_TRACKED_IDENTITY_ACQUISITION_FAILURE_NO_INFERENCE"
+    },
+    "timestamp_kinds": [
+      "premarket_contract_launch_ts",
+      "official_spot_t0",
+      "first_trade_ts",
+      "transition_ts",
+      "contract_created_ts"
+    ],
+    "timestamp_producers": {
+      "premarket_contract_launch_ts": "VENUE_INSTRUMENT_METADATA",
+      "official_spot_t0": "HUMAN_VERIFIED_OFFICIAL_ATTESTATION_WITH_VERBATIM_SOURCE_DERIVED_PRECISION",
+      "transition_ts": "VENUE_METADATA_WHEN_EXPLICIT_ELSE_OBSERVED_LIFECYCLE_DETECTION_TIME_PROXY",
+      "first_trade_ts": "RESERVED_NO_REGISTRY_PRODUCER_CAPTURE_TRADES_SEPARATE",
+      "contract_created_ts": "VENUE_INSTRUMENT_METADATA_DESCRIPTIVE_ONLY"
+    },
+    "source_classes": [
+      "OFFICIAL_ANNOUNCEMENT",
+      "VENUE_INSTRUMENT_METADATA",
+      "OBSERVED_PUBLIC_TRADE",
+      "OBSERVED_LIFECYCLE"
+    ],
+    "acceptance_anchor": {
+      "timestamp_kind": "official_spot_t0",
+      "source_class": "OFFICIAL_ANNOUNCEMENT",
+      "asset_class": "CRYPTO_TOKEN"
+    },
+    "proxy_policy": {
+      "source_classes": [
+        "VENUE_INSTRUMENT_METADATA",
+        "OBSERVED_PUBLIC_TRADE",
+        "OBSERVED_LIFECYCLE"
+      ],
+      "evidence_use": "DESCRIPTIVE_ONLY",
+      "capture_eligible": false,
+      "acceptance_support": "FORBIDDEN"
+    },
+    "episode_identity": "sha256(venue,native_premarket_contract_id,lifecycle_generation); schedule revisions do not change episode identity",
+    "stream_identity": "sha256(episode_id,timestamp_kind,instrument_role,source_class,source_identity)",
+    "lineage": "strict global record_seq/previous_record_hash chain plus independent stream_revision/supersedes_record_hash chains; forks and orphan revisions fail closed; a nonempty production registry requires its tail-anchoring summary receipt before capture selection",
+    "capture_lineage_verification": {
+      "registry_bytes": "EXACT_HISTORICAL_PREFIX",
+      "registry_tail": "CAPTURE_RECORDED_TAIL_HASH",
+      "mutation_receipt": "EXACT_SEQ_AND_HASH",
+      "authority_state": "EXACT_RECORDED_HASH",
+      "official_record": "UNSUPERSEDED_OFFICIAL_CRYPTO_ANCHOR",
+      "official_source_url_and_identity": "EXACT_OFFICIAL_RECORD_MATCH",
+      "current_head_substitution": "FORBIDDEN",
+      "plan_and_asset_mapping": "EXACT_MATCH",
+      "latest_mutation_receipt_plan_identity": "EXACT_ACTIVE_PLAN_ID_AND_HASH"
+    },
+    "official_attestation": {
+      "schema": "premarket_perp_official_attestation_v3",
+      "policy": "OFFICIAL_ANNOUNCEMENT is a separate preflight write class. The row must target the current active metadata lifecycle generation and carry an approved venue announcement URL, explicit UTC receipt time, author, exact quoted time and symbol fragments, and a quoted time equal to official_spot_t0. received_at_utc is taken from the writer's own UTC clock, the lead is recomputed, and the full candidate chain is validated before append. A cross-venue announcement additionally requires an explicit SAME_UNDERLYING decision plus a verbatim asset-name sentence; ticker equality alone is never identity authority.",
+      "cross_venue_identity": {
+        "schema": "premarket_perp_same_underlying_attestation_v1",
+        "decision": "SAME_UNDERLYING",
+        "human_only": true,
+        "verbatim_identity_sentence_required": true,
+        "verbatim_underlying_fragment_required": true,
+        "ticker_only": "FORBIDDEN",
+        "metadata_identity_fields": "DERIVED_UNDER_REGISTRY_LOCK",
+        "legacy_v2_cross_venue": "DESCRIPTIVE_ONLY_NOT_CAPTURE_ELIGIBLE"
+      },
+      "quotation_evidence": {
+        "storage": "VERBATIM_UTF8",
+        "normalization": "FORBIDDEN",
+        "time_fragment_must_be_verbatim_substring": true,
+        "symbol_fragment_must_be_verbatim_substring": true,
+        "forbidden_unicode_categories": [
+          "Cc",
+          "Cf"
+        ]
+      },
+      "announcement_url_policy": {
+        "https_exact_official_host": true,
+        "explicit_port": "FORBIDDEN",
+        "backslash": "FORBIDDEN",
+        "unicode_control_or_format": "FORBIDDEN",
+        "fragment": "DISCARDED_BEFORE_STORAGE"
+      },
+      "writer_clock_recheck": "UNDER_REGISTRY_LOCK_BEFORE_APPEND",
+      "metadata_freshness_required": true,
+      "current_generation_required": true,
+      "precommit_authority_recheck": "UNDER_REGISTRY_LOCK",
+      "venue_roles": {
+        "venue": "PERPETUAL_CONTRACT_VENUE",
+        "listing_venue": "OFFICIAL_SPOT_ANNOUNCEMENT_VENUE"
+      },
+      "locked_rebuild_field_preservation": [
+        "venue",
+        "listing_venue"
+      ],
+      "precision_policy": {
+        "derivation": "VERBATIM_QUOTED_TIME_TEXT_GRANULARITY",
+        "caller_override": "FORBIDDEN",
+        "accepted_precision_sec": [
+          1,
+          60
+        ],
+        "capture_candidate_max_precision_sec": 1,
+        "minute_only_source": "VALID_DESCRIPTIVE_ONLY"
+      }
+    },
+    "official_t0_precision_sec": "SOURCE_DERIVED_1_OR_60",
+    "seconds_grade_replay_precision_sec": 1,
+    "seconds_grade_readiness": {
+      "required_precision_sec_lte": 1,
+      "current_official_producer_precision_sec": "SOURCE_DERIVED_1_OR_60",
+      "current_official_producer_capable": true,
+      "current_result": "CANDIDATE_ONLY_WHEN_VERBATIM_SOURCE_EXPLICITLY_STATES_SECONDS",
+      "authority_increase": "V29_DERIVES_PRECISION_FROM_VERBATIM_SOURCE_AND_REJECTS_MINUTE_ONLY_ANCHORS_BEFORE_CAPTURE"
+    },
+    "candidate_verifier": {
+      "mode": "READ_ONLY_NO_TOKEN_NO_CLAIM_NO_NETWORK",
+      "cli": "event_registry.py --candidate-status",
+      "source_class": "OFFICIAL_ANNOUNCEMENT",
+      "asset_class": "CRYPTO_TOKEN",
+      "precision_sec_lte": 1,
+      "current_lifecycle_generation_required": true,
+      "fresh_metadata_max_age_sec": 300,
+      "exact_spot_symbol_mapping_required": true,
+      "due_window_required": true,
+      "capture_authority": "NEVER"
+    },
+    "selection_clock": "received_at_utc",
+    "capture_due_window": {
+      "target": "official_spot_t0 - window_before_t0_sec",
+      "early_grace_sec": 30,
+      "late_grace_sec": 5,
+      "eligibility_interval": "target - early_grace_sec <= now_ts <= target + late_grace_sec"
+    },
+    "lifecycle_generation_persistence": "each complete refresh stores exact active contract-to-generation mappings plus monotonic per-contract high-water state; a missing tracked identity is acquisition failure with no mutation; only an explicit terminal phase removes the active generation, and a later reappearance after explicit terminal evidence allocates high_water+1",
+    "lifecycle_generation_transition_policy": {
+      "missing_tracked_identity": "ACQUISITION_FAILURE_NO_MUTATION",
+      "explicit_terminal": {
+        "action": "REMOVE_ACTIVE_GENERATION",
+        "phases": [
+          "CANCELLED",
+          "DELISTING",
+          "DELISTED",
+          "TRANSITIONED_STANDARD"
+        ]
+      },
+      "reappearance_after_explicit_terminal": "ALLOCATE_HIGH_WATER_PLUS_ONE",
+      "untracked_terminal_row": "IGNORE_WITHOUT_HIGH_WATER_MUTATION"
+    },
+    "terminal_lifecycle_evidence": {
+      "storage": "APPEND_ONLY_TIMESTAMP_OBSERVATION",
+      "summary_terminal_ids": "PREVIOUS_REFRESH_CLASSIFICATION_MEMORY_ONLY_NOT_REQUIRED_NOT_ACTIVE_NOT_HIGH_WATER",
+      "classification_memory_scope": "LAST_COMPLETE_REFRESH_READ_ON_NEXT_REFRESH_ONLY_NOT_RELEVANT_NOT_COMPLETENESS",
+      "venue_timestamp": "USE_WHEN_EXPLICIT",
+      "missing_venue_timestamp": "DETECTION_TIME_PROXY_DESCRIPTIVE_ONLY",
+      "terminal_phase_field": "lifecycle_phase",
+      "simultaneous_surface_precedence": "EXACT_VENUE_TRANSITION_TIMESTAMP_WINS_OVER_DETECTION_PROXY"
+    },
+    "cross_surface_conflict_policy": {
+      "terminal_vs_active": "EXPLICIT_TERMINAL_WINS_OVER_STALE_ACTIVE_ROW",
+      "simultaneous_terminal_evidence": "EXACT_VENUE_TIMESTAMP_WINS_OVER_DETECTION_PROXY",
+      "equal_strength_tie_break": "SURFACE_DECLARATION_ORDER"
+    },
+    "active_lifecycle_generation": {
+      "identity_fields": [
+        "venue",
+        "premarket_contract_id",
+        "lifecycle_generation"
+      ],
+      "required_for_official_attestation": true,
+      "required_for_capture": true,
+      "source_of_truth": "latest_verified_mutation_receipt_carrying_last_complete_metadata_refresh_state",
+      "active_state_field": "active_lifecycle_generations_by_venue",
+      "high_water_field": "lifecycle_generation_high_water_by_venue",
+      "last_complete_refresh_field": "last_complete_metadata_refresh_received_at_utc",
+      "raw_universe_rows_field": "raw_universe_rows_by_venue",
+      "max_complete_metadata_refresh_age_sec": 300
+    },
+    "production_refresh_contract": {
+      "timestamp_owner": "WRITER_AFTER_ALL_HTTP_RESPONSES",
+      "caller_observed_at_override": "FORBIDDEN",
+      "injected_payload_destination": "EXPLICIT_NONPRODUCTION_PATH_ONLY",
+      "precommit_authority_recheck": "UNDER_REGISTRY_LOCK",
+      "concurrency_control": "RECEIPT_HEAD_COMPARE_AND_SWAP",
+      "empty_full_universe_response": "ACQUISITION_FAILURE",
+      "required_nonempty_full_universe_surfaces": [
+        "bybit_linear_trading",
+        "okx_swap",
+        "okx_futures",
+        "gate_usdt_contracts"
+      ],
+      "legitimately_empty_surfaces": [
+        "bybit_linear_prelaunch"
+      ],
+      "retention_scope": "PER_REQUIRED_FULL_UNIVERSE_SURFACE",
+      "minimum_prior_universe_retention_ratio": 0.5,
+      "abrupt_or_truncated_response": "ACQUISITION_FAILURE_NO_STATE_MUTATION"
+    },
+    "capture_authority_receipt_fields": [
+      "mutation_receipt_seq",
+      "mutation_receipt_hash",
+      "summary_content_sha256",
+      "registry_authority_state_hash"
+    ],
+    "capture_lineage_fields": [
+      "episode_id",
+      "venue",
+      "listing_venue",
+      "premarket_contract_id",
+      "spot_symbol",
+      "official_spot_t0",
+      "t0_source_class",
+      "t0_precision_sec",
+      "official_record_hash",
+      "official_source_url",
+      "official_source_identity",
+      "registry_sha256",
+      "registry_tail_record_hash",
+      "mutation_receipt_seq",
+      "mutation_receipt_hash",
+      "summary_content_sha256",
+      "registry_authority_state_hash",
+      "plan_id",
+      "plan_hash",
+      "asset_class",
+      "issuer_namespace",
+      "issuer_id",
+      "asset_identity_hash"
+    ],
+    "mutation_receipt_chain": {
+      "creation": "O_EXCL",
+      "immutable": true,
+      "link_field": "previous_mutation_receipt_hash",
+      "record_fields_before_receipt_hash": [
+        "schema",
+        "mutation_seq",
+        "previous_mutation_receipt_hash",
+        "registry_path_name",
+        "registry_sha256",
+        "registry_entries",
+        "registry_head_record_hash",
+        "summary_content_hash",
+        "mutation_type",
+        "mutation_run_id",
+        "plan_id",
+        "plan_hash",
+        "active_contract_ids_by_venue",
+        "active_lifecycle_generations_by_venue",
+        "lifecycle_generation_high_water_by_venue",
+        "last_complete_metadata_refresh_received_at_utc",
+        "raw_universe_rows_by_venue",
+        "raw_universe_rows_by_surface",
+        "relevant_identity_ids_by_surface",
+        "relevant_identity_set_sha256_by_surface",
+        "explicit_terminal_ids_by_surface"
+      ],
+      "receipt_hash": "CANONICAL_HASH_OF_EXACT_PREHASH_RECORD",
+      "failure_recovery_boundary": "LOCAL_CRASH_RECOVERY_EVIDENCE_ONLY_NOT_CRYPTOGRAPHIC_AUTHENTICITY",
+      "process_crash_recovery": "FAIL_CLOSED_MANUAL_RECOVERY_NO_AUTOMATIC_ATOMICITY_CLAIM",
+      "wal_implemented": false
+    },
+    "locking": "metadata refresh uses an O_EXCL registry lock from load and lineage verification through append, fsync, summary and immutable receipt; in-process exceptions roll back, but process/power loss fails closed and requires manual recovery because no durable WAL exists",
+    "venue_metadata_semantics": {
+      "bybit": {
+        "prelaunch_predicate": "status=PreLaunch AND isPreListing=true",
+        "asset_classification": "symbolType=stock => EQUITY_ISSUER; symbolType in {commodity,forex,etf} => TRADFI_OTHER; symbolType=innovation => CRYPTO_TOKEN; missing/empty/unknown => UNCLASSIFIED",
+        "launchTime": "DESCRIPTIVE_PREMARKET_CONTRACT_LAUNCH_TS"
+      },
+      "okx": {
+        "surfaces": [
+          "SWAP",
+          "FUTURES"
+        ],
+        "prelaunch_predicate": "ruleType=pre_market AND state in {preopen,live}",
+        "asset_classification": "instCategory=1 => CRYPTO_TOKEN; 3 => EQUITY_ISSUER; 4/5/6 => TRADFI_OTHER; missing/empty/unknown => UNCLASSIFIED",
+        "listTime": "DESCRIPTIVE_PREMARKET_CONTRACT_LAUNCH_TS",
+        "xperp": "CROSS_SURFACE_TERMINAL_TRANSITION",
+        "normal": "CROSS_SURFACE_TERMINAL_TRANSITION",
+        "terminal_state": {
+          "expired": "DELISTED",
+          "suspend": "DELISTED"
+        }
+      },
+      "gate": {
+        "surface": "USDT_FUTURES",
+        "prelaunch_predicate": "is_pre_market=true AND in_delisting!=true AND status in {prelaunch,trading}",
+        "asset_classification": "contract_type in {crypto,cryptocurrency,digital_asset} => CRYPTO_TOKEN; {stock,stocks,equity,equities} => EQUITY_ISSUER; {metal,metals,index,indices,forex,commodity,commodities} => TRADFI_OTHER; missing/empty/unknown => UNCLASSIFIED",
+        "capture_identity_policy": "MISSING_OR_UNVERIFIED_CONTRACT_TYPE_IS_UNCLASSIFIED_DESCRIPTIVE_ONLY",
+        "create_time": "CONTRACT_CREATED_TS_ONLY",
+        "launch_time": "CONTRACT_EXPIRY_NOT_TRADING_LAUNCH",
+        "terminal_predicates": {
+          "status": {
+            "delisting": "DELISTING",
+            "delisted": "DELISTED",
+            "cancelled": "CANCELLED",
+            "canceled": "CANCELLED"
+          },
+          "in_delisting_true": "DELISTING",
+          "transitioned_standard": "status=trading AND was_tracked=true AND is_pre_market=false"
+        }
+      }
+    }
+  },
+  "announcement_discovery": {
+    "schema": "premarket_official_announcement_discovery_v1",
+    "write_class": "announcement_discovery",
+    "runtime": "src/announcement_discovery.py",
+    "launcher": "tools/start_premarket_announcement_discovery_visible.ps1",
+    "target_selector": {
+      "registry": "docs/registry/listing-events-v3.jsonl",
+      "asset_class": "CRYPTO_TOKEN",
+      "lifecycle": "CURRENT_ACTIVE_PREMARKET_GENERATION_ONLY",
+      "official_anchor": "ABSENT",
+      "fresh_metadata_max_age_sec": 300,
+      "max_targets_per_tick": 20,
+      "stale_or_invalid_registry": "ZERO_ANNOUNCEMENT_REQUESTS_FAIL_CLOSED",
+      "zero_targets": "ZERO_ANNOUNCEMENT_REQUESTS_NO_STORE_MUTATION"
+    },
+    "sources": [
+      {
+        "venue": "bybit",
+        "endpoint": "https://api.bybit.com/v5/announcements/index",
+        "fixed_query": {
+          "locale": "en-US",
+          "type": "new_crypto",
+          "limit": "20"
+        },
+        "pagination": "page_1_based",
+        "spot_filter": "type.key=new_crypto AND tags CONTAINS spot",
+        "publication_timestamp_field": "publishTime"
+      },
+      {
+        "venue": "bitget",
+        "endpoint": "https://api.bitget.com/api/v2/public/annoucements",
+        "fixed_query": {
+          "language": "en_US",
+          "annType": "coin_listings",
+          "limit": "10"
+        },
+        "pagination": "cursor_from_last_annId",
+        "spot_filter": "annType=coin_listings AND annSubType=spot",
+        "publication_timestamp_field": "cTime"
+      },
+      {
+        "venue": "kucoin",
+        "endpoint": "https://api.kucoin.com/api/v3/announcements",
+        "fixed_query": {
+          "pageSize": "50",
+          "annType": "new-listings",
+          "lang": "en_US"
+        },
+        "pagination": "currentPage_1_based_until_totalPage",
+        "spot_filter": "annType CONTAINS new-listings",
+        "publication_timestamp_field": "cTime"
+      }
+    ],
+    "bounds": {
+      "max_pages_per_venue": 3,
+      "max_articles_per_venue": 150,
+      "max_retries_per_request": 0,
+      "article_body_requests": 0,
+      "redirects": "FORBIDDEN_BY_PUBLIC_HTTP"
+    },
+    "candidate_store": {
+      "schema": "premarket_official_announcement_candidate_v1",
+      "path": "docs/announcements/official-listing-candidates-v1.jsonl",
+      "record_type": "unverified_announcement_candidate",
+      "evidence_class": "UNVERIFIED_ANNOUNCEMENT_DISCOVERY",
+      "identity_match_basis": "EXACT_TICKER_TOKEN_HEURISTIC_ONLY",
+      "review_state": "HUMAN_ATTESTATION_REQUIRED",
+      "global_hash_chain": true,
+      "per_candidate_revision_chain": true,
+      "duplicate_content": "NO_APPEND",
+      "lock": "O_EXCL_HELD_ACROSS_NETWORK_SELECTION_AND_APPEND",
+      "fsync_before_success": true,
+      "exact_fields": [
+        "article_body_fetched",
+        "article_id",
+        "article_published_at_ms",
+        "article_title",
+        "article_url",
+        "asset_class",
+        "asset_identity_hash",
+        "candidate_id",
+        "detected_at_utc",
+        "episode_id",
+        "evidence_class",
+        "human_attestation_required",
+        "identity_authority",
+        "identity_match_basis",
+        "issuer_id",
+        "issuer_namespace",
+        "lifecycle_generation",
+        "listing_venue",
+        "metadata_refresh_received_at",
+        "mutation_receipt_hash",
+        "mutation_receipt_seq",
+        "perpetual_venue",
+        "plan_hash",
+        "plan_id",
+        "premarket_contract_id",
+        "registry_authority_state_hash",
+        "registry_sha256",
+        "registry_tail_record_hash",
+        "registry_write",
+        "review_state",
+        "schema",
+        "source_page",
+        "source_payload_sha256",
+        "summary_content_hash"
+      ],
+      "unknown_fields": "REJECT_BEFORE_LOCK_OR_WRITE",
+      "fixed_boundary_fields": {
+        "article_body_fetched": false,
+        "human_attestation_required": true,
+        "identity_authority": "NONE_UNTIL_HUMAN_SAME_UNDERLYING_ATTESTATION",
+        "registry_write": false
+      },
+      "article_url_binding": "EXACT_LISTING_VENUE_OFFICIAL_HOST_AND_ARTICLE_PATH"
+    },
+    "authority_boundary": {
+      "index_timestamp_semantics": "PUBLICATION_TIME_ONLY_NOT_OFFICIAL_SPOT_T0",
+      "ticker_match": "DISCOVERY_HEURISTIC_NOT_ASSET_IDENTITY_PROOF",
+      "automatic_attestation": false,
+      "registry_write": false,
+      "official_spot_t0": "NEVER_PRODUCED",
+      "capture_eligible": false,
+      "capture_token": false,
+      "exclusive_market_data_writer_claim": false,
+      "market_data_capture": false,
+      "orders_or_venue_execution": false
+    },
+    "recovery": {
+      "all_sources_failed": "RETRY_NEXT_INTERVAL",
+      "partial_source_failure": "PARTIAL_RETRY_NEXT_INTERVAL",
+      "authority_changed_before_append": "RETRY_NEXT_INTERVAL_NO_APPEND",
+      "tight_loop": "FORBIDDEN"
+    }
+  },
+  "announcement_watch_scheduler": {
+    "schema": "premarket_announcement_watch_scheduler_v1",
+    "scheduler": "WINDOWS_TASK_SCHEDULER_NO_MODEL",
+    "wake_interval_sec": 300,
+    "runtime": "src/announcement_watch_scheduler.py",
+    "state_runtime": "src/announcement_watch_state.py",
+    "launcher": "tools/start_premarket_announcement_watch_scheduler.ps1",
+    "installer": "tools/install_premarket_announcement_watch_scheduler.ps1",
+    "task_path": "\\ZolotyayLopata\\",
+    "task_name": "PremarketAnnouncementWatch",
+    "hidden": true,
+    "multiple_instances": "IGNORE_NEW",
+    "cadence_interval_sec": {
+      "SEARCH": 21600,
+      "ACTIVE_UNATTESTED": 10800,
+      "UNVERIFIED_CANDIDATE": 10800,
+      "OFFICIAL_CONFIRMED": 3600,
+      "EXACT_T0_WITHIN_24H": 300
+    },
+    "proxy_or_unverified_min_interval_sec": 10800,
+    "not_due": {
+      "network": false,
+      "writes": false,
+      "preflight": false,
+      "claim": false,
+      "stdout": "NONE_UNLESS_JSON_REQUESTED"
+    },
+    "due_order": [
+      "announcement_watch_control_preflight",
+      "dedicated_watch_claim",
+      "attempt_started_ledger",
+      "metadata_registry_refresh",
+      "announcement_discovery",
+      "candidate_alert_dispatch",
+      "candidate_inspection",
+      "attempt_terminal_ledger",
+      "atomic_state",
+      "claim_archive_release"
+    ],
+    "refresh_success_required": "REFRESH_COMPLETE",
+    "incomplete_refresh": "RETRY_NEXT_INTERVAL_NO_DISCOVERY",
+    "partial_discovery": "PARTIAL_RETRY_NEXT_INTERVAL",
+    "discovery_success_statuses": [
+      "NO_ANNOUNCEMENT_TARGETS",
+      "NO_MATCHING_ANNOUNCEMENTS",
+      "CANDIDATES_RECORDED_HUMAN_ATTESTATION_REQUIRED"
+    ],
+    "post_metadata_failure_status": "PARTIAL_RETRY_NEXT_INTERVAL",
+    "retry_interval": "CADENCE_AT_TICK_START_NO_TIGHT_LOOP",
+    "timestamps": "FRESH_CLOCK_AFTER_NETWORK_AND_AT_TERMINAL",
+    "retry_error_reporting": "STDERR_AND_NONZERO_EXIT_TASK_REMAINS_ENABLED",
+    "control_receipt_validation": "EXACT_PLAN_PATH_ACTION_AND_RUN_ID",
+    "control_path_rollover": "NEW_PLAN_VERSION_REQUIRES_NEW_VERSIONED_CONTROL_PATHS",
+    "control_preflight_failure": "FAIL_CLOSED_NO_WRITE_RECHECK_ON_NEXT_FIVE_MINUTE_WAKE",
+    "state_path": "docs/announcements/official-listing-discovery-state-v40.json",
+    "attempt_ledger_path": "docs/announcements/official-listing-discovery-attempts-v40.jsonl",
+    "claim_path": "docs/announcements/official-listing-watch-claim-v40.json",
+    "claim_archive": "docs/announcements/official-listing-watch-claim-archive-v40",
+    "control_write_class": "announcement_watch_control",
+    "shared_gate_required_for_research_writes": true,
+    "shared_gate_required_for_control_logging": false,
+    "global_market_data_claim_used": false,
+    "capture_authorized": false,
+    "paper_execution": false,
+    "live_execution": false,
+    "orders": false
+  },
+  "candidate_alert": {
+    "schema": "premarket_candidate_alert_v1",
+    "runtime": "src/candidate_alert.py",
+    "sidecar": "tools/show_premarket_candidate_alert.ps1",
+    "scheduler": "EXISTING_HIDDEN_INTERACTIVE_TASK",
+    "windows_runtime": "C:/Windows/System32/WindowsPowerShell/v1.0/powershell.exe",
+    "source": "VERIFIED_APPEND_ONLY_UNVERIFIED_CANDIDATE_STORE",
+    "eligibility": "FIRST_REVISION_OF_CURRENT_NONTERMINAL_CANDIDATE_MATCHING_CURRENT_REGISTRY_EPISODE",
+    "alert_group": "ZLP-PREMARKET",
+    "automatic_show_max_per_candidate": 1,
+    "duplicate_or_revision": "NO_NEW_TOAST",
+    "intent_order": "FSYNC_SUBMISSION_INTENT_BEFORE_SINGLE_SHOW_CALL",
+    "uncertain_delivery": "DELIVERY_UNCERTAIN_NO_AUTO_RETRY",
+    "stale_lock_recovery": "ARCHIVE_AND_REACQUIRE_ONLY_FOR_CONCLUSIVELY_DEAD_SAME_HOST_PID",
+    "unresolved_or_remote_lock": "FAIL_CLOSED_RETRY_NEXT_INTERVAL",
+    "history_confirmation": "EXACT_TAG_AND_GROUP_READBACK",
+    "scheduler_counts": [
+      "submitted_alerts",
+      "history_confirmed_alerts"
+    ],
+    "operator_review_status": "READ_ONLY_VERIFIED_QUEUE_WITH_EPISODE_AND_LIFECYCLE_GENERATION",
+    "failure_before_intent": "RETRY_NEXT_INTERVAL",
+    "separate_scheduler": false,
+    "network": false,
+    "capture_authorized": false,
+    "capture_token_issued": false,
+    "orders": false
+  },
+  "official_t0_arming": {
+    "schema": "premarket_official_t0_arming_receipt_v1",
+    "runtime": "src/official_t0_arming.py",
+    "launcher": "tools/start_premarket_official_t0_arming_visible.ps1",
+    "root": "docs/arming/official-t0-v1",
+    "source_class": "OFFICIAL_ANNOUNCEMENT",
+    "asset_class": "CRYPTO_TOKEN",
+    "required_precision_sec": 1,
+    "minimum_lead_sec": 1800,
+    "event_selector": "DISTINCT_EARLY_ARMING_SELECTOR_NOT_CAPTURE_DUE_SELECTOR",
+    "expected_operator_bindings": [
+      "official_record_hash",
+      "official_spot_t0",
+      "premarket_contract_id",
+      "spot_symbol"
+    ],
+    "revision_compare_and_swap": "EXACT_CURRENT_ARMING_RECEIPT_HASH_REQUIRED_WHEN_ANCHOR_CHANGES",
+    "lineage": [
+      "episode_id",
+      "venue",
+      "listing_venue",
+      "premarket_contract_id",
+      "spot_symbol",
+      "official_spot_t0",
+      "t0_source_class",
+      "t0_precision_sec",
+      "official_record_hash",
+      "official_source_url",
+      "official_source_identity",
+      "registry_sha256",
+      "registry_tail_record_hash",
+      "mutation_receipt_seq",
+      "mutation_receipt_hash",
+      "summary_content_sha256",
+      "registry_authority_state_hash",
+      "plan_id",
+      "plan_hash",
+      "asset_class",
+      "issuer_namespace",
+      "issuer_id",
+      "asset_identity_hash"
+    ],
+    "receipt_intrinsic_binding": "ARMING_ID_FROM_EPISODE_AND_LEAD_FROM_ARMED_AT_TO_OFFICIAL_T0",
+    "preflight": "EXACT_INITIAL_AND_COMMIT_RECEIPTS_MUST_MATCH",
+    "clock": "FINAL_UTC_SECONDS_SAMPLED_AFTER_COMMIT_PREFLIGHT",
+    "registry_head_guard": "RESELECT_AFTER_COMMIT_PREFLIGHT_AND_HOLD_PRODUCTION_REGISTRY_LOCK_THROUGH_RECEIPT_FSYNC",
+    "write": "O_EXCL_ONE_IMMUTABLE_RECEIPT_PER_EVENT_REVISION",
+    "duplicate": "ALREADY_ARMED_NO_WRITE",
+    "stale_lock_recovery": "LOSSLESS_ARCHIVE_AND_SINGLE_REACQUIRE_ONLY_FOR_CONCLUSIVELY_DEAD_SAME_HOST_PID",
+    "post_archive_crash_resume": "EXISTING_ARCHIVE_ACCEPTED_ONLY_IF_SAME_NON_SYMLINK_INODE",
+    "uncertain_remote_or_invalid_lock": "FAIL_CLOSED_NO_MUTATION",
+    "release_ownership": "EXACT_LOCK_BYTES_REQUIRED_BEFORE_UNLINK",
+    "requires_explicit_no_capture_acknowledgement": true,
+    "shared_gate_required": true,
+    "exclusive_market_data_writer_claim": false,
+    "network": false,
+    "capture_authorized": false,
+    "capture_token_issued": false,
+    "event_bound_plan_generated": false,
+    "orders": false
+  },
+  "event_bound_plan_proposal": {
+    "schema": "premarket_perp_event_bound_plan_proposal_v1",
+    "runtime": "src/event_bound_plan_proposal.py",
+    "proposed_plan_schema": "premarket_perp_capture_planonly_v41",
+    "proposed_plan_id": "premarket_perp_capture_20260822_v41",
+    "proposed_plan_path": "docs/plans/premarket-perp-capture-planonly-20260822-v41.json",
+    "mode": "CREATE_ONLY_PROPOSAL_NO_TRUST_ROOT_REBIND",
+    "event_anchor": "FROZEN_V40_ARMING_RECEIPT",
+    "current_lifecycle_snapshot": "REQUIRED_UNDER_V41_BEFORE_CAPTURE",
+    "receipt_validation": "EXACT_SCHEMA_FIELD_SET_AND_CANONICAL_RECEIPT_HASH",
+    "current_arming_head": "SUPPLIED_RECEIPT_MUST_REMAIN_DURABLE_HEAD_UNDER_ARMING_WRITER_LOCK",
+    "write": "ROOT_CONFINED_DETERMINISTIC_PROPOSAL",
+    "publication": "FSYNC_NONAUTHORITATIVE_STAGE_THEN_ATOMIC_NO_REPLACE_LINK",
+    "interrupted_stage_recovery": "LOSSLESS_ARCHIVE_THEN_RETRY_UNDER_CURRENT_ARMING_HEAD_LOCK",
+    "post_archive_crash_resume": "EXISTING_ARCHIVE_ACCEPTED_ONLY_IF_SAME_NON_SYMLINK_INODE",
+    "invalid_existing_final": "FAIL_CLOSED_NO_MUTATION",
+    "valid_existing_final": "STRICT_IDEMPOTENT_READBACK_NO_REWRITE",
+    "output_root": "docs/arming/event-bound-plan-proposals-v1",
+    "clock": "FINAL_UTC_SECONDS_SAMPLED_AFTER_COMMIT_PREFLIGHT",
+    "preflight": "EXACT_INITIAL_AND_COMMIT_RECEIPTS_MUST_MATCH",
+    "requires_explicit_user_capture_approval": true,
+    "capture_authorized": false,
+    "capture_token_issued": false,
+    "trust_root_rebound": false,
+    "orders": false
+  },
+  "fixture_rehearsal": {
+    "schema": "premarket_fixture_rehearsal_v1",
+    "runtime": "src/fixture_rehearsal.py",
+    "launcher": "tools/start_premarket_fixture_rehearsal.ps1",
+    "mode": "FIXED_DETERMINISTIC_TEMPORARY_WORKSPACE_ONLY",
+    "preflight": "LAUNCHER_AND_RUNTIME_ACTIVE_PLAN_SHA_AND_CAPABILITY_SCAN_BEFORE_TEMPORARY_WRITE",
+    "stages": [
+      "candidate_alert_contract",
+      "human_official_attestation_validation",
+      "official_t0_arming",
+      "event_bound_plan_proposal"
+    ],
+    "temporary_writes": true,
+    "production_writes": false,
+    "network": false,
+    "toast": false,
+    "capture_authorized": false,
+    "capture_token_issued": false,
+    "trust_root_rebound": false,
+    "orders": false,
+    "cleanup": "TEMPORARY_DIRECTORY_REMOVED_BEFORE_SUCCESS_RESULT"
+  },
+  "historical_acquisition": {
+    "schema": "premarket_perp_historical_acquisition_v1",
+    "runtime": "src/historical_acquisition.py",
+    "normalizer": "src/historical_event_builder.py",
+    "transport_runtime": "src/public_http.py",
+    "venues": [
+      "bybit",
+      "okx",
+      "gate"
+    ],
+    "source_classes": {
+      "bybit": "VENUE_PUBLIC_REST_POSTHOC_OHLCV",
+      "okx": "VENUE_PUBLIC_REST_POSTHOC_OHLCV",
+      "gate": "VENUE_PUBLIC_ARCHIVE_POSTHOC_OHLCV"
+    },
+    "bounds": {
+      "max_events_per_run": 12,
+      "max_requests_per_run": 36,
+      "max_runtime_sec": 300,
+      "max_retries_per_request": 0
+    },
+    "output_roots": {
+      "raw": "C:\\Users\\koval\\Documents\\ZolotyayLopata-premarket-perp-capture\\docs\\historical\\v40\\raw",
+      "manifests": "C:\\Users\\koval\\Documents\\ZolotyayLopata-premarket-perp-capture\\docs\\historical\\v40\\manifests",
+      "receipts": "C:\\Users\\koval\\Documents\\ZolotyayLopata-premarket-perp-capture\\docs\\historical\\v40\\receipts"
+    },
+    "write_class": "historical_market_data_acquisition",
+    "shared_gate_required": true,
+    "global_writer_claim_required": true,
+    "capture_token_required": false,
+    "posthoc_retrieval": true,
+    "evidence_use": "DESCRIPTIVE_ONLY",
+    "acceptance_capable": false,
+    "execution_evidence": false,
+    "orders": false
+  },
+  "historical_causal_replay": {
+    "schema": "premarket_perp_historical_causal_replay_v1",
+    "runtime": "src/historical_causal_replay.py",
+    "execution_runtime": "src/execution_replay.py",
+    "fixed_model": {
+      "side": "LONG",
+      "paper_notional_usdt": 25.0,
+      "leverage_equivalent": 1.0,
+      "entry_offset_sec": -60,
+      "exit_offsets_sec": [
+        0,
+        5,
+        15,
+        60
+      ],
+      "latency_ms": 200,
+      "order_ttl_ms": 500,
+      "stress_leverages": [
+        2,
+        5
+      ],
+      "entry_liquidity": "TAKER_ASKS",
+      "exit_liquidity": "TAKER_BIDS"
+    },
+    "venue_taker_fee_policy": "PUBLIC_EVENT_SPECIFIC_INPUT_REQUIRED",
+    "proxy_event_policy": "DESCRIPTIVE_ONLY",
+    "historical_received_at_policy": "RETRIEVAL_TIME_NOT_CONTEMPORANEOUS_MARKET_RECEIVED_TS",
+    "ohlcv_resolution_sec": 60,
+    "ohlcv_exit_quantisation": "T0_T0_PLUS_5_AND_T0_PLUS_15_MAY_SHARE_THE_SAME_MINUTE_BUCKET",
+    "ohlcv_interpolation": false,
+    "sealed_l2_required_for_execution_replay": true,
+    "missing_execution_inputs": "NO_NET_PNL",
+    "missing_round_trip_fill": "NO_NET_PNL",
+    "fees_spread_slippage_funding_liquidation": "REQUIRED_FOR_SEALED_L2_DELEGATION",
+    "acceptance_capable": false,
+    "orders": false
+  },
+  "capture_bounds": {
+    "window_before_t0_sec": 1800,
+    "window_after_t0_sec": 900,
+    "max_runtime_sec": 3300,
+    "max_requests_per_capture": 20000,
+    "max_events_per_capture": 1,
+    "capture_root": "E:\\trading_mvp\\premarket-perp-capture\\captures",
+    "one_capture_at_a_time": true,
+    "visible_terminal_required": true
+  },
+  "capture_evidence": {
+    "sampling_method": "REST polling is a sequence of point observations, not a trade tape; failed or structurally invalid venue payloads remain in the error denominator and never count as successful samples",
+    "failed_rows_in_readiness_denominator": true,
+    "transport_budget": "venue metadata and capture polling use max_retries=0, so each logical request is exactly one counted transport attempt; both classes are included in the manifest request total",
+    "metadata_max_retries": 0,
+    "sampling_cadence_sec": {
+      "outside_burst": {
+        "trades": 3.0,
+        "orderbook": 3.0,
+        "ticker": 6.0
+      },
+      "burst": {
+        "trades": 0.5,
+        "orderbook": 0.5,
+        "ticker": 2.0
+      },
+      "burst_half_width_sec": 120
+    },
+    "fixed_exit_offsets_sec": [
+      0,
+      5,
+      15,
+      60
+    ],
+    "fixed_entry_lead_sec": 60,
+    "required_probes_by_venue": {
+      "bybit": [
+        "trades",
+        "orderbook",
+        "ticker"
+      ],
+      "okx": [
+        "trades",
+        "orderbook",
+        "ticker"
+      ],
+      "gate": [
+        "trades",
+        "orderbook"
+      ]
+    },
+    "venue_probe_authority": {
+      "okx_orderbook_instrument_identity": "EXACT_BOUND_REQUEST_RESPONSE_DOES_NOT_ECHO_INST_ID",
+      "gate_ticker_exchange_timestamp": "ABSENT_FROM_PAYLOAD_OPTIONAL_DESCRIPTIVE_ONLY"
+    },
+    "coverage_clock": "received_ts",
+    "sampling_report_clock": "received_ts",
+    "exchange_timestamp_policy": {
+      "required_for_replay_probes": true,
+      "optional_probe_without_exchange_timestamp": "RAW_DESCRIPTIVE_PAYLOAD_WITH_ERROR_NOT_CAUSAL_EVIDENCE",
+      "max_staleness_sec_by_probe": {
+        "trades": 10.0,
+        "orderbook": 5.0,
+        "ticker": 10.0
+      },
+      "max_future_skew_sec": 2.0
+    },
+    "max_burst_gap_cadence_multiplier": 3.0,
+    "readiness": "all venue-required probes need causal structurally valid payloads, full two-sided burst-window coverage, bounded successful-sample gaps and evidence at the preregistered entry plus every exit; optional descriptive probes cannot raise or lower readiness",
+    "fixed_entry_evidence_clock": "first_valid_received_ts_at_or_after_target_within_one_cadence",
+    "fixed_exit_evidence_clock": "first_valid_received_ts_at_or_after_target_within_one_cadence",
+    "pre_target_exit_sample_policy": "FORBIDDEN_NO_LOOKAHEAD",
+    "lineage": "manifest and immutable receipt carry episode id, exact official record/source/precision, historical registry prefix and tail, exact immutable mutation-receipt summary-content hash, and active PlanOnly id/hash; capture rechecks them before taking the writer claim",
+    "terminal_accounting": {
+      "samples_fsynced_before_manifest": true,
+      "terminal_run_record_before_claim_release": true,
+      "successful_receipt_before_claim_release": true,
+      "receipt_failure": "FAILED_EXCEPTION_TERMINAL_RECORD_THEN_CLAIM_RELEASE",
+      "terminal_record_failure": "KEEP_CLAIM_FAIL_CLOSED",
+      "stop_request_cleanup": "WHILE_OLD_RUN_STILL_OWNS_CLAIM_BEFORE_RELEASE"
+    },
+    "artifact_commit": {
+      "capture_directory": "EXCLUSIVE_IDENTITY",
+      "samples_creation": "O_EXCL",
+      "manifest_creation": "O_EXCL",
+      "manifest_immutable": true,
+      "receipt_creation": "O_EXCL",
+      "receipt_rehashes_samples": true,
+      "receipt_samples_hash_must_equal": "manifest.output_sha256"
+    },
+    "post_claim_revalidation": "after claim and before any HTTP request, re-read the shared gate and reselect the same official registry lineage",
+    "per_request_boundary_recheck": [
+      "before_each_metadata_or_poll_request",
+      "immediately_after_each_metadata_or_poll_response"
+    ],
+    "shared_gate_process_exit_code": "MUST_BE_ZERO",
+    "token_mismatch_policy": "a token presented by the wrong run, event, source or secret is not consumed; only a fully validated caller may atomically take it",
+    "entrypoint_policy": {
+      "run_capture": "EXACT_STATIC_JSON_SYNTHETIC_FIXTURE_TRANSPORT_ONLY",
+      "live_public_market_data": "capture_event_ONLY_AFTER_GATE_TOKEN_AND_CLAIM"
+    },
+    "multi_trade_response_policy": {
+      "okx": "NONEMPTY_ALL_ROWS_EXACT_INSTRUMENT",
+      "gate": "NONEMPTY_ALL_ROWS_EXACT_CONTRACT"
+    },
+    "gate_orderbook_request_identity": {
+      "required_when_response_contract_absent": true,
+      "source": "validated_on_wire_request_query.contract",
+      "must_equal": "capture_job.premarket_contract_id",
+      "persist_in_sample": true
+    },
+    "evidence_classification": {
+      "ready": "CAUSAL_REPLAY_INPUT_READY",
+      "not_ready": "DESCRIPTIVE_ONLY",
+      "acceptance_capable": false,
+      "classification_is_not_readiness": true
+    }
+  },
+  "replay_evidence": {
+    "schema": "premarket_perp_replay_v2",
+    "production_mode": "PRODUCTION_VERIFIED",
+    "production_capture_path": "STRICT_DESCENDANT_OF_CAPTURE_ROOT",
+    "receipt_path": "docs/evidence/<capture_id>.json",
+    "production_evidence_class": "CAUSAL_REPLAY_INPUT_READY",
+    "descriptive_fallback_class": "DESCRIPTIVE_ONLY",
+    "acceptance_capable": false,
+    "selection_clock": "received_ts",
+    "target_selection": "FIRST_VALID_AT_OR_AFTER_WITHIN_ONE_CADENCE",
+    "pre_target_fallback": "FORBIDDEN",
+    "interpolation_or_bracketing": "FORBIDDEN",
+    "exchange_ts_use": "FRESHNESS_FILTER_ONLY",
+    "required_clocks": [
+      "request_ts",
+      "received_ts",
+      "exchange_ts"
+    ],
+    "integrity": [
+      "RAW_MANIFEST_SHA256",
+      "RAW_SAMPLES_SHA256",
+      "CANONICAL_RECEIPT_HASH",
+      "EXACT_CAPTURE_ID",
+      "EXACT_PLAN_IDENTITY_AND_IMPLEMENTATION",
+      "CAPTURE_AUTHORIZED_SELECTED_PLAN",
+      "SELECTED_PLAN_CAPTURE_ROOT",
+      "EXACT_HISTORICAL_REGISTRY_LINEAGE"
+    ],
+    "asset_class": "CRYPTO_TOKEN_ONLY",
+    "output": "DESCRIPTIVE_GROSS_BBO_MARKOUT_ONLY",
+    "entry_price": "OBSERVED_ASK",
+    "exit_price": "OBSERVED_BID",
+    "execution_or_fill_model": false,
+    "fees_slippage_funding_or_liquidation": "NOT_MODELLED_NO_NET_PNL_CLAIM",
+    "acceptance_decision": "FORBIDDEN",
+    "synthetic_mode": "SYNTHETIC_DESCRIPTIVE_ONLY",
+    "synthetic_mode_selection": "EXPLICIT_REQUIRED",
+    "production_downgrade_to_synthetic": "FORBIDDEN",
+    "fixed_exit_offsets_sec": [
+      0,
+      5,
+      15,
+      60
+    ],
+    "fixed_entry_lead_sec": 60,
+    "production_target_override": "FORBIDDEN",
+    "report_readiness": "SEALED_CAPTURE_READY_AND_ENTRY_AND_ALL_FIXED_EXITS"
+  },
+  "paper_simulation": {
+    "schema": "premarket_perp_offline_paper_v1",
+    "mode": "PREREGISTERED_OFFLINE_READINESS_ONLY",
+    "runtime": "src/paper_replay.py",
+    "launcher": "tools/start_premarket_perp_paper_only_visible.ps1",
+    "fixed_model": {
+      "side": "LONG",
+      "paper_notional_usdt": 25.0,
+      "leverage_equivalent": 1.0,
+      "entry_offset_sec": -60,
+      "exit_offsets_sec": [
+        0,
+        5,
+        15,
+        60
+      ],
+      "latency_ms": 200,
+      "order_ttl_ms": 500,
+      "stress_leverages": [
+        2,
+        5
+      ],
+      "entry_liquidity": "TAKER_ASKS",
+      "exit_liquidity": "TAKER_BIDS"
+    },
+    "caller_parameter_overrides": "FORBIDDEN",
+    "candidate_requirements": {
+      "asset_class": "CRYPTO_TOKEN",
+      "t0_source_class": "OFFICIAL_ANNOUNCEMENT",
+      "t0_precision_sec": 1,
+      "sealed_capture_required": true,
+      "historical_lineage_verification": "REQUIRED"
+    },
+    "cost_model": {
+      "status": "NOT_IMPLEMENTED_FAIL_CLOSED",
+      "required_before_virtual_position": [
+        "CONTRACT_UNIT_NORMALIZATION",
+        "NORMALIZED_CAUSAL_DEPTH",
+        "VENUE_TAKER_FEES",
+        "OBSERVED_DEPTH_SLIPPAGE",
+        "FUNDING_RATE_AND_SETTLEMENT_TIME",
+        "MARK_AND_INDEX_PRICE",
+        "MAINTENANCE_MARGIN_AND_LIQUIDATION_PARAMETERS"
+      ],
+      "missing_input_result": "PAPER_NOT_RUN_COST_MODEL_MISSING",
+      "one_or_zero_leg_fill_pnl": "NONE"
+    },
+    "terminal_statuses": [
+      "NO_ELIGIBLE_EVENT",
+      "PAPER_NOT_RUN_INVALID_CANDIDATE_REPORT",
+      "PAPER_NOT_RUN_NO_CAPTURE_EVIDENCE",
+      "PAPER_NOT_RUN_COST_MODEL_MISSING"
+    ],
+    "output": "DETERMINISTIC_STDOUT_JSON_NO_PROJECT_ARTIFACT",
+    "virtual_positions_created_before_complete_model": 0,
+    "paper_broker_execution": false,
+    "market_data_capture_authorized": false,
+    "acceptance_capable": false,
+    "net_pnl_before_complete_model": null
+  },
+  "registry_quarantine": {
+    "archive_schema": "premarket_perp_registry_quarantine_v2",
+    "state_schema": "premarket_perp_registry_quarantine_state_v1",
+    "result_schema": "premarket_perp_registry_quarantine_result_v2",
+    "receipt_archive_schema": "premarket_perp_registry_receipt_bytes_v1",
+    "network_requests": "FORBIDDEN",
+    "preflight": [
+      "INITIAL",
+      "COMMIT"
+    ],
+    "operator_cas": "EXACT_SOURCE_BYTES_AND_NAMES",
+    "lock": {
+      "registry": "O_EXCL_HELD_FROM_SNAPSHOT_TO_FINAL_DURABLE_PROOF",
+      "global_market_writer": "ACQUIRED_AFTER_COMMIT_CAS_BEFORE_ARCHIVE_PUBLICATION",
+      "hold": "BOTH_LOCKS_THROUGH_SOURCE_DEACTIVATION_VERIFICATION",
+      "release_order": [
+        "GLOBAL_MARKET_WRITER_CLAIM",
+        "REGISTRY_LOCK_MOVED_TO_TERMINAL_PROOF_FINAL_FALLIBLE_IO"
+      ],
+      "failure": "RETAIN_REMAINING_LOCKS_MANUAL_RECOVERY"
+    },
+    "durability": {
+      "same_volume_move_required": true,
+      "windows": "MoveFileExW_REPLACE_WHEN_ALLOWED_PLUS_WRITE_THROUGH",
+      "posix": "RENAME_OR_REPLACE_PLUS_BOTH_PARENT_DIRECTORY_FSYNC",
+      "exclusive_file_creation": "FSYNC_TEMP_THEN_DURABLE_NO_CLOBBER_MOVE",
+      "final_registry_lock_move": "NO_FALLIBLE_IO_AFTERWARD"
+    },
+    "publish_order": [
+      "PREPARED_STAGED_DURABLE",
+      "COMMIT_PREFLIGHT_AND_SOURCE_CAS",
+      "GLOBAL_WRITER_CLAIM_ACQUIRED_AND_SOURCE_CAS_RECHECKED",
+      "ARCHIVE_PUBLISHED_DURABLE_SAME_VOLUME_MOVE",
+      "ARCHIVE_EXACT_ENTRY_SET_AND_FULL_READBACK_VERIFIED",
+      "ARCHIVE_DURABLE_STATE",
+      "MUTATION_RECEIPTS_MOVED_TO_RETAINED_TOMBSTONE_IF_PRESENT",
+      "SUMMARY_MOVED_TO_RETAINED_TOMBSTONE_IF_PRESENT",
+      "REGISTRY_MOVED_TO_RETAINED_TOMBSTONE_LAST",
+      "SOURCE_DEACTIVATED_STATE_BINDS_TOMBSTONES",
+      "TERMINAL_BOUNDARY_VERIFIED",
+      "GLOBAL_WRITER_CLAIM_RELEASED",
+      "TERMINAL_BOUNDARY_REVERIFIED",
+      "REGISTRY_LOCK_MOVED_TO_TERMINAL_PROOF_FINAL"
+    ],
+    "registry_deactivated": "LAST_SOURCE_COMPONENT_RETAINED_AS_TOMBSTONE",
+    "receipt_archival": {
+      "encoding": "RAW_BYTES_BASE64",
+      "per_entry_integrity": [
+        "ORIGINAL_NAME",
+        "SIZE",
+        "SHA256"
+      ],
+      "round_trip": "EXACT_BYTES_REQUIRED"
+    },
+    "source_change_after_archive": {
+      "verification_mismatch": "RESTORE_OR_RETAIN_FAIL_CLOSED",
+      "canonical_reappearance": "NEVER_DELETE_UNARCHIVED_BYTES",
+      "canonical_path_absence_after_source_deactivation": {
+        "scope": [
+          "REGISTRY",
+          "SUMMARY",
+          "MUTATION_RECEIPTS"
+        ],
+        "original_presence": "IRRELEVANT",
+        "reappearance": "RECOVERY_REQUIRED_RETAIN_REMAINING_LOCKS"
+      },
+      "retained_tombstones": "EXACT_NAMES_AND_BYTES_BOUND_IN_SOURCE_DEACTIVATED_STATE"
+    },
+    "automatic_recovery": "FORBIDDEN_MANUAL_FAIL_CLOSED",
+    "terminal_status_verification": {
+      "before_source_deactivation": "MANIFEST_PREPARED_DECLARED_FILES_EXACT_ENTRY_SET_AND_SOURCE_CAS",
+      "before_global_claim_release": "RECOVERY_REQUIRED_SOURCE_DEACTIVATED_ZERO_PROBLEMS",
+      "after_global_claim_release_before_registry_lock_release": "RECOVERY_REQUIRED_SOURCE_DEACTIVATED_ZERO_PROBLEMS",
+      "completed_requires": [
+        "MANIFEST_AND_DECLARED_FILE_HASHES",
+        "SOURCE_GENERATION_CAS",
+        "PREPARED_ARCHIVE_DURABLE_SOURCE_DEACTIVATED_STATE_CHAIN",
+        "RETAINED_TOMBSTONE_EXACT_SET_NAMES_AND_BYTES",
+        "REGISTRY_LOCK_TERMINAL_PROOF",
+        "EXACT_ARCHIVE_ENTRY_SET"
+      ]
+    }
+  },
+  "implementation": {
+    "files": [
+      {
+        "role": "project_config",
+        "repo_path": "src/project_config.py",
+        "sha256": "021605f202ac79ec53d0f7f7ec4b3e3b91027189ba971db32696188c8375b894"
+      },
+      {
+        "role": "canonical_hash",
+        "repo_path": "src/canonical_hash.py",
+        "sha256": "0462fadc9f1ce05a3d6fa27e863b1778fcc04991d8e78c3836f56714cc8cd04f"
+      },
+      {
+        "role": "capability_scan",
+        "repo_path": "src/capability_scan.py",
+        "sha256": "97ebfa4e35c10b665539072e79f7ef8f3cbe5472c2ba5d39220c0a2eb7f3a077"
+      },
+      {
+        "role": "risk_gate",
+        "repo_path": "src/risk_gate.py",
+        "sha256": "d74abddf821d21585c39caeaba445b40b3bf6650d5b98bf8452ac93267ed13ae"
+      },
+      {
+        "role": "plan_builder",
+        "repo_path": "src/plan_builder.py",
+        "sha256": "567c72ebfb1642b3b4b2b66b1d6ba93d1e337efc0422425114566269dccac6b1"
+      },
+      {
+        "role": "public_http",
+        "repo_path": "src/public_http.py",
+        "sha256": "3828bbe166701c9dd15d01c8fe87b4ba294cf493773216f1d4897620cf973ca4"
+      },
+      {
+        "role": "event_registry",
+        "repo_path": "src/event_registry.py",
+        "sha256": "5eb15c8d94270ffe5dd7d5f1098e44ca95617cb98cc4e9982f7007e9ae97dad8"
+      },
+      {
+        "role": "registry_quarantine",
+        "repo_path": "src/registry_quarantine.py",
+        "sha256": "cc4c055004a237abcea1e51295f18dbde1aef1f305362d4f48139ed488ac1786"
+      },
+      {
+        "role": "global_market_writer_claim",
+        "repo_path": "src/global_market_writer_claim.py",
+        "sha256": "764af22b0b2ab24a2c36485fda2719e6c0425a2426c07778693a1be90ed3fc4e"
+      },
+      {
+        "role": "capture",
+        "repo_path": "src/capture.py",
+        "sha256": "7c6c797d21eaa41ca40b0a65065586894c8513d0c542fb2204487cfcb580e9de"
+      },
+      {
+        "role": "replay",
+        "repo_path": "src/replay.py",
+        "sha256": "9f720bf06f77aeb62dd7a31cb0adee34b6e3507a751e79487adf28da62cd3484"
+      },
+      {
+        "role": "paper_replay",
+        "repo_path": "src/paper_replay.py",
+        "sha256": "8c2058a00045e4ebea6ca1c12029bf19e2b3cbee416c01d6345a6c67b4e921ac"
+      },
+      {
+        "role": "paper_only_launcher",
+        "repo_path": "tools/start_premarket_perp_paper_only_visible.ps1",
+        "sha256": "64d58c3fe2acd80f00c4c672ed639e857d4cf4e9f7dfe7b8deebbe08a7238ee9"
+      },
+      {
+        "role": "official_attestation",
+        "repo_path": "src/official_attestation.py",
+        "sha256": "e785319f2cd43d1483171b352bb8d070fd6c0cfefa9833c22dfa451991790ca7"
+      },
+      {
+        "role": "announcement_candidate_store",
+        "repo_path": "src/announcement_candidate_store.py",
+        "sha256": "e49adaffe5f6d04d4bda2599208f124896ecea487fedcf93a79644dc5c5949fb"
+      },
+      {
+        "role": "announcement_discovery",
+        "repo_path": "src/announcement_discovery.py",
+        "sha256": "8a0d192aa7d7b318d01f6464f22c2a2595f2a1d145aa3eeb0bf87827abec019e"
+      },
+      {
+        "role": "announcement_discovery_launcher",
+        "repo_path": "tools/start_premarket_announcement_discovery_visible.ps1",
+        "sha256": "12a7d6ee1a7ad1a20c3599f032ebc192f9e5cd9a49e6585fc7cd56af00de7c0d"
+      },
+      {
+        "role": "announcement_watch_state",
+        "repo_path": "src/announcement_watch_state.py",
+        "sha256": "74b81ab651db7103fb709c578952f4be88eaa3df47ffb08c7346d373cd027274"
+      },
+      {
+        "role": "announcement_watch_scheduler",
+        "repo_path": "src/announcement_watch_scheduler.py",
+        "sha256": "ad20611b7e4c42c6095f2a94128599d6f6213e962d710a8331893bb45ed990c1"
+      },
+      {
+        "role": "announcement_watch_launcher",
+        "repo_path": "tools/start_premarket_announcement_watch_scheduler.ps1",
+        "sha256": "ab1f6850c99f97e03fa8582331210ed13fa19a10df069f9948c109e9db92ba35"
+      },
+      {
+        "role": "announcement_watch_installer",
+        "repo_path": "tools/install_premarket_announcement_watch_scheduler.ps1",
+        "sha256": "279e4f839a20874ddaf610981d75dad2f65cca76f76043d5ef1d8530ea329d49"
+      },
+      {
+        "role": "candidate_alert",
+        "repo_path": "src/candidate_alert.py",
+        "sha256": "72993d15c3f1a800a3a61eb1fea304f0d739d630d27553c1d4bdbbbf393f8f12"
+      },
+      {
+        "role": "candidate_alert_sidecar",
+        "repo_path": "tools/show_premarket_candidate_alert.ps1",
+        "sha256": "3524239f0465ee1d654cb06fc251803a1b910c1111f91c222fc875c29f9c9661"
+      },
+      {
+        "role": "official_t0_arming",
+        "repo_path": "src/official_t0_arming.py",
+        "sha256": "7834f2adc617a49c9adf7986aa1e709bacd64acdef6e588476555a20bab24ff8"
+      },
+      {
+        "role": "official_t0_arming_launcher",
+        "repo_path": "tools/start_premarket_official_t0_arming_visible.ps1",
+        "sha256": "8cc455bfd66adc1df850640d08d7811c4a784399e21dbbe612fe950a9d085970"
+      },
+      {
+        "role": "event_bound_plan_proposal",
+        "repo_path": "src/event_bound_plan_proposal.py",
+        "sha256": "a168ca71905754f290abf5921f07c3567b8af0ad9e00cce6dbc5e2e350880628"
+      },
+      {
+        "role": "fixture_rehearsal",
+        "repo_path": "src/fixture_rehearsal.py",
+        "sha256": "65a02354ff09ed67993776eb18693d60778204cd23e51d1969b80b6efddf89f1"
+      },
+      {
+        "role": "fixture_rehearsal_launcher",
+        "repo_path": "tools/start_premarket_fixture_rehearsal.ps1",
+        "sha256": "677df6826a942b5900474e13ce32a7935ed43a713c3cdca9b1fba6000e6a22e0"
+      },
+      {
+        "role": "historical_event_builder",
+        "repo_path": "src/historical_event_builder.py",
+        "sha256": "e0486221110c5ebb9ec302d72442e74e0e778d18838f63d6e579b7a2a064edfe"
+      },
+      {
+        "role": "historical_event_seeds",
+        "repo_path": "docs/historical/historical-event-seeds-v1.json",
+        "sha256": "9c0388aa74ec86de9663628688c5f62c03f1d5cae17a74f7a81ac83556bf6f3f"
+      },
+      {
+        "role": "execution_replay",
+        "repo_path": "src/execution_replay.py",
+        "sha256": "dbd76d13ab334d8726e9f469bfeea4e2e6cabda32e5cb5458068d444386a7213"
+      },
+      {
+        "role": "historical_acquisition",
+        "repo_path": "src/historical_acquisition.py",
+        "sha256": "7d557ac53ddd730b15ac6d1f1b2c1def8f64e49b9839a037da376a19cfe1bece"
+      },
+      {
+        "role": "historical_causal_replay",
+        "repo_path": "src/historical_causal_replay.py",
+        "sha256": "4edd71d673b4e88300839da2f7bb82abce51b57d1b9a43991d1ec71caf1f569f"
+      },
+      {
+        "role": "forbidden_capabilities",
+        "repo_path": "docs/risk/forbidden-capabilities.txt",
+        "sha256": "dedf35eaa7b1fd1168dc25c2436471ab29eca097e670f7f3e67c8f1176b1d36a"
+      }
+    ]
+  },
+  "forbidden": [
+    "orders of any kind, on any venue, in any mode",
+    "venue paper/testnet execution or live execution",
+    "private API surfaces, credentials, request signing",
+    "taking leverage or margin, or changing either",
+    "withdrawals or transfers",
+    "acceptance or rejection decisions from captured data",
+    "a second concurrent market-data writer in this workspace",
+    "background or hidden capture runs"
+  ],
+  "authorized_after_gate_green": [
+    "persist the local adaptive announcement-watch state, ledger and claim",
+    "refresh the public metadata event registry after metadata preflight",
+    "verify and materialize descriptive proxy observations offline",
+    "acquire bounded historical public pre-market evidence into a separate append-only namespace",
+    "run deterministic offline causal replay over sealed historical evidence",
+    "append one human-verified official spot t0 after attestation preflight",
+    "fetch bounded official announcement indexes and append unverified announcement candidates",
+    "submit one local candidate notification after alert preflight",
+    "seal one human-attested exact seconds-grade official spot t0 as immutable no-capture arming evidence",
+    "write one deterministic event-bound plan proposal from an arming receipt",
+    "quarantine one failed registry generation after exact recovery preflight",
+    "run deterministic offline paper simulation over verified sealed capture evidence"
+  ],
+  "activation_gate": {
+    "capture_authorized": false,
+    "reason": "v40 supersedes the fail-closed, non-activated v39 issue and preserves the v38 no-model watcher, at-most-once candidate alert, official seconds-grade t0 arming receipt, deterministic create-only event proposal, lock/proposal recovery and temporary fixture rehearsal. It additionally authorizes bounded post-hoc public history acquisition and deterministic offline replay in separate evidence namespaces. It removes the temp-only rehearsal from the production write-action matrix and keeps it solely under its separate no-authority fixture contract. Candidate metadata and proxy timestamps cannot arm. Even a valid arming receipt has no capture token or capture authority, and the proposal cannot rebind the trust root, execute venue paper/live orders, or start forward capture",
+    "required_next_checkpoint": "after human review creates and arms one current-generation CRYPTO_TOKEN official seconds-grade t0 with enough lead, inspect the deterministic proposal, collect a fresh lifecycle snapshot, and explicitly issue a separate immutable event-bound v41 before exactly one visible capture"
+  },
+  "acceptance_policy": {
+    "evidence_class": "CAUSAL_REPLAY_INPUT_READY",
+    "acceptance_capable": false,
+    "acceptance_decision": "NONE_CAPTURE_ONLY",
+    "note": "no readiness or future paper metric supports ACCEPT or REJECT of any strategy; a separate user-checkpointed evaluation plan is required"
+  },
+  "plan_hash_method": "sha256_canonical_json_excluding_plan_hash",
+  "registry_contract_hash": "a6c0db8ddf6aa344980ca9dcd3aac218220a80de2d0116402a86cd272e2bd4c0",
+  "plan_hash": "fbc4456333a2d7886fac3f887d7cca1258dec5091d9671af17ccdddf42eb6c2f"
+}

@@ -64,12 +64,16 @@ class PaperReplayModuleTests(unittest.TestCase):
         self.assertEqual(
             result["fixed_model"],
             {
-                "direction": "LONG",
-                "virtual_notional_usdt": 25,
-                "leverage_equivalent": 1,
-                "entry_lead_sec": 60,
+                "side": "LONG",
+                "paper_notional_usdt": 25.0,
+                "leverage_equivalent": 1.0,
+                "entry_offset_sec": -60,
                 "exit_offsets_sec": [0, 5, 15, 60],
-                "execution_style": "TAKER_LIKE_CAUSAL_DEPTH",
+                "latency_ms": 200,
+                "order_ttl_ms": 500,
+                "stress_leverages": [2, 5],
+                "entry_liquidity": "TAKER_ASKS",
+                "exit_liquidity": "TAKER_BIDS",
             },
         )
 

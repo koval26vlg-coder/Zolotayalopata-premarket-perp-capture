@@ -5,23 +5,23 @@ Research-only контур для публичных pre-market perpetual дан
 `t0`/`+5s`/`+15s`/`+60s`.
 
 Проект наблюдает рынок с плечом, но никогда не берёт плечо: private API, ключи,
-подпись запросов, ордера, margin, real capital и переводы запрещены. Capture не
-запускался и активным PlanOnly v38 не разрешён. v38 сохраняет bounded-поиск
-официальных announcement-кандидатов, добавляет at-most-once локальное уведомление,
-no-capture arming точного official `t0` и create-only предложение event-bound v39,
-а также fixture-only репетицию и fail-closed recovery зависшего arming-lock/прерванного
-proposal;
-локальная fail-closed paper simulation остаётся отдельным offline-контуром. Новый
+подпись запросов, ордера, margin, real capital и переводы запрещены. Forward capture
+не запускался и активным PlanOnly v40 не разрешён. v40 сохраняет bounded-поиск,
+alert/arming-контур v38 и добавляет отдельный bounded post-hoc сбор Bybit/OKX/Gate,
+descriptive OHLCV markout и causal replay только для sealed L2 evidence. Будущий
+event-bound capture перенесён в create-only proposal v41. Локальная fail-closed paper
+simulation остаётся отдельным offline-контуром. Новый
 no-model scheduler делает только дешёвый пяти-минутный due-check; фактическая сеть
 работает по adaptive cadence 6ч/3ч/1ч/5мин.
 
-## Состояние v38
+## Состояние v40
 
-- immutable PlanOnly: `premarket_perp_capture_20260822_v38`;
-- status: `OFFICIAL_T0_ARMING_READY_NO_CAPTURE`;
+- immutable PlanOnly: `premarket_perp_capture_20260822_v40`;
+- status: `HISTORICAL_ACQUISITION_REPLAY_READY_NO_CAPTURE`;
 - разрешены только metadata registry, human official attestation и локальная
   fail-closed registry quarantine, offline paper-readiness и bounded official-index
-  discovery без article-body fetch;
+  discovery без article-body fetch, а также bounded historical acquisition и offline
+  replay; market-data capture и ордера по-прежнему запрещены;
 - scheduler не использует модель или токены: Windows Task Scheduler просыпается раз в
   пять минут, а `NOT_DUE` не делает preflight, claim, сеть, запись или stdout;
 - discovery читает только точные публичные index endpoints Bybit, Bitget и KuCoin;
@@ -35,7 +35,7 @@ no-model scheduler делает только дешёвый пяти-минут�
 - arming требует current `CRYPTO_TOKEN`, `OFFICIAL_ANNOUNCEMENT`, точность ровно одну
   секунду, точное contract/spot mapping и не менее полного pre-listing окна; receipt
   append-only и не содержит capture token;
-- генератор v39 создаёт только детерминированное предложение, не новый активный план:
+- генератор v41 создаёт только детерминированное предложение, не новый активный план:
   trust root, capture authority и scheduler он не меняет;
 - fixture-rehearsal проходит candidate alert, human attestation validation, arming и
   proposal только во временном каталоге; сеть, toast, production writes, capture token,
@@ -61,15 +61,20 @@ no-model scheduler делает только дешёвый пяти-минут�
 - `market_data_capture` описан как write class, но исключён из status/action
   authorization matrix и не может получить capture token;
 - paper model фиксирован до появления события: LONG, 25 USDT, 1x-equivalent,
-  вход `t0-60s`, выходы `t0/+5/+15/+60s`, taker-like causal depth;
+  вход `t0-60s`, выходы `t0/+5/+15/+60s`, latency 200 ms, TTL 500 ms,
+  taker-like causal depth и paper stress 2x/5x;
+- исторические REST/archive свечи всегда `DESCRIPTIVE_ONLY`: они не создают BBO,
+  partial fill, funding или net PnL; execution-модель запускается только после
+  exact-hash проверки sealed depth/BBO evidence;
 - пока отсутствуют sealed capture и полный cost model, результатом могут быть только
   `NO_ELIGIBLE_EVENT`, `PAPER_NOT_RUN_NO_CAPTURE_EVIDENCE` или
   `PAPER_NOT_RUN_COST_MODEL_MISSING`; виртуальная позиция и net PnL не создаются;
 - replay descriptive-only и не поддерживает ACCEPT/REJECT стратегии.
 
-Активные v38 plan hash и file SHA-256 закреплены во внешнем trust root
-`src/frozen_plan_bindings.py`; v37 сохранён byte-identical как непосредственный
-предшественник.
+Активные v40 plan hash и file SHA-256 закреплены во внешнем trust root
+`src/frozen_plan_bindings.py`. v39 сохранён immutable как fail-closed выпуск, который
+не прошёл capability scan и не запускал сбор; v38 и более ранние версии также
+сохранены byte-identical. v37 сохранён byte-identical.
 
 ## Компоненты
 
@@ -86,12 +91,16 @@ no-model scheduler делает только дешёвый пяти-минут�
 | `src/announcement_watch_scheduler.py` | adaptive wake-only due-controller без модели |
 | `src/candidate_alert.py` | at-most-once alert ledger и локальный toast dispatch |
 | `src/official_t0_arming.py` | immutable official-t0 no-capture arming receipt |
-| `src/event_bound_plan_proposal.py` | deterministic create-only proposal для v39 |
+| `src/event_bound_plan_proposal.py` | deterministic create-only proposal для v41 |
 | `src/fixture_rehearsal.py` | deterministic temporary rehearsal без authority |
 | `src/registry_quarantine.py` | локальная CAS-bound quarantine повреждённого поколения |
 | `src/capture.py` | bounded collector implementation; активным планом не авторизован |
 | `src/replay.py` | строгий offline loader и causal gross BBO markout |
 | `src/paper_replay.py` | fail-closed offline paper-readiness и deterministic result hash |
+| `src/historical_acquisition.py` | bounded REST/Gate archive acquisition в отдельный append-only namespace |
+| `src/historical_event_builder.py` | строгая нормализация post-hoc OHLCV без fill/PnL |
+| `src/historical_causal_replay.py` | descriptive minute markout и exact-hash L2 delegation |
+| `src/execution_replay.py` | pure causal paper fill/cost/funding/liquidation model |
 | `tools/start_premarket_perp_paper_only_visible.ps1` | локальный видимый paper-only тик |
 | `tools/start_premarket_announcement_discovery_visible.ps1` | один bounded visible discovery tick |
 | `tools/start_premarket_announcement_watch_scheduler.ps1` | тихий due-tick/status launcher |
@@ -380,7 +389,7 @@ $readback | ConvertTo-Json -Depth 32
 ```
 
 Каждый writer сам делает initial и commit preflight. Этот маршрут не запускает market
-capture, не выдаёт capture token и не создаёт event-bound v39 автоматически.
+capture, не выдаёт capture token и не создаёт event-bound v41 автоматически.
 
 Fixture-only репетиция всей no-authority цепочки:
 
@@ -403,21 +412,34 @@ production paths.
 & $py src\risk_gate.py --preflight --write-class official_t0_arming --run-id <id>
 & $py src\risk_gate.py --preflight --write-class event_bound_plan_proposal --run-id <id>
 & $py src\risk_gate.py --preflight --write-class registry_quarantine --run-id <id>
+& $py src\risk_gate.py --preflight --write-class historical_market_data_acquisition --run-id <id>
 ```
 
 Preflight не запускает writer автоматически. Реальные refresh, attestation,
 quarantine и discovery являются отдельными операциями. После human official
-attestation v38 может создать только no-capture arming receipt и детерминированное
-предложение. Реальный event-bound v39 должен быть отдельно проверен, выпущен и явно
+attestation v40 может создать только no-capture arming receipt и детерминированное
+предложение. Реальный event-bound v41 должен быть отдельно проверен, выпущен и явно
 одобрен пользователем до ровно одного видимого `market_data_capture`.
+
+Один preregistered historical tick (публичные данные, без token/order/capture):
+
+```powershell
+$runId = "historical_" + [DateTime]::UtcNow.ToString("yyyyMMddTHHmmssZ")
+$received = [DateTime]::UtcNow.ToString("yyyy-MM-ddTHH:mm:ssZ")
+& $py src\historical_acquisition.py `
+  --seed-file docs\historical\historical-event-seeds-v1.json `
+  --run-id $runId --received-at-utc $received
+```
 
 ## Immutable lineage
 
-Опубликованы v1–v38. Все прежние планы остаются на диске и проверяются по file SHA,
+Опубликованы v1–v40. Все прежние планы остаются на диске и проверяются по file SHA,
 canonical plan hash и identity. v27 и v28 сохранены; v29 сохранён byte-identical;
 v30–v37 сохранены byte-identical. v37 зафиксировал первую recovery/rehearsal редакцию,
 но полный suite выявил несовместимое расширение production action-list; v38 supersede-ит
-его, не переписывая, и отделяет temp-only rehearsal от production write-actions. Ни
-один старый PlanOnly не переписывался.
+его, не переписывая. v39 впервые preregistered historical acquisition, но fail-closed
+capability scan обнаружил неполный статический Gate URL до любого запуска. v40 исправил
+binding отдельным новым планом; v39 не переписывался и данные под ним не создавались.
+Ни один старый PlanOnly не переписывался.
 
 См. `AGENTS.md`, `src/frozen_plan_bindings.py` и решения в `docs/decisions/`.

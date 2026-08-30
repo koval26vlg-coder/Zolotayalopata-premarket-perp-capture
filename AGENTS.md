@@ -24,7 +24,7 @@
 - вывод и переводы средств;
 - решения ACCEPT/REJECT по захваченным данным.
 
-`execution_replay` — офлайн-анализ уже лежащих на диске публичных данных. v38
+`execution_replay` — чистая офлайн-модель над sealed public evidence. v40
 сохраняет fail-closed offline paper simulation, bounded official
 announcement-index discovery: без подходящего official event,
 sealed capture и полного cost model она создаёт ноль виртуальных позиций и не публикует
@@ -33,7 +33,7 @@ paper execution остаётся запрещённым. Candidate store при�
 фиксированные non-authority значения и официальный URL, связанный с listing venue.
 Первый current candidate может получить одно локальное уведомление; uncertainty после
 submission intent не ретраится автоматически. Official-t0 arming принимает только
-explicit human-attested seconds-grade crypto event, но не выдаёт capture token. v39
+explicit human-attested seconds-grade crypto event, но не выдаёт capture token. v41
 proposal является create-only черновиком и не меняет trust root. Fixture rehearsal
 использует только временные пути и запрещает сеть, toast, capture, token и ордера.
 No-model watcher просыпается локально каждые пять минут, но сеть и исследовательские
@@ -118,16 +118,21 @@ Workspace общий с `ZolotyayLopata`. Этот проект — второй
   mutation receipt, а не по текущему head.
 - Текущий human-attested producer выводит точность из дословного времени источника.
   Minute-only источник остаётся descriptive; только явный `HH:MM:SS` может дать
-seconds-grade candidate, но v38 всё равно не авторизует capture.
+  seconds-grade candidate, но v40 всё равно не авторизует capture.
 
 ## Статус
 
-Capture ещё **не запускался**. PlanOnly в статусе
-`OFFICIAL_T0_ARMING_READY_NO_CAPTURE`; активный immutable план — v38.
+Forward capture ещё **не запускался**. PlanOnly в статусе
+`HISTORICAL_ACQUISITION_REPLAY_READY_NO_CAPTURE`; активный immutable план — v40.
 `market_data_capture` этим статусом не авторизован. Discovery сохраняет только
 `UNVERIFIED_ANNOUNCEMENT_DISCOVERY`; index publication time и ticker match не могут
-стать official `t0`. После human attestation v38 может записать no-capture arming
-receipt и создать proposal; затем нужен отдельный immutable event-bound v39 и отдельное
+стать official `t0`. После human attestation v40 может записать no-capture arming
+receipt и создать proposal; затем нужен отдельный immutable event-bound v41 и отдельное
 разрешение пользователя на видимый capture. Текущий
 paper-only launcher выполняет только проверку готовности и детерминированный offline
 тик; `NO_ELIGIBLE_EVENT` является нормальным нулевым результатом, а не сделкой.
+Post-hoc Bybit/OKX REST и exact Gate archive разрешены только через
+`historical_market_data_acquisition`, общий gate и global writer claim; они всегда
+`DESCRIPTIVE_ONLY`. Minute OHLCV не доказывает fill, spread, latency или очередь.
+v39 сохранён как неактивированный fail-closed PlanOnly после статического Gate URL
+finding; его не переписывать и не использовать как активный trust root.

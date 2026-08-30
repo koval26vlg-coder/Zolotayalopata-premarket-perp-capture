@@ -76,6 +76,15 @@ class ResolvedPathBindingTests(unittest.TestCase):
             "event_bound_plan_proposal_root": str(
                 risk_gate.config.EVENT_BOUND_PLAN_PROPOSAL_ROOT.resolve(strict=False)
             ),
+            "historical_raw_root": str(
+                risk_gate.config.HISTORICAL_RAW_ROOT.resolve(strict=False)
+            ),
+            "historical_manifest_root": str(
+                risk_gate.config.HISTORICAL_MANIFEST_ROOT.resolve(strict=False)
+            ),
+            "historical_receipt_root": str(
+                risk_gate.config.HISTORICAL_RECEIPT_ROOT.resolve(strict=False)
+            ),
             "windows_powershell_executable": str(
                 Path(risk_gate.config.WINDOWS_POWERSHELL_EXECUTABLE).resolve(
                     strict=False

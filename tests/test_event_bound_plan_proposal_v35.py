@@ -1,4 +1,4 @@
-"""Contract for a non-authorizing event-bound v39 plan proposal."""
+"""Contract for a non-authorizing event-bound v41 plan proposal."""
 
 from __future__ import annotations
 
@@ -102,17 +102,17 @@ class EventBoundProposalTests(unittest.TestCase):
     def setUp(self) -> None:
         self.module = _load_module()
 
-    def test_proposal_is_fixed_to_v39_but_cannot_activate_or_capture(self) -> None:
+    def test_proposal_is_fixed_to_v41_but_cannot_activate_or_capture(self) -> None:
         proposal = self.module.build_event_bound_plan_proposal(
             arming_record(), generated_at_utc="2033-05-18T03:34:00Z"
         )
 
         self.assertEqual(proposal["schema"], "premarket_perp_event_bound_plan_proposal_v1")
-        self.assertEqual(proposal["proposed_plan_schema"], "premarket_perp_capture_planonly_v39")
-        self.assertEqual(proposal["proposed_plan_id"], "premarket_perp_capture_20260822_v39")
+        self.assertEqual(proposal["proposed_plan_schema"], "premarket_perp_capture_planonly_v41")
+        self.assertEqual(proposal["proposed_plan_id"], "premarket_perp_capture_20260822_v41")
         self.assertEqual(
             proposal["proposed_plan_path"],
-            "docs/plans/premarket-perp-capture-planonly-20260822-v39.json",
+            "docs/plans/premarket-perp-capture-planonly-20260822-v41.json",
         )
         self.assertEqual(proposal["supersedes_plan_id"], trust_root.PLAN_ID)
         self.assertEqual(proposal["supersedes_plan_hash"], trust_root.PLAN_HASH)
@@ -369,7 +369,7 @@ class EventBoundProposalTests(unittest.TestCase):
         record = arming_record()
         persist_arming(record, arming_root)
         final = root / record["arming_id"] / (
-            f"{record['revision']:020d}-{record['receipt_hash']}-v39-proposal.json"
+            f"{record['revision']:020d}-{record['receipt_hash']}-v41-proposal.json"
         )
         stage = final.with_name(f".{final.name}.pending")
         stage.parent.mkdir(parents=True)

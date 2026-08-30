@@ -108,12 +108,12 @@ class V29ImmutablePlanTests(unittest.TestCase):
             "32877c7c731bdf63167b20827f373726e34e1fbc1bcd61db26d6975444067ab5",
         )
 
-    def test_operator_docs_identify_v38_as_active_and_v37_as_preserved(self) -> None:
+    def test_operator_docs_identify_v40_as_active_and_v39_as_preserved(self) -> None:
         readme = (ROOT / "README.md").read_text(encoding="utf-8")
         agents = (ROOT / "AGENTS.md").read_text(encoding="utf-8")
-        self.assertIn("premarket_perp_capture_20260822_v38", readme)
+        self.assertIn("premarket_perp_capture_20260822_v40", readme)
         self.assertIn("v37 сохранён byte-identical", readme)
-        self.assertIn("активный immutable план — v38", agents)
+        self.assertIn("активный immutable план — v40", agents)
         self.assertIn("v30–v37 сохранены byte-identical", readme)
 
 

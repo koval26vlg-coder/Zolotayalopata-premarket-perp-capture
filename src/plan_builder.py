@@ -20,13 +20,13 @@ import project_config as config
 from canonical_hash import canonical_hash
 
 
-SCHEMA = "premarket_perp_capture_planonly_v38"
-PLAN_ID = "premarket_perp_capture_20260822_v38"
-SUPERSEDES_PLAN_ID = "premarket_perp_capture_20260822_v37"
-SUPERSEDES_PLAN_HASH = "9671b54040a3eabb21a4a5a3bf455ed5837fe13d82f51b5ca22dc5bbc6f6ffcf"
-SUPERSEDES_PLAN_PATH = "docs/plans/premarket-perp-capture-planonly-20260822-v37.json"
+SCHEMA = "premarket_perp_capture_planonly_v40"
+PLAN_ID = "premarket_perp_capture_20260822_v40"
+SUPERSEDES_PLAN_ID = "premarket_perp_capture_20260822_v39"
+SUPERSEDES_PLAN_HASH = "d3e410f550ccf84c985924120c9970be28c87e3c788dba00ba55cde112406512"
+SUPERSEDES_PLAN_PATH = "docs/plans/premarket-perp-capture-planonly-20260822-v39.json"
 HASH_METHOD = "sha256_canonical_json_excluding_plan_hash"
-PLAN_STATUS = "OFFICIAL_T0_ARMING_READY_NO_CAPTURE"
+PLAN_STATUS = "HISTORICAL_ACQUISITION_REPLAY_READY_NO_CAPTURE"
 
 
 class PlanBuildError(ValueError):
@@ -561,13 +561,13 @@ def _announcement_watch_scheduler_contract() -> dict[str, Any]:
         "control_preflight_failure": (
             "FAIL_CLOSED_NO_WRITE_RECHECK_ON_NEXT_FIVE_MINUTE_WAKE"
         ),
-        "state_path": "docs/announcements/official-listing-discovery-state-v38.json",
+        "state_path": "docs/announcements/official-listing-discovery-state-v40.json",
         "attempt_ledger_path": (
-            "docs/announcements/official-listing-discovery-attempts-v38.jsonl"
+            "docs/announcements/official-listing-discovery-attempts-v40.jsonl"
         ),
-        "claim_path": "docs/announcements/official-listing-watch-claim-v38.json",
+        "claim_path": "docs/announcements/official-listing-watch-claim-v40.json",
         "claim_archive": (
-            "docs/announcements/official-listing-watch-claim-archive-v38"
+            "docs/announcements/official-listing-watch-claim-archive-v40"
         ),
         "control_write_class": "announcement_watch_control",
         "shared_gate_required_for_research_writes": True,
@@ -671,14 +671,14 @@ def _event_bound_plan_proposal_contract() -> dict[str, Any]:
     return {
         "schema": "premarket_perp_event_bound_plan_proposal_v1",
         "runtime": "src/event_bound_plan_proposal.py",
-        "proposed_plan_schema": "premarket_perp_capture_planonly_v39",
-        "proposed_plan_id": "premarket_perp_capture_20260822_v39",
+        "proposed_plan_schema": "premarket_perp_capture_planonly_v41",
+        "proposed_plan_id": "premarket_perp_capture_20260822_v41",
         "proposed_plan_path": (
-            "docs/plans/premarket-perp-capture-planonly-20260822-v39.json"
+            "docs/plans/premarket-perp-capture-planonly-20260822-v41.json"
         ),
         "mode": "CREATE_ONLY_PROPOSAL_NO_TRUST_ROOT_REBIND",
-        "event_anchor": "FROZEN_V38_ARMING_RECEIPT",
-        "current_lifecycle_snapshot": "REQUIRED_UNDER_V39_BEFORE_CAPTURE",
+        "event_anchor": "FROZEN_V40_ARMING_RECEIPT",
+        "current_lifecycle_snapshot": "REQUIRED_UNDER_V41_BEFORE_CAPTURE",
         "receipt_validation": "EXACT_SCHEMA_FIELD_SET_AND_CANONICAL_RECEIPT_HASH",
         "current_arming_head": (
             "SUPPLIED_RECEIPT_MUST_REMAIN_DURABLE_HEAD_UNDER_ARMING_WRITER_LOCK"
@@ -732,6 +732,68 @@ def _fixture_rehearsal_contract() -> dict[str, Any]:
     }
 
 
+def _historical_acquisition_contract() -> dict[str, Any]:
+    return {
+        "schema": "premarket_perp_historical_acquisition_v1",
+        "runtime": "src/historical_acquisition.py",
+        "normalizer": "src/historical_event_builder.py",
+        "transport_runtime": "src/public_http.py",
+        "venues": list(config.PERP_VENUES),
+        "source_classes": {
+            "bybit": "VENUE_PUBLIC_REST_POSTHOC_OHLCV",
+            "okx": "VENUE_PUBLIC_REST_POSTHOC_OHLCV",
+            "gate": "VENUE_PUBLIC_ARCHIVE_POSTHOC_OHLCV",
+        },
+        "bounds": {
+            "max_events_per_run": config.MAX_HISTORICAL_EVENTS_PER_RUN,
+            "max_requests_per_run": config.MAX_HISTORICAL_REQUESTS_PER_RUN,
+            "max_runtime_sec": config.MAX_HISTORICAL_RUNTIME_SEC,
+            "max_retries_per_request": config.MAX_HISTORICAL_RETRIES_PER_REQUEST,
+        },
+        "output_roots": {
+            "raw": str(config.HISTORICAL_RAW_ROOT.resolve(strict=False)),
+            "manifests": str(config.HISTORICAL_MANIFEST_ROOT.resolve(strict=False)),
+            "receipts": str(config.HISTORICAL_RECEIPT_ROOT.resolve(strict=False)),
+        },
+        "write_class": "historical_market_data_acquisition",
+        "shared_gate_required": True,
+        "global_writer_claim_required": True,
+        "capture_token_required": False,
+        "posthoc_retrieval": True,
+        "evidence_use": "DESCRIPTIVE_ONLY",
+        "acceptance_capable": False,
+        "execution_evidence": False,
+        "orders": False,
+    }
+
+
+def _historical_causal_replay_contract() -> dict[str, Any]:
+    return {
+        "schema": "premarket_perp_historical_causal_replay_v1",
+        "runtime": "src/historical_causal_replay.py",
+        "execution_runtime": "src/execution_replay.py",
+        "fixed_model": dict(config.OFFLINE_PAPER_MODEL),
+        "venue_taker_fee_policy": "PUBLIC_EVENT_SPECIFIC_INPUT_REQUIRED",
+        "proxy_event_policy": "DESCRIPTIVE_ONLY",
+        "historical_received_at_policy": (
+            "RETRIEVAL_TIME_NOT_CONTEMPORANEOUS_MARKET_RECEIVED_TS"
+        ),
+        "ohlcv_resolution_sec": 60,
+        "ohlcv_exit_quantisation": (
+            "T0_T0_PLUS_5_AND_T0_PLUS_15_MAY_SHARE_THE_SAME_MINUTE_BUCKET"
+        ),
+        "ohlcv_interpolation": False,
+        "sealed_l2_required_for_execution_replay": True,
+        "missing_execution_inputs": "NO_NET_PNL",
+        "missing_round_trip_fill": "NO_NET_PNL",
+        "fees_spread_slippage_funding_liquidation": (
+            "REQUIRED_FOR_SEALED_L2_DELEGATION"
+        ),
+        "acceptance_capable": False,
+        "orders": False,
+    }
+
+
 def build_plan(generated_at_utc: str) -> dict[str, Any]:
     files = [
         {
@@ -756,10 +818,12 @@ def build_plan(generated_at_utc: str) -> dict[str, Any]:
         "objective": (
             "Run low-cost bounded discovery, alert once on a current official-listing "
             "candidate, and allow an explicitly reviewed seconds-grade official t0 to "
-            "be sealed as no-capture arming evidence. A deterministic v39 proposal may "
-            "then be prepared, but cannot activate a plan or start capture. Index "
-            "timestamps remain publication metadata only. This plan does not authorize "
-            "automatic t0 attestation, market-data capture, venue paper/testnet "
+            "be sealed as no-capture arming evidence. Acquire a bounded post-hoc "
+            "Bybit/OKX/Gate OHLCV cohort in a separate append-only namespace and run "
+            "deterministic descriptive or sealed-L2 causal replay. A deterministic v41 "
+            "proposal may then be prepared, but cannot activate a plan or start forward "
+            "capture. Post-hoc OHLCV remains descriptive-only. This plan does not "
+            "authorize automatic t0 attestation, market-data capture, venue paper/testnet "
             "execution, live execution, orders, leverage or capital."
         ),
         "hypothesis_under_study": (
@@ -802,6 +866,15 @@ def build_plan(generated_at_utc: str) -> dict[str, Any]:
             "event_bound_plan_proposal_root": str(
                 config.EVENT_BOUND_PLAN_PROPOSAL_ROOT.resolve(strict=False)
             ),
+            "historical_raw_root": str(
+                config.HISTORICAL_RAW_ROOT.resolve(strict=False)
+            ),
+            "historical_manifest_root": str(
+                config.HISTORICAL_MANIFEST_ROOT.resolve(strict=False)
+            ),
+            "historical_receipt_root": str(
+                config.HISTORICAL_RECEIPT_ROOT.resolve(strict=False)
+            ),
             "windows_powershell_executable": str(
                 Path(config.WINDOWS_POWERSHELL_EXECUTABLE).resolve(strict=False)
             ),
@@ -839,7 +912,8 @@ def build_plan(generated_at_utc: str) -> dict[str, Any]:
             ),
             "resolved_path_bindings": (
                 "shared controls, capture root, announcement-watch controls, alert "
-                "ledger, arming/proposal roots and the Windows notification runtime "
+                "ledger, arming/proposal roots, historical evidence roots and the "
+                "Windows notification runtime "
                 "are compared to their canonical absolute values before writes"
             ),
         },
@@ -1252,6 +1326,8 @@ def build_plan(generated_at_utc: str) -> dict[str, Any]:
         "official_t0_arming": _official_t0_arming_contract(),
         "event_bound_plan_proposal": _event_bound_plan_proposal_contract(),
         "fixture_rehearsal": _fixture_rehearsal_contract(),
+        "historical_acquisition": _historical_acquisition_contract(),
+        "historical_causal_replay": _historical_causal_replay_contract(),
         "capture_bounds": {
             "window_before_t0_sec": config.CAPTURE_WINDOW_BEFORE_SEC,
             "window_after_t0_sec": config.CAPTURE_WINDOW_AFTER_SEC,
@@ -1481,6 +1557,11 @@ def build_plan(generated_at_utc: str) -> dict[str, Any]:
             "persist the local adaptive announcement-watch state, ledger and claim",
             "refresh the public metadata event registry after metadata preflight",
             "verify and materialize descriptive proxy observations offline",
+            (
+                "acquire bounded historical public pre-market evidence into a separate "
+                "append-only namespace"
+            ),
+            "run deterministic offline causal replay over sealed historical evidence",
             "append one human-verified official spot t0 after attestation preflight",
             (
                 "fetch bounded official announcement indexes and append unverified "
@@ -1498,21 +1579,24 @@ def build_plan(generated_at_utc: str) -> dict[str, Any]:
         "activation_gate": {
             "capture_authorized": False,
             "reason": (
-                "v38 preserves the v37 no-model watcher, at-most-once candidate alert, "
+                "v40 supersedes the fail-closed, non-activated v39 issue and preserves "
+                "the v38 no-model watcher, at-most-once candidate alert, "
                 "official seconds-grade t0 arming receipt, deterministic create-only "
                 "event proposal, lock/proposal recovery and temporary fixture rehearsal. "
+                "It additionally authorizes bounded post-hoc public history acquisition "
+                "and deterministic offline replay in separate evidence namespaces. "
                 "It removes the temp-only rehearsal from the production write-action "
                 "matrix and keeps it solely under its separate no-authority fixture "
                 "contract. Candidate metadata and "
                 "proxy timestamps cannot arm. Even a valid arming receipt has no "
                 "capture token or capture authority, and the proposal cannot rebind the "
-                "trust root, execute venue paper/live orders, or start market data work"
+                "trust root, execute venue paper/live orders, or start forward capture"
             ),
             "required_next_checkpoint": (
                 "after human review creates and arms one current-generation CRYPTO_TOKEN "
                 "official seconds-grade t0 with enough lead, inspect the deterministic "
                 "proposal, collect a fresh lifecycle snapshot, and explicitly issue a "
-                "separate immutable event-bound v39 before exactly one visible capture"
+                "separate immutable event-bound v41 before exactly one visible capture"
             ),
         },
         "acceptance_policy": {
@@ -1589,6 +1673,11 @@ def validate_plan(plan: dict[str, Any]) -> None:
             "persist the local adaptive announcement-watch state, ledger and claim",
             "refresh the public metadata event registry after metadata preflight",
             "verify and materialize descriptive proxy observations offline",
+            (
+                "acquire bounded historical public pre-market evidence into a separate "
+                "append-only namespace"
+            ),
+            "run deterministic offline causal replay over sealed historical evidence",
             "append one human-verified official spot t0 after attestation preflight",
             (
                 "fetch bounded official announcement indexes and append unverified "
@@ -1631,6 +1720,15 @@ def validate_plan(plan: dict[str, Any]) -> None:
         plan.get("fixture_rehearsal") == _fixture_rehearsal_contract(),
         "fixture rehearsal contract mismatch",
     )
+    require(
+        plan.get("historical_acquisition") == _historical_acquisition_contract(),
+        "historical acquisition contract mismatch",
+    )
+    require(
+        plan.get("historical_causal_replay")
+        == _historical_causal_replay_contract(),
+        "historical causal replay contract mismatch",
+    )
     require(bool(plan.get("allowed_endpoints")), "plan must declare its endpoint allow-list")
     require(
         set((plan.get("resolved_path_bindings") or {}))
@@ -1646,6 +1744,9 @@ def validate_plan(plan: dict[str, Any]) -> None:
             "candidate_alert_ledger_path",
             "official_t0_arming_root",
             "event_bound_plan_proposal_root",
+            "historical_raw_root",
+            "historical_manifest_root",
+            "historical_receipt_root",
             "windows_powershell_executable",
         },
         "resolved path bindings are incomplete",
