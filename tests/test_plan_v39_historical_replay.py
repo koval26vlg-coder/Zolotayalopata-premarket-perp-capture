@@ -1,9 +1,9 @@
-"""Contract for the active no-capture historical-acquisition PlanOnly v40.
+"""Contract for immutable v39-v41 history and active trust-bound PlanOnly v42.
 
-The active v38 reserves the next event-bound proposal number for v39.  The historical
-The first v39 issue failed its capability scan before activation and remains immutable.
-v40 repairs that binding without erasing history and moves the future event-bound plan
-to v41. These tests do not perform network I/O or write research artifacts.
+The first v39 issue failed its capability scan before activation. v40 repaired that
+binding but independent audits found replay/acquisition authority defects in v40 and
+self-attested production evidence in v41. v42 preserves both immutable predecessors,
+fails production sealed execution closed, and moves event-bound capture to v43.
 """
 
 from __future__ import annotations
@@ -46,10 +46,28 @@ V40_PATH = ROOT / V40_RELATIVE_PATH
 V40_ID = "premarket_perp_capture_20260822_v40"
 V40_SCHEMA = "premarket_perp_capture_planonly_v40"
 V40_STATUS = "HISTORICAL_ACQUISITION_REPLAY_READY_NO_CAPTURE"
+V40_PLAN_HASH = "fbc4456333a2d7886fac3f887d7cca1258dec5091d9671af17ccdddf42eb6c2f"
+V40_FILE_SHA256 = "e60cc27bcaaaff01576026e8649b3be8aca38a5e9827286001d79dbd5ec9498e"
 
 V41_RELATIVE_PATH = "docs/plans/premarket-perp-capture-planonly-20260822-v41.json"
+V41_PATH = ROOT / V41_RELATIVE_PATH
 V41_ID = "premarket_perp_capture_20260822_v41"
 V41_SCHEMA = "premarket_perp_capture_planonly_v41"
+V41_STATUS = "HISTORICAL_ACQUISITION_REPLAY_HARDENED_NO_CAPTURE"
+V41_PLAN_HASH = "137e4c7da1236727cadbba8b22b209a31465b9a7353b06cd916ab7f207a109b2"
+V41_FILE_SHA256 = "ab568c1656342f33ff6a9ab415129fbf4e0386e9e24112d90861536adbd376d8"
+
+V42_RELATIVE_PATH = "docs/plans/premarket-perp-capture-planonly-20260822-v42.json"
+V42_PATH = ROOT / V42_RELATIVE_PATH
+V42_ID = "premarket_perp_capture_20260822_v42"
+V42_SCHEMA = "premarket_perp_capture_planonly_v42"
+V42_STATUS = "HISTORICAL_ACQUISITION_REPLAY_TRUST_BOUND_NO_CAPTURE"
+V42_PLAN_HASH = "72acbc1426ddfc5ccb168dd1d75d6414e5af0d30507b80f32fa8d85020691926"
+V42_FILE_SHA256 = "696f6368f1f2a72fdcaa598148766324ea0d24bdc2e28308f8e15470a5e081b5"
+
+V43_RELATIVE_PATH = "docs/plans/premarket-perp-capture-planonly-20260822-v43.json"
+V43_ID = "premarket_perp_capture_20260822_v43"
+V43_SCHEMA = "premarket_perp_capture_planonly_v43"
 
 HISTORICAL_WRITE_CLASS = "historical_market_data_acquisition"
 HISTORICAL_ACQUISITION_ACTION = (
@@ -57,7 +75,8 @@ HISTORICAL_ACQUISITION_ACTION = (
     "append-only namespace"
 )
 HISTORICAL_REPLAY_ACTION = (
-    "run deterministic offline causal replay over sealed historical evidence"
+    "run deterministic offline historical replay with production execution "
+    "fail-closed until trusted lineage loading"
 )
 
 
@@ -75,6 +94,12 @@ class PlanV39HistoricalReplayContractTests(unittest.TestCase):
         self.assertIsInstance(payload, dict)
         return payload
 
+    def _load_v42(self) -> dict[str, object]:
+        self.assertTrue(V42_PATH.is_file(), "active trust-bound PlanOnly v42 is missing")
+        payload = json.loads(V42_PATH.read_text(encoding="utf-8"))
+        self.assertIsInstance(payload, dict)
+        return payload
+
     def test_v38_and_failed_closed_v39_are_byte_exact_retired_predecessors(self) -> None:
         self.assertEqual(_sha256(V38_PATH), V38_FILE_SHA256)
         v38 = json.loads(V38_PATH.read_text(encoding="utf-8"))
@@ -87,9 +112,10 @@ class PlanV39HistoricalReplayContractTests(unittest.TestCase):
         )
 
         retired = list(trust_root.RETIRED_PLANS)
-        self.assertTrue(retired, "v39 must retain the complete immutable lineage")
+        self.assertTrue(retired, "v42 must retain the complete immutable lineage")
+        retired_by_path = {row["path"]: row for row in retired}
         self.assertEqual(
-            retired[-2],
+            retired_by_path[V38_RELATIVE_PATH],
             {
                 "schema": V38_SCHEMA,
                 "plan_id": V38_ID,
@@ -102,7 +128,7 @@ class PlanV39HistoricalReplayContractTests(unittest.TestCase):
         v39 = json.loads(V39_PATH.read_text(encoding="utf-8"))
         self.assertEqual(v39["plan_hash"], V39_PLAN_HASH)
         self.assertEqual(
-            retired[-1],
+            retired_by_path[V39_RELATIVE_PATH],
             {
                 "schema": V39_SCHEMA,
                 "plan_id": V39_ID,
@@ -111,43 +137,73 @@ class PlanV39HistoricalReplayContractTests(unittest.TestCase):
                 "path": V39_RELATIVE_PATH,
             },
         )
+        self.assertEqual(_sha256(V40_PATH), V40_FILE_SHA256)
+        self.assertEqual(
+            retired_by_path[V40_RELATIVE_PATH],
+            {
+                "schema": V40_SCHEMA,
+                "plan_id": V40_ID,
+                "plan_hash": V40_PLAN_HASH,
+                "plan_file_sha256": V40_FILE_SHA256,
+                "path": V40_RELATIVE_PATH,
+            },
+        )
 
-    def test_v40_is_the_active_exact_no_capture_bridge(self) -> None:
-        plan = self._load_v40()
-        self.assertEqual(plan["schema"], V40_SCHEMA)
-        self.assertEqual(plan["plan_id"], V40_ID)
-        self.assertEqual(plan["status"], V40_STATUS)
-        self.assertEqual(plan["supersedes_plan_id"], V39_ID)
-        self.assertEqual(plan["supersedes_plan_hash"], V39_PLAN_HASH)
+        self.assertEqual(_sha256(V41_PATH), V41_FILE_SHA256)
+        v41 = json.loads(V41_PATH.read_text(encoding="utf-8"))
+        self.assertEqual(v41["status"], V41_STATUS)
+        self.assertEqual(v41["plan_hash"], V41_PLAN_HASH)
+        self.assertEqual(
+            retired_by_path[V41_RELATIVE_PATH],
+            {
+                "schema": V41_SCHEMA,
+                "plan_id": V41_ID,
+                "plan_hash": V41_PLAN_HASH,
+                "plan_file_sha256": V41_FILE_SHA256,
+                "path": V41_RELATIVE_PATH,
+            },
+        )
+
+    def test_v41_is_preserved_and_v42_is_the_active_trust_bound_bridge(self) -> None:
+        v41 = json.loads(V41_PATH.read_text(encoding="utf-8"))
+        self.assertEqual(v41["plan_hash"], V41_PLAN_HASH)
+        plan = self._load_v42()
+        self.assertEqual(_sha256(V42_PATH), V42_FILE_SHA256)
+        self.assertEqual(plan["schema"], V42_SCHEMA)
+        self.assertEqual(plan["plan_id"], V42_ID)
+        self.assertEqual(plan["status"], V42_STATUS)
+        self.assertEqual(plan["plan_hash"], V42_PLAN_HASH)
+        self.assertEqual(plan["supersedes_plan_id"], V41_ID)
+        self.assertEqual(plan["supersedes_plan_hash"], V41_PLAN_HASH)
         self.assertEqual(
             plan["supersedes_plan_path"],
-            V39_PATH.relative_to(ROOT).as_posix(),
+            V41_PATH.relative_to(ROOT).as_posix(),
         )
         self.assertEqual(
             plan["plan_hash"],
             canonical_hash({key: value for key, value in plan.items() if key != "plan_hash"}),
         )
-        self.assertEqual(trust_root.PLAN_SCHEMA, V40_SCHEMA)
-        self.assertEqual(trust_root.PLAN_ID, V40_ID)
+        self.assertEqual(trust_root.PLAN_SCHEMA, V42_SCHEMA)
+        self.assertEqual(trust_root.PLAN_ID, V42_ID)
         self.assertEqual(trust_root.PLAN_HASH, plan["plan_hash"])
-        self.assertEqual(trust_root.PLAN_FILE_SHA256, _sha256(V40_PATH))
+        self.assertEqual(trust_root.PLAN_FILE_SHA256, V42_FILE_SHA256)
 
-    def test_event_bound_proposal_moves_to_v41_without_capture_authority(self) -> None:
-        plan = self._load_v40()
+    def test_event_bound_proposal_moves_to_v43_without_capture_authority(self) -> None:
+        plan = self._load_v42()
         contract = plan["event_bound_plan_proposal"]
-        self.assertEqual(proposal.PROPOSED_PLAN_SCHEMA, V41_SCHEMA)
-        self.assertEqual(proposal.PROPOSED_PLAN_ID, V41_ID)
-        self.assertEqual(proposal.PROPOSED_PLAN_PATH, V41_RELATIVE_PATH)
-        self.assertEqual(contract["proposed_plan_schema"], V41_SCHEMA)
-        self.assertEqual(contract["proposed_plan_id"], V41_ID)
-        self.assertEqual(contract["proposed_plan_path"], V41_RELATIVE_PATH)
+        self.assertEqual(proposal.PROPOSED_PLAN_SCHEMA, V43_SCHEMA)
+        self.assertEqual(proposal.PROPOSED_PLAN_ID, V43_ID)
+        self.assertEqual(proposal.PROPOSED_PLAN_PATH, V43_RELATIVE_PATH)
+        self.assertEqual(contract["proposed_plan_schema"], V43_SCHEMA)
+        self.assertEqual(contract["proposed_plan_id"], V43_ID)
+        self.assertEqual(contract["proposed_plan_path"], V43_RELATIVE_PATH)
         self.assertIs(contract["capture_authorized"], False)
         self.assertIs(contract["capture_token_issued"], False)
         self.assertIs(contract["trust_root_rebound"], False)
         self.assertIs(contract["requires_explicit_user_capture_approval"], True)
 
     def test_historical_acquisition_is_bounded_shared_gate_global_claim_no_token(self) -> None:
-        plan = self._load_v40()
+        plan = self._load_v42()
         policy = plan["write_classes"][HISTORICAL_WRITE_CLASS]
         self.assertEqual(policy, config.WRITE_CLASSES[HISTORICAL_WRITE_CLASS])
         self.assertIs(policy["shared_gate_required"], True)
@@ -187,8 +243,8 @@ class PlanV39HistoricalReplayContractTests(unittest.TestCase):
             self.assertFalse(root.is_relative_to(config.OFFICIAL_T0_ARMING_ROOT))
             self.assertFalse(root.is_relative_to(config.EVENT_BOUND_PLAN_PROPOSAL_ROOT))
 
-    def test_new_runtime_files_are_sha_bound_by_v39(self) -> None:
-        plan = self._load_v40()
+    def test_new_runtime_files_are_sha_bound_by_v42(self) -> None:
+        plan = self._load_v42()
         expected = {
             "historical_acquisition": "src/historical_acquisition.py",
             "historical_causal_replay": "src/historical_causal_replay.py",
@@ -202,11 +258,11 @@ class PlanV39HistoricalReplayContractTests(unittest.TestCase):
             self.assertEqual(configured[role], relative)
             self.assertEqual(declared[role]["repo_path"], relative)
             runtime = ROOT / relative
-            self.assertTrue(runtime.is_file(), f"missing v39 runtime: {relative}")
+            self.assertTrue(runtime.is_file(), f"missing v42 runtime: {relative}")
             self.assertEqual(declared[role]["sha256"], _sha256(runtime))
 
     def test_proxy_history_stays_descriptive_and_capture_remains_unauthorized(self) -> None:
-        plan = self._load_v40()
+        plan = self._load_v42()
         proxy = plan["event_registry"]["proxy_policy"]
         self.assertEqual(proxy["evidence_use"], "DESCRIPTIVE_ONLY")
         self.assertIs(proxy["capture_eligible"], False)
@@ -226,7 +282,11 @@ class PlanV39HistoricalReplayContractTests(unittest.TestCase):
         self.assertNotIn(risk_gate.CAPTURE_ACTION, plan["authorized_after_gate_green"])
         self.assertIn(HISTORICAL_ACQUISITION_ACTION, plan["authorized_after_gate_green"])
         self.assertIn(HISTORICAL_REPLAY_ACTION, plan["authorized_after_gate_green"])
-        status_authority = risk_gate.PLAN_WRITE_AUTHORIZATION[V40_STATUS]
+        self.assertEqual(
+            replay["production_sealed_request_result"],
+            "NOT_RUN_TRUSTED_EVIDENCE_LOADER_REQUIRED",
+        )
+        status_authority = risk_gate.PLAN_WRITE_AUTHORIZATION[V42_STATUS]
         self.assertNotIn("market_data_capture", status_authority["write_classes"])
         self.assertNotIn(risk_gate.CAPTURE_ACTION, status_authority["authorized_actions"])
         self.assertIn(HISTORICAL_WRITE_CLASS, status_authority["write_classes"])

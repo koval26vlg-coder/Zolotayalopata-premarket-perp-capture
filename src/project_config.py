@@ -79,9 +79,11 @@ V36_PLAN_PATH = PROJECT_ROOT / "docs/plans/premarket-perp-capture-planonly-20260
 V37_PLAN_PATH = PROJECT_ROOT / "docs/plans/premarket-perp-capture-planonly-20260822-v37.json"
 V38_PLAN_PATH = PROJECT_ROOT / "docs/plans/premarket-perp-capture-planonly-20260822-v38.json"
 V39_PLAN_PATH = PROJECT_ROOT / "docs/plans/premarket-perp-capture-planonly-20260822-v39.json"
-PLAN_PATH = PROJECT_ROOT / "docs/plans/premarket-perp-capture-planonly-20260822-v40.json"
+V40_PLAN_PATH = PROJECT_ROOT / "docs/plans/premarket-perp-capture-planonly-20260822-v40.json"
+V41_PLAN_PATH = PROJECT_ROOT / "docs/plans/premarket-perp-capture-planonly-20260822-v41.json"
+PLAN_PATH = PROJECT_ROOT / "docs/plans/premarket-perp-capture-planonly-20260822-v42.json"
 NEXT_EVENT_BOUND_PLAN_PATH = (
-    PROJECT_ROOT / "docs/plans/premarket-perp-capture-planonly-20260822-v41.json"
+    PROJECT_ROOT / "docs/plans/premarket-perp-capture-planonly-20260822-v43.json"
 )
 RUN_RECORD_PATH = PROJECT_ROOT / "docs/run/capture-run.json"
 STOP_REQUEST_PATH = PROJECT_ROOT / "docs/run/stop-request.json"
@@ -93,26 +95,35 @@ ANNOUNCEMENT_CANDIDATE_PATH = (
     PROJECT_ROOT / "docs/announcements/official-listing-candidates-v1.jsonl"
 )
 ANNOUNCEMENT_ATTEMPTS_PATH = (
-    PROJECT_ROOT / "docs/announcements/official-listing-discovery-attempts-v40.jsonl"
+    PROJECT_ROOT / "docs/announcements/official-listing-discovery-attempts-v42.jsonl"
 )
 ANNOUNCEMENT_STATE_PATH = (
-    PROJECT_ROOT / "docs/announcements/official-listing-discovery-state-v40.json"
+    PROJECT_ROOT / "docs/announcements/official-listing-discovery-state-v42.json"
 )
 ANNOUNCEMENT_WATCH_CLAIM_PATH = (
-    PROJECT_ROOT / "docs/announcements/official-listing-watch-claim-v40.json"
+    PROJECT_ROOT / "docs/announcements/official-listing-watch-claim-v42.json"
 )
 ANNOUNCEMENT_WATCH_CLAIM_ARCHIVE = (
-    PROJECT_ROOT / "docs/announcements/official-listing-watch-claim-archive-v40"
+    PROJECT_ROOT / "docs/announcements/official-listing-watch-claim-archive-v42"
 )
 CANDIDATE_ALERT_LEDGER_PATH = (
     PROJECT_ROOT / "docs/announcements/official-listing-candidate-alerts-v1.jsonl"
 )
 OFFICIAL_T0_ARMING_ROOT = PROJECT_ROOT / "docs/arming/official-t0-v1"
 EVENT_BOUND_PLAN_PROPOSAL_ROOT = PROJECT_ROOT / "docs/arming/event-bound-plan-proposals-v1"
-HISTORICAL_EVIDENCE_ROOT = PROJECT_ROOT / "docs/historical/v40"
+HISTORICAL_SEED_PATH = PROJECT_ROOT / "docs/historical/historical-event-seeds-v1.json"
+HISTORICAL_EVIDENCE_ROOT = PROJECT_ROOT / "docs/historical/v42"
 HISTORICAL_RAW_ROOT = HISTORICAL_EVIDENCE_ROOT / "raw"
 HISTORICAL_MANIFEST_ROOT = HISTORICAL_EVIDENCE_ROOT / "manifests"
 HISTORICAL_RECEIPT_ROOT = HISTORICAL_EVIDENCE_ROOT / "receipts"
+HISTORICAL_OFFICIAL_ASSERTION_FIELDS = (
+    "venue",
+    "premarket_contract_id",
+    "spot_symbol",
+    "official_spot_t0",
+    "t0_source_class",
+    "official_source_url",
+)
 WINDOWS_POWERSHELL_EXECUTABLE = (
     "C:/Windows/System32/WindowsPowerShell/v1.0/powershell.exe"
 )

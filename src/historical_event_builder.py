@@ -10,15 +10,74 @@ from __future__ import annotations
 import copy
 import hashlib
 import json
+import re
 from decimal import Decimal, InvalidOperation
 from typing import Any
 
 
 SUPPORTED_VENUES = frozenset({"bybit", "okx", "gate"})
+OFFICIAL_ASSERTION_FIELDS = (
+    "venue",
+    "premarket_contract_id",
+    "spot_symbol",
+    "official_spot_t0",
+    "t0_source_class",
+    "official_source_url",
+)
+OFFICIAL_SOURCE_HOSTS = {
+    "bybit": "announcements.bybit.com",
+    "okx": "www.okx.com",
+    "gate": "www.gate.com",
+}
+_SHA256_RE = re.compile(r"^[0-9a-f]{64}$")
 
 
 class HistoricalEventValidationError(ValueError):
     """Raised when a seed or a venue response is not safe to materialise."""
+
+
+def validate_seed_identity(seed: dict[str, object]) -> dict[str, object]:
+    """Validate the preregistered official event anchor before any network call."""
+
+    if not isinstance(seed, dict):
+        raise HistoricalEventValidationError("seed must be an object")
+    value = copy.deepcopy(seed)
+    if value.get("schema") != "premarket_perp_historical_seed_v1":
+        raise HistoricalEventValidationError("historical seed schema mismatch")
+    venue = str(_required_seed_value(value, "venue")).lower()
+    if venue not in SUPPORTED_VENUES:
+        raise HistoricalEventValidationError(f"unsupported venue: {venue}")
+    if str(value.get("listing_venue") or "").lower() != venue:
+        raise HistoricalEventValidationError("listing venue does not match contract venue")
+    if value.get("asset_class") != "CRYPTO_TOKEN":
+        raise HistoricalEventValidationError("historical seed requires CRYPTO_TOKEN")
+    if value.get("t0_source_class") != "OFFICIAL_ANNOUNCEMENT":
+        raise HistoricalEventValidationError("historical seed requires official t0")
+    if value.get("t0_precision_sec") != 1:
+        raise HistoricalEventValidationError("historical seed requires seconds-grade t0")
+    official_t0 = value.get("official_spot_t0")
+    if isinstance(official_t0, bool) or not isinstance(official_t0, int) or official_t0 <= 0:
+        raise HistoricalEventValidationError("official_spot_t0 must be positive integer seconds")
+    source_url = str(_required_seed_value(value, "official_source_url"))
+    prefix = "https://"
+    remainder = source_url[len(prefix):] if source_url.startswith(prefix) else ""
+    authority, separator, path = remainder.partition("/")
+    if (
+        separator != "/"
+        or authority != OFFICIAL_SOURCE_HOSTS[venue]
+        or not path
+        or any(marker in authority for marker in ("@", ":", "?", "#"))
+    ):
+        raise HistoricalEventValidationError("official source URL host is invalid")
+    claimed = value.get("official_record_hash")
+    assertion = {field: _required_seed_value(value, field) for field in OFFICIAL_ASSERTION_FIELDS}
+    if (
+        not isinstance(claimed, str)
+        or _SHA256_RE.fullmatch(claimed) is None
+        or claimed != _canonical_sha256(assertion)
+    ):
+        raise HistoricalEventValidationError("official assertion hash mismatch")
+    return value
 
 
 def _canonical_sha256(value: object) -> str:
@@ -211,9 +270,7 @@ def build_historical_event(
 ) -> dict[str, object]:
     """Build deterministic descriptive-only evidence from an injected fixture."""
 
-    if not isinstance(seed, dict):
-        raise HistoricalEventValidationError("seed must be an object")
-    seed_copy = copy.deepcopy(seed)
+    seed_copy = validate_seed_identity(seed)
     payload_copy = copy.deepcopy(venue_payload)
     venue = str(_required_seed_value(seed_copy, "venue")).lower()
     if venue not in SUPPORTED_VENUES:

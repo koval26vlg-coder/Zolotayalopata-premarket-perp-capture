@@ -22,7 +22,7 @@ import sys
 import unittest
 from pathlib import Path
 from types import ModuleType
-from typing import Any, Callable
+from typing import Any
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -304,14 +304,12 @@ class SealedL2DelegationTests(unittest.TestCase):
         self,
         sealed_request: dict[str, object],
         expected_input_sha256: str,
-        execution_delegate: Callable[[dict[str, object]], dict[str, object]],
     ) -> dict[str, Any]:
         module = runtime()
         try:
             result = module.delegate_sealed_l2_execution(
                 sealed_request=copy.deepcopy(sealed_request),
                 expected_input_sha256=expected_input_sha256,
-                execution_delegate=execution_delegate,
             )
         except Exception as exc:
             raise AssertionError(
@@ -322,61 +320,35 @@ class SealedL2DelegationTests(unittest.TestCase):
             raise AssertionError("sealed L2 delegation must return a JSON-object report")
         return result
 
-    def test_exact_input_hash_is_verified_before_delegation_and_preserved_in_result(self) -> None:
+    def test_exact_input_hash_is_verified_before_bound_engine_rejects_incomplete_input(self) -> None:
         request = self.sealed_request()
         request_before = copy.deepcopy(request)
         expected_hash = canonical_sha256(request)
-        calls: list[dict[str, object]] = []
 
-        def execution_delegate(value: dict[str, object]) -> dict[str, object]:
-            calls.append(copy.deepcopy(value))
-            return {
-                "schema": "premarket_perp_execution_replay_result_v1",
-                "status": "COMPLETE",
-                "result_hash": "e" * 64,
-                "net_pnl_usdt": 1.25,
-                # The historical wrapper must never inherit an acceptance claim.
-                "acceptance_capable": True,
-                "orders_created": 0,
-                "live_execution": False,
-            }
+        report = self.delegate(request, expected_hash)
 
-        report = self.delegate(request, expected_hash, execution_delegate)
-
-        self.assertEqual(calls, [request_before])
         self.assertEqual(request, request_before)
-        self.assertEqual(report["status"], "DELEGATED_SEALED_L2_EXECUTION")
+        self.assertEqual(report["status"], "NOT_RUN_EXECUTION_DELEGATE_REJECTED")
         self.assertEqual(report["execution_input_sha256"], expected_hash)
-        self.assertEqual(report["delegated_result_hash"], "e" * 64)
         self.assertEqual(report["evidence_use"], "EXECUTION_MODEL_SENSITIVITY_ONLY")
         self.assertFalse(report["acceptance_capable"])
-        self.assertFalse(report["execution_report"]["acceptance_capable"])
-        self.assertEqual(report["execution_report"]["net_pnl_usdt"], 1.25)
-        self.assertEqual(report["execution_report"]["orders_created"], 0)
+        self.assertIsNone(report["net_pnl_usdt"])
+        self.assertEqual(report["orders_created"], 0)
 
-    def test_hash_mismatch_or_unsealed_input_never_calls_execution_delegate(self) -> None:
-        calls: list[dict[str, object]] = []
-
-        def execution_delegate(value: dict[str, object]) -> dict[str, object]:
-            calls.append(copy.deepcopy(value))
-            return {"status": "SHOULD_NOT_RUN"}
-
+    def test_hash_mismatch_or_unsealed_input_fails_closed(self) -> None:
         mismatch = self.delegate(
             self.sealed_request(),
             "0" * 64,
-            execution_delegate,
         )
         unsealed_request = self.sealed_request()
         unsealed_request["sealed"] = False
         unsealed = self.delegate(
             unsealed_request,
             canonical_sha256(unsealed_request),
-            execution_delegate,
         )
 
-        self.assertEqual(calls, [])
         self.assertEqual(mismatch["status"], "NOT_RUN_EXECUTION_INPUT_HASH_MISMATCH")
-        self.assertEqual(unsealed["status"], "NOT_RUN_EXECUTION_INPUT_NOT_SEALED_L2")
+        self.assertEqual(unsealed["status"], "NOT_RUN_EXECUTION_DELEGATE_REJECTED")
         for report in (mismatch, unsealed):
             self.assertFalse(report["acceptance_capable"])
             self.assertIsNone(report["net_pnl_usdt"])

@@ -6,18 +6,20 @@ Research-only контур для публичных pre-market perpetual дан
 
 Проект наблюдает рынок с плечом, но никогда не берёт плечо: private API, ключи,
 подпись запросов, ордера, margin, real capital и переводы запрещены. Forward capture
-не запускался и активным PlanOnly v40 не разрешён. v40 сохраняет bounded-поиск,
-alert/arming-контур v38 и добавляет отдельный bounded post-hoc сбор Bybit/OKX/Gate,
-descriptive OHLCV markout и causal replay только для sealed L2 evidence. Будущий
-event-bound capture перенесён в create-only proposal v41. Локальная fail-closed paper
+не запускался и активным PlanOnly v42 не разрешён. v42 сохраняет bounded-поиск,
+alert/arming-контур v38 и отдельный bounded post-hoc сбор Bybit/OKX/Gate,
+descriptive OHLCV markout и fixture-tested fixed causal model. Production replay по
+caller-supplied sealed L2 evidence закрыт до появления независимого loader. v42 также
+закрывает trust-bound findings повторного аудита historical acquisition/replay. Будущий
+event-bound capture перенесён в create-only proposal v43. Локальная fail-closed paper
 simulation остаётся отдельным offline-контуром. Новый
 no-model scheduler делает только дешёвый пяти-минутный due-check; фактическая сеть
 работает по adaptive cadence 6ч/3ч/1ч/5мин.
 
-## Состояние v40
+## Состояние v42
 
-- immutable PlanOnly: `premarket_perp_capture_20260822_v40`;
-- status: `HISTORICAL_ACQUISITION_REPLAY_READY_NO_CAPTURE`;
+- immutable PlanOnly: `premarket_perp_capture_20260822_v42`;
+- status: `HISTORICAL_ACQUISITION_REPLAY_TRUST_BOUND_NO_CAPTURE`;
 - разрешены только metadata registry, human official attestation и локальная
   fail-closed registry quarantine, offline paper-readiness и bounded official-index
   discovery без article-body fetch, а также bounded historical acquisition и offline
@@ -35,7 +37,7 @@ no-model scheduler делает только дешёвый пяти-минут�
 - arming требует current `CRYPTO_TOKEN`, `OFFICIAL_ANNOUNCEMENT`, точность ровно одну
   секунду, точное contract/spot mapping и не менее полного pre-listing окна; receipt
   append-only и не содержит capture token;
-- генератор v41 создаёт только детерминированное предложение, не новый активный план:
+- генератор v43 создаёт только детерминированное предложение, не новый активный план:
   trust root, capture authority и scheduler он не меняет;
 - fixture-rehearsal проходит candidate alert, human attestation validation, arming и
   proposal только во временном каталоге; сеть, toast, production writes, capture token,
@@ -64,17 +66,35 @@ no-model scheduler делает только дешёвый пяти-минут�
   вход `t0-60s`, выходы `t0/+5/+15/+60s`, latency 200 ms, TTL 500 ms,
   taker-like causal depth и paper stress 2x/5x;
 - исторические REST/archive свечи всегда `DESCRIPTIVE_ONLY`: они не создают BBO,
-  partial fill, funding или net PnL; execution-модель запускается только после
-  exact-hash проверки sealed depth/BBO evidence;
+  partial fill, funding или net PnL; caller-supplied sealed depth/BBO не запускает
+  execution-модель без независимой проверки manifest, receipt и lineage;
+- historical seed принимается только по exact Plan-bound path/SHA и по canonical
+  assertion hash официальных полей; sealed execution evidence требует строгую схему,
+  отсортированный non-crossed depth и причинные actual-fill clocks для funding;
+- seed Plan identity после загрузки повторно сверяется со свежим successful preflight
+  до writer claim; collision claim возвращает структурированный
+  `RETRY_NEXT_INTERVAL` JSON без traceback и не запускает сеть;
+- funding считается по уникальным settlement events и settlement mark, а отсутствие
+  mark/index возвращает явный missing liquidation result, не безопасное `false`;
+- любой caller-supplied sealed request возвращает
+  `NOT_RUN_TRUSTED_EVIDENCE_LOADER_REQUIRED`, пока не реализован независимый loader,
+  проверяющий manifest, terminal receipt и lineage; fixed execution model доступна
+  только явным synthetic fixtures;
+- terminal historical receipt считается успешным только после O_EXCL/fsync и точного
+  readback; ошибка receipt оставляет retry-состояние и не архивирует claim как success;
 - пока отсутствуют sealed capture и полный cost model, результатом могут быть только
   `NO_ELIGIBLE_EVENT`, `PAPER_NOT_RUN_NO_CAPTURE_EVIDENCE` или
   `PAPER_NOT_RUN_COST_MODEL_MISSING`; виртуальная позиция и net PnL не создаются;
 - replay descriptive-only и не поддерживает ACCEPT/REJECT стратегии.
 
-Активные v40 plan hash и file SHA-256 закреплены во внешнем trust root
-`src/frozen_plan_bindings.py`. v39 сохранён immutable как fail-closed выпуск, который
-не прошёл capability scan и не запускал сбор; v38 и более ранние версии также
-сохранены byte-identical. v37 сохранён byte-identical.
+Активные v42 plan hash и file SHA-256 закреплены во внешнем trust root
+`src/frozen_plan_bindings.py`. v40 сохранён immutable как audit-defective lineage.
+v41 сохранён immutable как отклонённый и не активированный self-attested-evidence
+draft: повторный аудит показал, что caller мог сам сформировать sealed envelope без
+независимой проверки manifest/receipt/lineage. Historical tick не запускался ни под
+v40, ни под v41. v39 сохранён immutable как fail-closed выпуск, который не прошёл
+capability scan; v38 и более ранние версии также сохранены byte-identical.
+v37 сохранён byte-identical.
 
 ## Компоненты
 
@@ -91,7 +111,7 @@ no-model scheduler делает только дешёвый пяти-минут�
 | `src/announcement_watch_scheduler.py` | adaptive wake-only due-controller без модели |
 | `src/candidate_alert.py` | at-most-once alert ledger и локальный toast dispatch |
 | `src/official_t0_arming.py` | immutable official-t0 no-capture arming receipt |
-| `src/event_bound_plan_proposal.py` | deterministic create-only proposal для v41 |
+| `src/event_bound_plan_proposal.py` | deterministic create-only proposal для v43 |
 | `src/fixture_rehearsal.py` | deterministic temporary rehearsal без authority |
 | `src/registry_quarantine.py` | локальная CAS-bound quarantine повреждённого поколения |
 | `src/capture.py` | bounded collector implementation; активным планом не авторизован |
@@ -389,7 +409,7 @@ $readback | ConvertTo-Json -Depth 32
 ```
 
 Каждый writer сам делает initial и commit preflight. Этот маршрут не запускает market
-capture, не выдаёт capture token и не создаёт event-bound v41 автоматически.
+capture, не выдаёт capture token и не создаёт event-bound v43 автоматически.
 
 Fixture-only репетиция всей no-authority цепочки:
 
@@ -417,8 +437,8 @@ production paths.
 
 Preflight не запускает writer автоматически. Реальные refresh, attestation,
 quarantine и discovery являются отдельными операциями. После human official
-attestation v40 может создать только no-capture arming receipt и детерминированное
-предложение. Реальный event-bound v41 должен быть отдельно проверен, выпущен и явно
+attestation v42 может создать только no-capture arming receipt и детерминированное
+предложение. Реальный event-bound v43 должен быть отдельно проверен, выпущен и явно
 одобрен пользователем до ровно одного видимого `market_data_capture`.
 
 Один preregistered historical tick (публичные данные, без token/order/capture):
@@ -433,13 +453,23 @@ $received = [DateTime]::UtcNow.ToString("yyyy-MM-ddTHH:mm:ssZ")
 
 ## Immutable lineage
 
-Опубликованы v1–v40. Все прежние планы остаются на диске и проверяются по file SHA,
+Опубликованы v1–v42. Все прежние планы остаются на диске и проверяются по file SHA,
 canonical plan hash и identity. v27 и v28 сохранены; v29 сохранён byte-identical;
 v30–v37 сохранены byte-identical. v37 зафиксировал первую recovery/rehearsal редакцию,
 но полный suite выявил несовместимое расширение production action-list; v38 supersede-ит
 его, не переписывая. v39 впервые preregistered historical acquisition, но fail-closed
 capability scan обнаружил неполный статический Gate URL до любого запуска. v40 исправил
-binding отдельным новым планом; v39 не переписывался и данные под ним не создавались.
+binding отдельным новым планом; затем аудит выявил spoofable seed/delegation, funding
+по target clocks, доверие к невалидированному depth, неоднозначную missing-liquidation
+семантику и небезопасный terminal receipt path. v41 отдельным immutable выпуском
+добавил Plan-bound seed/assertion hash, sealed evidence envelope, actual-fill funding
+clocks, строгий depth, явный missing liquidation result и receipt fsync/readback.
+Повторный аудит отклонил и не активировал v41: его sealed envelope оставался
+self-attested. v42 требует независимый trusted-evidence loader для caller-supplied
+requests, сохраняет fixed execution model только для synthetic fixtures, повторно
+сверяет seed Plan identity со свежим preflight до claim и сериализует claim collision
+как retry JSON. Historical tick до этого trust-bound выпуска не запускался; v39,
+v40 и v41 не переписывались.
 Ни один старый PlanOnly не переписывался.
 
 См. `AGENTS.md`, `src/frozen_plan_bindings.py` и решения в `docs/decisions/`.

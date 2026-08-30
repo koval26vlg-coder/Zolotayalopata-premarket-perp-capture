@@ -69,7 +69,12 @@ def _canonical_sha256(value: object) -> str:
 
 
 def _seed(venue: str, *, suffix: str = "") -> dict[str, object]:
-    return {
+    official_urls = {
+        "bybit": "https://announcements.bybit.com/en/article/new",
+        "okx": "https://www.okx.com/en-us/help/new",
+        "gate": "https://www.gate.com/announcements/article/new",
+    }
+    seed = {
         "schema": "premarket_perp_historical_seed_v1",
         "event_id": f"historical-{venue}-new-{T0}{suffix}",
         "venue": venue,
@@ -83,11 +88,22 @@ def _seed(venue: str, *, suffix: str = "") -> dict[str, object]:
         "transition_ts": None,
         "t0_source_class": "OFFICIAL_ANNOUNCEMENT",
         "t0_precision_sec": 1,
-        "official_source_url": f"https://announcements.example.test/{venue}/new",
-        "official_record_hash": "a" * 64,
+        "official_source_url": official_urls[venue],
         "history_start_ts": T0 - 60,
         "history_end_ts": T0 + 60,
     }
+    seed["official_record_hash"] = _canonical_sha256({
+        field: seed[field]
+        for field in (
+            "venue",
+            "premarket_contract_id",
+            "spot_symbol",
+            "official_spot_t0",
+            "t0_source_class",
+            "official_source_url",
+        )
+    })
+    return seed
 
 
 def _fixture_payload(venue: str) -> object:
@@ -234,6 +250,8 @@ class HistoricalAcquisitionV39Contract(unittest.TestCase):
                         "ok": True,
                         "verified": True,
                         "decision": "ALLOW_HISTORICAL_ACQUISITION",
+                        "write_class": "historical_market_data_acquisition",
+                        "action": self.acquisition.risk_gate.HISTORICAL_ACQUISITION_ACTION,
                         "plan_id": "premarket_perp_capture_20260822_v40",
                         "plan_hash": "e" * 64,
                     },
@@ -301,6 +319,8 @@ class HistoricalAcquisitionV39Contract(unittest.TestCase):
                 "limits",
                 "transport",
                 "received_at_utc",
+                "expected_plan_id",
+                "expected_plan_hash",
             },
             set(signature.parameters),
         )
@@ -375,6 +395,17 @@ class HistoricalAcquisitionV39Contract(unittest.TestCase):
         with (
             mock.patch.object(
                 self.acquisition,
+                "_load_bound_seed_set",
+                return_value={
+                    "schema": "premarket_perp_historical_seed_set_v1",
+                    "evidence_use": "DESCRIPTIVE_ONLY",
+                    "events": [_seed("bybit")],
+                    "_bound_plan_id": "premarket_perp_capture_20260822_v42",
+                    "_bound_plan_hash": "e" * 64,
+                },
+            ),
+            mock.patch.object(
+                self.acquisition,
                 "run_historical_acquisition",
                 return_value=terminal,
             ) as run,
@@ -394,6 +425,11 @@ class HistoricalAcquisitionV39Contract(unittest.TestCase):
         self.assertEqual(json.loads(stdout.getvalue()), terminal)
         kwargs = run.call_args.kwargs
         self.assertEqual(kwargs["seeds"], [_seed("bybit")])
+        self.assertEqual(
+            kwargs["expected_plan_id"],
+            "premarket_perp_capture_20260822_v42",
+        )
+        self.assertEqual(kwargs["expected_plan_hash"], "e" * 64)
         self.assertIs(kwargs["transport"], self.acquisition.default_public_transport)
         self.assertEqual(kwargs["roots"].raw_root, self.acquisition.config.HISTORICAL_RAW_ROOT)
         self.assertEqual(
@@ -413,6 +449,9 @@ class HistoricalAcquisitionV39Contract(unittest.TestCase):
             return {
                 "ok": True,
                 "verified": True,
+                "decision": "ALLOW_HISTORICAL_ACQUISITION",
+                "write_class": "historical_market_data_acquisition",
+                "action": self.acquisition.risk_gate.HISTORICAL_ACQUISITION_ACTION,
                 "plan_id": "premarket_perp_capture_20260822_v40",
                 "plan_hash": "e" * 64,
             }
@@ -532,6 +571,9 @@ class HistoricalAcquisitionV39Contract(unittest.TestCase):
                 return_value={
                     "ok": True,
                     "verified": True,
+                    "decision": "ALLOW_HISTORICAL_ACQUISITION",
+                    "write_class": "historical_market_data_acquisition",
+                    "action": self.acquisition.risk_gate.HISTORICAL_ACQUISITION_ACTION,
                     "plan_id": "plan-v40",
                     "plan_hash": "e" * 64,
                 },

@@ -76,6 +76,9 @@ class ResolvedPathBindingTests(unittest.TestCase):
             "event_bound_plan_proposal_root": str(
                 risk_gate.config.EVENT_BOUND_PLAN_PROPOSAL_ROOT.resolve(strict=False)
             ),
+            "historical_seed_path": str(
+                risk_gate.config.HISTORICAL_SEED_PATH.resolve(strict=False)
+            ),
             "historical_raw_root": str(
                 risk_gate.config.HISTORICAL_RAW_ROOT.resolve(strict=False)
             ),

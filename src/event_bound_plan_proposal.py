@@ -1,10 +1,10 @@
-"""Build a sealed *proposal* for a future event-bound v41 PlanOnly.
+"""Build a sealed *proposal* for a future event-bound v43 PlanOnly.
 
 This module intentionally cannot activate a plan, rebind the external trust root, mint
 a capture token, or contact an exchange.  Its only output is a deterministic JSON
 proposal derived from one already-sealed no-capture official-t0 arming receipt.
-Publishing and authorising the real v41 PlanOnly remains a separate, explicit user
-checkpoint.  v40 is the no-capture historical-acquisition and replay release.
+Publishing and authorising the real v43 PlanOnly remains a separate, explicit user
+checkpoint.  v42 is the trust-bound no-capture historical-acquisition/replay release.
 """
 
 from __future__ import annotations
@@ -30,10 +30,10 @@ import risk_gate
 
 
 PROPOSAL_SCHEMA = "premarket_perp_event_bound_plan_proposal_v1"
-PROPOSED_PLAN_SCHEMA = "premarket_perp_capture_planonly_v41"
-PROPOSED_PLAN_ID = "premarket_perp_capture_20260822_v41"
+PROPOSED_PLAN_SCHEMA = "premarket_perp_capture_planonly_v43"
+PROPOSED_PLAN_ID = "premarket_perp_capture_20260822_v43"
 PROPOSED_PLAN_PATH = (
-    "docs/plans/premarket-perp-capture-planonly-20260822-v41.json"
+    "docs/plans/premarket-perp-capture-planonly-20260822-v43.json"
 )
 ARMING_RECEIPT_SCHEMA = "premarket_official_t0_arming_receipt_v1"
 ARMING_RECEIPT_TYPE = "official_t0_arming_receipt"
@@ -324,7 +324,7 @@ def build_event_bound_plan_proposal(
             "anchor_plan_id": anchor["plan_id"],
             "anchor_plan_hash": anchor["plan_hash"],
         },
-        "current_lifecycle_snapshot": "REQUIRED_UNDER_V41_BEFORE_CAPTURE",
+        "current_lifecycle_snapshot": "REQUIRED_UNDER_V43_BEFORE_CAPTURE",
         "capture_bounds": {
             "official_spot_t0": t0,
             "capture_start_ts": capture_start,
@@ -342,12 +342,12 @@ def build_event_bound_plan_proposal(
             "selected_market_data_endpoints": _selected_market_endpoints(venue),
             "authenticated_endpoints_allowed": False,
             "order_endpoints_allowed": False,
-            "requires_exact_v41_capability_scan": True,
+            "requires_exact_v43_capability_scan": True,
         },
         "implementation_binding": {
-            "mode": "RECOMPUTE_AND_FREEZE_ALL_CODE_SHA256_AT_V41_ISSUE",
+            "mode": "RECOMPUTE_AND_FREEZE_ALL_CODE_SHA256_AT_V43_ISSUE",
             "active_plan_file_sha256": trust_root.PLAN_FILE_SHA256,
-            "v41_plan_hash_assigned": False,
+            "v43_plan_hash_assigned": False,
         },
         "execution_prohibitions": {
             "private_api": True,
@@ -362,7 +362,7 @@ def build_event_bound_plan_proposal(
         "capture_token_issued": False,
         "trust_root_rebound": False,
         "requires_explicit_user_capture_approval": True,
-        "requires_new_immutable_v41_plan": True,
+        "requires_new_immutable_v43_plan": True,
         "acceptance_capable": False,
     }
     proposal["event_binding_hash"] = canonical_hash({
@@ -566,7 +566,7 @@ def _write_event_bound_plan_proposal_to_roots(
 
         root = Path(proposal_root)
         path = root / arming_id / (
-            f"{revision:020d}-{receipt_hash}-v41-proposal.json"
+            f"{revision:020d}-{receipt_hash}-v43-proposal.json"
         )
         payload = (
             json.dumps(proposal, ensure_ascii=False, indent=2, sort_keys=True) + "\n"

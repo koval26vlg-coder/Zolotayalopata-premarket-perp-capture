@@ -6,7 +6,9 @@ import copy
 import hashlib
 import json
 import math
-from typing import Any, Callable
+from typing import Any
+
+import execution_replay
 
 
 ENTRY_OFFSET_SEC = -60
@@ -216,25 +218,26 @@ def delegate_sealed_l2_execution(
     *,
     sealed_request: dict[str, object],
     expected_input_sha256: str,
-    execution_delegate: Callable[[dict[str, object]], dict[str, object]],
 ) -> dict[str, Any]:
-    """Verify an exact sealed L2 request before calling an injected pure engine."""
+    """Verify an exact sealed L2 request before calling the bound pure engine."""
 
     request_copy = copy.deepcopy(sealed_request)
     actual_hash = _canonical_sha256(request_copy)
     if actual_hash != expected_input_sha256:
         return _delegation_failure("NOT_RUN_EXECUTION_INPUT_HASH_MISMATCH", actual_hash)
-    if (
-        request_copy.get("sealed") is not True
-        or request_copy.get("evidence_class") != "SEALED_L2_CAPTURE"
-    ):
-        return _delegation_failure("NOT_RUN_EXECUTION_INPUT_NOT_SEALED_L2", actual_hash)
     try:
-        delegated = execution_delegate(copy.deepcopy(request_copy))
+        delegated = execution_replay.replay_fixed_long(copy.deepcopy(request_copy))
     except Exception:
         return _delegation_failure("NOT_RUN_EXECUTION_DELEGATE_FAILED", actual_hash)
     if not isinstance(delegated, dict):
         return _delegation_failure("NOT_RUN_EXECUTION_DELEGATE_INVALID", actual_hash)
+    if str(delegated.get("status") or "").startswith("NOT_RUN_"):
+        failure = _delegation_failure("NOT_RUN_EXECUTION_DELEGATE_REJECTED", actual_hash)
+        failure["delegate_status"] = delegated.get("status")
+        failure["result_hash"] = _canonical_sha256(
+            {key: value for key, value in failure.items() if key != "result_hash"}
+        )
+        return failure
     execution_report = copy.deepcopy(delegated)
     execution_report["acceptance_capable"] = False
     report = {

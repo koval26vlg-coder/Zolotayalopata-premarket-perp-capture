@@ -84,7 +84,12 @@ VENUE_CASES = {
 
 def _seed(venue: str) -> dict[str, object]:
     case = VENUE_CASES[venue]
-    return {
+    official_urls = {
+        "bybit": "https://announcements.bybit.com/en/article/new",
+        "okx": "https://www.okx.com/en-us/help/new",
+        "gate": "https://www.gate.com/announcements/article/new",
+    }
+    seed = {
         "schema": "premarket_perp_historical_seed_v1",
         "event_id": f"historical-{venue}-new-{T0}",
         "venue": venue,
@@ -98,8 +103,7 @@ def _seed(venue: str) -> dict[str, object]:
         "transition_ts": None,
         "t0_source_class": "OFFICIAL_ANNOUNCEMENT",
         "t0_precision_sec": 1,
-        "official_source_url": f"https://announcements.example.test/{venue}/new",
-        "official_record_hash": "a" * 64,
+        "official_source_url": official_urls[venue],
         "history_source_class": "VENUE_PUBLIC_REST_POSTHOC_OHLCV",
         "history_source_url": case["source_url"],
         "history_request_params": {
@@ -109,6 +113,18 @@ def _seed(venue: str) -> dict[str, object]:
             "end_ts": T0 + 60,
         },
     }
+    seed["official_record_hash"] = _canonical_sha256({
+        field: seed[field]
+        for field in (
+            "venue",
+            "premarket_contract_id",
+            "spot_symbol",
+            "official_spot_t0",
+            "t0_source_class",
+            "official_source_url",
+        )
+    })
+    return seed
 
 
 def _canonical_sha256(value: object) -> str:

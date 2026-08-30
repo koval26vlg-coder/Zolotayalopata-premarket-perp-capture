@@ -940,7 +940,7 @@ class ControlPlaneAuthorizationTests(unittest.TestCase):
             config.ANNOUNCEMENT_WATCH_CLAIM_PATH,
             config.ANNOUNCEMENT_WATCH_CLAIM_ARCHIVE,
         ):
-            self.assertIn("v40", path.name)
+            self.assertIn("v42", path.name)
 
 
 class V33ImmutablePlanTests(unittest.TestCase):

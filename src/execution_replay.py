@@ -10,6 +10,7 @@ import copy
 import hashlib
 import json
 import math
+import re
 from typing import Any
 
 
@@ -25,6 +26,7 @@ EXPECTED_MODEL = {
     "entry_liquidity": "TAKER_ASKS",
     "exit_liquidity": "TAKER_BIDS",
 }
+_SHA256_RE = re.compile(r"^[0-9a-f]{64}$")
 
 
 def canonical_result_hash(value: object) -> str:
@@ -96,6 +98,155 @@ def _base_report(status: str, missing: list[str] | None = None) -> dict[str, Any
     }
     report["result_hash"] = canonical_result_hash(report)
     return report
+
+
+def _payload_without_envelope(request: dict[str, Any]) -> dict[str, Any]:
+    payload = copy.deepcopy(request)
+    payload.pop("evidence_envelope", None)
+    return payload
+
+
+def _validate_evidence_boundary(request: dict[str, Any]) -> tuple[str | None, str | None]:
+    """Return (mode, failure status) for explicit synthetic or sealed evidence."""
+
+    if request.get("schema") != "premarket_perp_execution_replay_request_v1":
+        return None, "NOT_RUN_EXECUTION_REQUEST_SCHEMA_MISMATCH"
+    envelope = request.get("evidence_envelope")
+    event = request.get("event")
+    legacy_synthetic = (
+        envelope is None
+        and isinstance(event, dict)
+        and event.get("evidence_class") == "SYNTHETIC_OFFLINE_ONLY"
+        and not any(
+            key in request
+            for key in ("sealed", "evidence_class", "capture_manifest_sha256")
+        )
+    )
+    if legacy_synthetic:
+        return "SYNTHETIC_OFFLINE_ONLY", None
+    if not isinstance(envelope, dict):
+        return None, "NOT_RUN_EVIDENCE_SEAL_MISSING"
+    if (
+        envelope.get("schema") != "premarket_perp_execution_evidence_envelope_v1"
+        or envelope.get("sealed") is not True
+        or envelope.get("evidence_class") != "SEALED_L2_CAPTURE"
+        or request.get("sealed") is not True
+        or request.get("evidence_class") != "SEALED_L2_CAPTURE"
+    ):
+        return None, "NOT_RUN_EVIDENCE_SEAL_INVALID"
+    manifest_hash = envelope.get("capture_manifest_sha256")
+    if (
+        not isinstance(manifest_hash, str)
+        or _SHA256_RE.fullmatch(manifest_hash) is None
+        or manifest_hash != request.get("capture_manifest_sha256")
+    ):
+        return None, "NOT_RUN_EVIDENCE_MANIFEST_HASH_INVALID"
+    actual = canonical_result_hash(_payload_without_envelope(request))
+    if envelope.get("payload_sha256") != actual:
+        return None, "NOT_RUN_EVIDENCE_PAYLOAD_HASH_MISMATCH"
+    # A caller can always recompute both hashes above.  Until an independent loader
+    # verifies the on-disk manifest, terminal receipt and capture lineage, the pure
+    # engine must not promote a self-attested request to production evidence.
+    return None, "NOT_RUN_TRUSTED_EVIDENCE_LOADER_REQUIRED"
+
+
+def _validate_event_and_spec(
+    event: object,
+    spec: object,
+    *,
+    evidence_mode: str,
+) -> list[str]:
+    errors: list[str] = []
+    if not isinstance(event, dict) or not isinstance(spec, dict):
+        return ["event_or_contract_spec"]
+    if spec.get("schema") != "premarket_perp_contract_spec_v1":
+        errors.append("contract_spec.schema")
+    if event.get("venue") != spec.get("venue"):
+        errors.append("event.venue")
+    if event.get("contract_id") != spec.get("contract_id"):
+        errors.append("event.contract_id")
+    if evidence_mode == "SEALED_L2_CAPTURE":
+        if event.get("t0_source_class") != "OFFICIAL_ANNOUNCEMENT":
+            errors.append("event.t0_source_class")
+        if event.get("t0_precision_sec") != 1:
+            errors.append("event.t0_precision_sec")
+        official_hash = event.get("official_record_hash")
+        if not isinstance(official_hash, str) or _SHA256_RE.fullmatch(official_hash) is None:
+            errors.append("event.official_record_hash")
+        source_url = event.get("official_source_url")
+        if not isinstance(source_url, str) or not source_url.startswith("https://"):
+            errors.append("event.official_source_url")
+    maintenance = _finite_number(spec.get("maintenance_margin_rate"))
+    if maintenance is None or maintenance < 0 or maintenance >= 1:
+        errors.append("contract_spec.maintenance_margin_rate")
+    return errors
+
+
+def _validate_depth_evidence(snapshots: list[dict[str, Any]]) -> list[str]:
+    errors: list[str] = []
+    identifiers: set[str] = set()
+    for row in snapshots:
+        if not isinstance(row, dict) or row.get("schema") != "premarket_perp_depth_snapshot_v1":
+            errors.append("depth_snapshots.schema")
+            continue
+        snapshot_id = row.get("snapshot_id")
+        if not isinstance(snapshot_id, str) or not snapshot_id or snapshot_id in identifiers:
+            errors.append("depth_snapshots.snapshot_id")
+            continue
+        identifiers.add(snapshot_id)
+        received = _finite_number(row.get("received_ts"))
+        requested = _finite_number(row.get("request_ts"))
+        if received is None or requested is None or received < requested:
+            errors.append(f"depth_snapshots.{snapshot_id}.clock")
+        bids = _valid_levels(row, "SELL")
+        asks = _valid_levels(row, "BUY")
+        raw_bids = row.get("bids")
+        raw_asks = row.get("asks")
+        if not isinstance(raw_bids, list) or len(bids) != len(raw_bids):
+            errors.append(f"depth_snapshots.{snapshot_id}.bids")
+        if not isinstance(raw_asks, list) or len(asks) != len(raw_asks):
+            errors.append(f"depth_snapshots.{snapshot_id}.asks")
+        if any(left[0] < right[0] for left, right in zip(bids, bids[1:])):
+            errors.append(f"depth_snapshots.{snapshot_id}.bids_order")
+        if any(left[0] > right[0] for left, right in zip(asks, asks[1:])):
+            errors.append(f"depth_snapshots.{snapshot_id}.asks_order")
+        if bids and asks and bids[0][0] >= asks[0][0]:
+            errors.append(f"depth_snapshots.{snapshot_id}.crossed")
+    return errors
+
+
+def _validate_funding_evidence(
+    rows: list[dict[str, Any]],
+    *,
+    strict_mark: bool,
+) -> list[str]:
+    errors: list[str] = []
+    identifiers: set[str] = set()
+    settlements: set[float] = set()
+    for row in rows:
+        if not isinstance(row, dict) or row.get("schema") != "premarket_perp_funding_settlement_v1":
+            errors.append("funding_observations.schema")
+            continue
+        observation_id = row.get("observation_id")
+        settlement = _finite_number(row.get("settlement_ts"))
+        received = _finite_number(row.get("received_ts"))
+        rate = _finite_number(row.get("rate"))
+        mark = _finite_number(row.get("settlement_mark_price"), positive=True)
+        if not isinstance(observation_id, str) or not observation_id or observation_id in identifiers:
+            errors.append("funding_observations.observation_id")
+        else:
+            identifiers.add(observation_id)
+        if settlement is None or settlement in settlements:
+            errors.append("funding_observations.settlement_ts")
+        else:
+            settlements.add(settlement)
+        if received is None or settlement is None or received < settlement:
+            errors.append("funding_observations.received_ts")
+        if rate is None:
+            errors.append("funding_observations.rate")
+        if strict_mark and mark is None:
+            errors.append("funding_observations.settlement_mark_price")
+    return errors
 
 
 def _validate_fixed_model(model: dict[str, Any]) -> list[str]:
@@ -311,9 +462,10 @@ def _sweep_exit(
 
 def _observed_funding(
     observations: list[dict[str, Any]],
-    entry_target: float,
-    exit_target: float,
-    entry_quote: float,
+    entry_received: float,
+    exit_received: float,
+    position_base_qty: float,
+    fallback_mark_price: float,
 ) -> tuple[dict[str, Any], float]:
     selected: list[dict[str, Any]] = []
     for row in observations:
@@ -330,15 +482,23 @@ def _observed_funding(
             or not isinstance(observation_id, str)
         ):
             continue
-        if entry_target < settlement <= exit_target and received <= exit_target + 1.0:
+        if (
+            entry_received < settlement <= exit_received
+            and settlement <= received <= exit_received
+        ):
             selected.append(row)
     selected.sort(key=lambda row: (float(row["settlement_ts"]), row["observation_id"]))
-    total_rate = sum(float(row["rate"]) for row in selected)
-    funding_pnl = -entry_quote * total_rate
+    funding_pnl = -sum(
+        position_base_qty
+        * float(row.get("settlement_mark_price") or fallback_mark_price)
+        * float(row["rate"])
+        for row in selected
+    )
     return (
         {
             "settlement_ids": [row["observation_id"] for row in selected],
-            "observed_rate_sum": total_rate,
+            "observed_rate_sum": sum(float(row["rate"]) for row in selected),
+            "valuation": "POSITION_BASE_QTY_X_SETTLEMENT_MARK_PRICE",
             "extrapolated": False,
         },
         funding_pnl,
@@ -352,7 +512,7 @@ def _liquidation_and_divergence(
     entry_price: float,
     maintenance_margin_rate: float,
     leverages: list[int],
-) -> tuple[dict[str, Any], float | None]:
+) -> tuple[dict[str, Any], float | None, bool]:
     path: list[dict[str, Any]] = []
     for row in observations:
         if not isinstance(row, dict):
@@ -374,23 +534,40 @@ def _liquidation_and_divergence(
             for row in path
         )
     stress: dict[str, Any] = {}
+    if not path:
+        for leverage in leverages:
+            stress[f"{leverage}x"] = {
+                "liquidated": None,
+                "evidence_coverage": "MISSING",
+                "liquidation_threshold": None,
+                "trigger_observation_id": None,
+                "trigger_mark_price": None,
+                "index_price_at_trigger": None,
+            }
+        return stress, None, False
     for leverage in leverages:
         threshold = entry_price * (1.0 - 1.0 / float(leverage) + maintenance_margin_rate)
         trigger = next((row for row in path if float(row["mark_price"]) <= threshold), None)
         stress[f"{leverage}x"] = {
             "liquidated": trigger is not None,
+            "evidence_coverage": "OBSERVED_PATH",
             "liquidation_threshold": threshold,
             "trigger_observation_id": None if trigger is None else trigger.get("observation_id"),
             "trigger_mark_price": None if trigger is None else float(trigger["mark_price"]),
             "index_price_at_trigger": None if trigger is None else float(trigger["index_price"]),
         }
-    return stress, max_divergence
+    return stress, max_divergence, True
 
 
 def replay_fixed_long(request: dict[str, Any]) -> dict[str, Any]:
     """Replay the preregistered fixed LONG model over in-memory evidence."""
 
     request_copy = copy.deepcopy(request)
+    if not isinstance(request_copy, dict):
+        return _base_report("NOT_RUN_EXECUTION_REQUEST_INVALID", ["request"])
+    evidence_mode, boundary_error = _validate_evidence_boundary(request_copy)
+    if boundary_error is not None:
+        return _base_report(boundary_error)
     missing = _missing_inputs(request_copy)
     if missing:
         return _base_report("NOT_RUN_MANDATORY_INPUT_MISSING", sorted(missing))
@@ -398,6 +575,13 @@ def replay_fixed_long(request: dict[str, Any]) -> dict[str, Any]:
     spec = request_copy["contract_spec"]
     if not isinstance(model, dict) or not isinstance(spec, dict):
         return _base_report("NOT_RUN_MANDATORY_INPUT_MISSING", ["model_or_contract_spec"])
+    identity_errors = _validate_event_and_spec(
+        request_copy.get("event"),
+        spec,
+        evidence_mode=str(evidence_mode),
+    )
+    if identity_errors:
+        return _base_report("NOT_RUN_EVENT_OR_CONTRACT_IDENTITY_INVALID", sorted(identity_errors))
     mismatches = _validate_fixed_model(model)
     if mismatches:
         return _base_report("NOT_RUN_FIXED_MODEL_MISMATCH", sorted(mismatches))
@@ -413,6 +597,15 @@ def replay_fixed_long(request: dict[str, Any]) -> dict[str, Any]:
     mark_rows = request_copy["mark_index_observations"]
     if not all(isinstance(value, list) for value in (snapshots, funding_rows, mark_rows)):
         return _base_report("NOT_RUN_INVALID_MANDATORY_INPUT", ["evidence_lists"])
+    depth_errors = _validate_depth_evidence(snapshots)
+    if depth_errors:
+        return _base_report("NOT_RUN_INVALID_DEPTH_EVIDENCE", sorted(set(depth_errors)))
+    funding_errors = _validate_funding_evidence(
+        funding_rows,
+        strict_mark=evidence_mode == "SEALED_L2_CAPTURE",
+    )
+    if funding_errors:
+        return _base_report("NOT_RUN_INVALID_FUNDING_EVIDENCE", sorted(set(funding_errors)))
 
     latency_ms = float(model["latency_ms"])
     ttl_ms = float(model["order_ttl_ms"])
@@ -463,21 +656,10 @@ def replay_fixed_long(request: dict[str, Any]) -> dict[str, Any]:
         )
         residual = max(0.0, entry["filled_base_qty"] - exit_attempt["filled_base_qty"])
         fully_closed = residual <= max(1e-10, entry["filled_base_qty"] * 1e-8)
-        funding_summary, funding_pnl = _observed_funding(
-            funding_rows,
-            entry_target,
-            exit_target,
-            entry["filled_quote_notional"],
-        )
         exit_fee = exit_attempt["filled_quote_notional"] * float(model["taker_fee_bps"]) / 10_000.0
         gross = (
             exit_attempt["filled_quote_notional"] - entry["filled_quote_notional"]
             if fully_closed
-            else None
-        )
-        net = (
-            gross - entry_fee - exit_fee + funding_pnl
-            if gross is not None
             else None
         )
         exit_received = (
@@ -485,7 +667,19 @@ def replay_fixed_long(request: dict[str, Any]) -> dict[str, Any]:
             if exit_snapshot is not None
             else exit_target + latency_ms / 1000.0 + ttl_ms / 1000.0
         )
-        stress, max_divergence = _liquidation_and_divergence(
+        funding_summary, funding_pnl = _observed_funding(
+            funding_rows,
+            entry_received,
+            exit_received,
+            entry["filled_base_qty"],
+            float(entry["vwap_price"]),
+        )
+        net = (
+            gross - entry_fee - exit_fee + funding_pnl
+            if gross is not None
+            else None
+        )
+        stress, max_divergence, liquidation_evidence_observed = _liquidation_and_divergence(
             mark_rows,
             entry_received,
             exit_received,
@@ -509,6 +703,7 @@ def replay_fixed_long(request: dict[str, Any]) -> dict[str, Any]:
                 "funding_pnl_usdt": funding_pnl,
                 "net_pnl_usdt": net,
                 "liquidation_stress": stress,
+                "liquidation_model_missing": not liquidation_evidence_observed,
                 "max_abs_mark_index_divergence_bps": max_divergence,
             }
         )
@@ -526,6 +721,7 @@ def replay_fixed_long(request: dict[str, Any]) -> dict[str, Any]:
         "virtual_positions_created": 1,
         "live_execution": False,
         "private_api_used": False,
+        "evidence_mode": evidence_mode,
         "acceptance_capable": False,
         "net_pnl_usdt": None,
     }

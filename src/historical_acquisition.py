@@ -197,6 +197,7 @@ def _parse_gate_archive(
         raise HistoricalAcquisitionError("Gate archive is not valid gzip CSV") from exc
     if not rows:
         raise HistoricalAcquisitionError("Gate archive contains no rows in requested window")
+    rows.sort(key=lambda row: int(row[0]))
     return {
         "archive_schema": "gate_futures_candlesticks_1m_v1",
         "rows": rows,
@@ -255,11 +256,77 @@ def _artifact_paths(
 def _validate_preflight(value: object) -> dict[str, object]:
     if not isinstance(value, dict) or value.get("ok") is not True or value.get("verified") is not True:
         raise HistoricalAcquisitionError("historical acquisition preflight blocked")
+    if value.get("decision") != "ALLOW_HISTORICAL_ACQUISITION":
+        raise HistoricalAcquisitionError("historical acquisition decision mismatch")
+    if value.get("write_class") != WRITE_CLASS:
+        raise HistoricalAcquisitionError("historical acquisition write class mismatch")
+    if value.get("action") != risk_gate.HISTORICAL_ACQUISITION_ACTION:
+        raise HistoricalAcquisitionError("historical acquisition action mismatch")
+    if "capture_token" in value or "capture_token_expires_at_ts" in value:
+        raise HistoricalAcquisitionError("historical acquisition cannot carry capture token")
     plan_id = value.get("plan_id")
     plan_hash = value.get("plan_hash")
     if not isinstance(plan_id, str) or not plan_id or not isinstance(plan_hash, str):
         raise HistoricalAcquisitionError("historical acquisition preflight is incomplete")
     return value
+
+
+def _load_bound_seed_set(seed_file: Path) -> dict[str, object]:
+    """Read only the exact active-PlanOnly-bound historical seed file."""
+
+    try:
+        plan = risk_gate.load_and_verify_plan()
+        bound_plan_id = plan.get("plan_id")
+        bound_plan_hash = plan.get("plan_hash")
+        if (
+            not isinstance(bound_plan_id, str)
+            or not bound_plan_id
+            or not isinstance(bound_plan_hash, str)
+            or not bound_plan_hash
+        ):
+            raise HistoricalAcquisitionError("active plan identity is malformed")
+        implementation = plan.get("implementation")
+        files = implementation.get("files") if isinstance(implementation, dict) else None
+        if not isinstance(files, list):
+            raise HistoricalAcquisitionError("active plan implementation is missing")
+        matches = [
+            row
+            for row in files
+            if isinstance(row, dict) and row.get("role") == "historical_event_seeds"
+        ]
+        if len(matches) != 1:
+            raise HistoricalAcquisitionError("active plan seed binding is not unique")
+        binding = matches[0]
+        repo_path = binding.get("repo_path")
+        expected_sha = binding.get("sha256")
+        if not isinstance(repo_path, str) or not isinstance(expected_sha, str):
+            raise HistoricalAcquisitionError("active plan seed binding is malformed")
+        expected_path = (config.PROJECT_ROOT / repo_path).resolve(strict=True)
+        actual_path = Path(seed_file).resolve(strict=True)
+        canonical_path = Path(config.HISTORICAL_SEED_PATH).resolve(strict=True)
+        if actual_path != expected_path or actual_path != canonical_path:
+            raise HistoricalAcquisitionError("seed file is not the exact PlanOnly-bound path")
+        raw = actual_path.read_bytes()
+        if hashlib.sha256(raw).hexdigest() != expected_sha:
+            raise HistoricalAcquisitionError("seed file SHA differs from active PlanOnly")
+        seed_set = json.loads(raw.decode("utf-8"))
+    except HistoricalAcquisitionError:
+        raise
+    except (OSError, UnicodeDecodeError, ValueError) as exc:
+        raise HistoricalAcquisitionError("bound historical seed file is unavailable") from exc
+    if (
+        not isinstance(seed_set, dict)
+        or seed_set.get("schema") != "premarket_perp_historical_seed_set_v1"
+        or seed_set.get("evidence_use") != "DESCRIPTIVE_ONLY"
+        or not isinstance(seed_set.get("events"), list)
+        or not seed_set["events"]
+    ):
+        raise HistoricalAcquisitionError("historical seed set is invalid")
+    for seed in seed_set["events"]:
+        historical_event_builder.validate_seed_identity(seed)
+    seed_set["_bound_plan_id"] = bound_plan_id
+    seed_set["_bound_plan_hash"] = bound_plan_hash
+    return seed_set
 
 
 def run_historical_acquisition(
@@ -270,6 +337,8 @@ def run_historical_acquisition(
     limits: HistoricalAcquisitionLimits,
     transport: Callable[..., object],
     received_at_utc: str,
+    expected_plan_id: str | None = None,
+    expected_plan_hash: str | None = None,
 ) -> dict[str, object]:
     """Acquire one bounded batch after risk preflight, claim and post-claim gate."""
 
@@ -278,10 +347,19 @@ def run_historical_acquisition(
         raise HistoricalAcquisitionError("seeds must be a list of objects")
     if not callable(transport):
         raise HistoricalAcquisitionError("transport must be injected")
+    for seed in seeds:
+        historical_event_builder.validate_seed_identity(seed)
     retrieved_at_ts = _parse_received_at(received_at_utc)
     preflight = _validate_preflight(
         risk_gate.preflight(write_class=WRITE_CLASS, run_id=safe_run_id)
     )
+    if (expected_plan_id is None) != (expected_plan_hash is None):
+        raise HistoricalAcquisitionError("seed binding plan identity is incomplete")
+    if expected_plan_id is not None and (
+        preflight["plan_id"] != expected_plan_id
+        or preflight["plan_hash"] != expected_plan_hash
+    ):
+        raise HistoricalAcquisitionError("seed binding plan identity changed before preflight")
     owner_pid = os.getpid()
     claim: dict[str, object] | None = None
     terminal_status = "RETRY_NEXT_INTERVAL"
@@ -389,17 +467,17 @@ def run_historical_acquisition(
                 )
 
         if queued:
-            terminal_status = "BOUNDED_RETRY_NEXT_INTERVAL"
+            intended_status = "BOUNDED_RETRY_NEXT_INTERVAL"
         elif failed and completed:
-            terminal_status = "PARTIAL_RETRY_NEXT_INTERVAL"
+            intended_status = "PARTIAL_RETRY_NEXT_INTERVAL"
         elif failed:
-            terminal_status = "RETRY_NEXT_INTERVAL"
+            intended_status = "RETRY_NEXT_INTERVAL"
         else:
-            terminal_status = "HISTORICAL_ACQUISITION_COMPLETE"
+            intended_status = "HISTORICAL_ACQUISITION_COMPLETE"
         receipt: dict[str, object] = {
             "schema": "premarket_perp_historical_acquisition_receipt_v1",
             "run_id": safe_run_id,
-            "status": terminal_status,
+            "status": intended_status,
             "plan_id": preflight["plan_id"],
             "plan_hash": preflight["plan_hash"],
             "received_at_utc": received_at_utc,
@@ -418,6 +496,9 @@ def run_historical_acquisition(
         }
         receipt["receipt_sha256"] = _canonical_sha256(receipt)
         _write_json_exclusive(receipt_path, receipt)
+        if receipt_path.read_bytes() != _canonical_json_bytes(receipt):
+            raise HistoricalAcquisitionError("historical receipt readback mismatch")
+        terminal_status = intended_status
         return receipt
     finally:
         if claim is not None:
@@ -442,13 +523,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--received-at-utc", required=True)
     args = parser.parse_args(argv)
     try:
-        seed_set = json.loads(args.seed_file.read_text(encoding="utf-8"))
-        if (
-            not isinstance(seed_set, dict)
-            or seed_set.get("schema") != "premarket_perp_historical_seed_set_v1"
-            or not isinstance(seed_set.get("events"), list)
-        ):
-            raise HistoricalAcquisitionError("historical seed set is invalid")
+        seed_set = _load_bound_seed_set(args.seed_file)
         result = run_historical_acquisition(
             run_id=args.run_id,
             seeds=seed_set["events"],
@@ -465,8 +540,15 @@ def main(argv: list[str] | None = None) -> int:
             ),
             transport=default_public_transport,
             received_at_utc=args.received_at_utc,
+            expected_plan_id=str(seed_set["_bound_plan_id"]),
+            expected_plan_hash=str(seed_set["_bound_plan_hash"]),
         )
-    except (OSError, ValueError, HistoricalAcquisitionError) as exc:
+    except (
+        OSError,
+        ValueError,
+        HistoricalAcquisitionError,
+        writer_claim.GlobalMarketWriterClaimError,
+    ) as exc:
         result = {
             "status": "RETRY_NEXT_INTERVAL",
             "pending_retry": True,

@@ -90,7 +90,8 @@ HISTORICAL_ACQUISITION_ACTION = (
     "append-only namespace"
 )
 HISTORICAL_REPLAY_ACTION = (
-    "run deterministic offline causal replay over sealed historical evidence"
+    "run deterministic offline historical replay with production execution "
+    "fail-closed until trusted lineage loading"
 )
 CAPTURE_ACTION = "capture one official event in a bounded visible terminal"
 WRITE_CLASS_ACTION = {
@@ -122,6 +123,12 @@ ANNOUNCEMENT_WATCH_PLAN_STATUS = "ANNOUNCEMENT_WATCH_SCHEDULED_NO_CAPTURE"
 OFFICIAL_T0_ARMING_READY_PLAN_STATUS = "OFFICIAL_T0_ARMING_READY_NO_CAPTURE"
 HISTORICAL_ACQUISITION_REPLAY_PLAN_STATUS = (
     "HISTORICAL_ACQUISITION_REPLAY_READY_NO_CAPTURE"
+)
+HISTORICAL_ACQUISITION_REPLAY_HARDENED_PLAN_STATUS = (
+    "HISTORICAL_ACQUISITION_REPLAY_HARDENED_NO_CAPTURE"
+)
+HISTORICAL_ACQUISITION_REPLAY_TRUST_BOUND_PLAN_STATUS = (
+    "HISTORICAL_ACQUISITION_REPLAY_TRUST_BOUND_NO_CAPTURE"
 )
 # Compatibility name used by version-agnostic no-capture tests. It denotes the
 # current hardened no-capture status; the exact v29 literal remains separately bound.
@@ -283,6 +290,60 @@ PLAN_WRITE_AUTHORIZATION: dict[str, dict[str, frozenset[str]]] = {
             "historical_market_data_acquisition",
         }),
     },
+    HISTORICAL_ACQUISITION_REPLAY_HARDENED_PLAN_STATUS: {
+        "authorized_actions": frozenset({
+            METADATA_REGISTRY_ACTION,
+            OFFLINE_DESCRIPTIVE_ACTION,
+            OFFICIAL_ATTESTATION_ACTION,
+            ANNOUNCEMENT_DISCOVERY_ACTION,
+            ANNOUNCEMENT_WATCH_CONTROL_ACTION,
+            CANDIDATE_ALERT_ACTION,
+            OFFICIAL_T0_ARMING_ACTION,
+            EVENT_BOUND_PLAN_PROPOSAL_ACTION,
+            REGISTRY_QUARANTINE_ACTION,
+            OFFLINE_PAPER_SIMULATION_ACTION,
+            HISTORICAL_ACQUISITION_ACTION,
+            HISTORICAL_REPLAY_ACTION,
+        }),
+        "write_classes": frozenset({
+            "announcement_watch_control",
+            "metadata_registry",
+            "official_attestation",
+            "announcement_discovery",
+            "candidate_alert",
+            "official_t0_arming",
+            "event_bound_plan_proposal",
+            "registry_quarantine",
+            "historical_market_data_acquisition",
+        }),
+    },
+    HISTORICAL_ACQUISITION_REPLAY_TRUST_BOUND_PLAN_STATUS: {
+        "authorized_actions": frozenset({
+            METADATA_REGISTRY_ACTION,
+            OFFLINE_DESCRIPTIVE_ACTION,
+            OFFICIAL_ATTESTATION_ACTION,
+            ANNOUNCEMENT_DISCOVERY_ACTION,
+            ANNOUNCEMENT_WATCH_CONTROL_ACTION,
+            CANDIDATE_ALERT_ACTION,
+            OFFICIAL_T0_ARMING_ACTION,
+            EVENT_BOUND_PLAN_PROPOSAL_ACTION,
+            REGISTRY_QUARANTINE_ACTION,
+            OFFLINE_PAPER_SIMULATION_ACTION,
+            HISTORICAL_ACQUISITION_ACTION,
+            HISTORICAL_REPLAY_ACTION,
+        }),
+        "write_classes": frozenset({
+            "announcement_watch_control",
+            "metadata_registry",
+            "official_attestation",
+            "announcement_discovery",
+            "candidate_alert",
+            "official_t0_arming",
+            "event_bound_plan_proposal",
+            "registry_quarantine",
+            "historical_market_data_acquisition",
+        }),
+    },
 }
 
 
@@ -336,6 +397,9 @@ def resolved_path_bindings() -> dict[str, str]:
         ),
         "historical_raw_root": str(
             config.HISTORICAL_RAW_ROOT.resolve(strict=False)
+        ),
+        "historical_seed_path": str(
+            config.HISTORICAL_SEED_PATH.resolve(strict=False)
         ),
         "historical_manifest_root": str(
             config.HISTORICAL_MANIFEST_ROOT.resolve(strict=False)
@@ -1090,6 +1154,8 @@ def preflight(
         decision["decision"] = "ALLOW_EVENT_BOUND_PLAN_PROPOSAL"
     if decision["ok"] and write_class == "registry_quarantine":
         decision["decision"] = "ALLOW_REGISTRY_QUARANTINE"
+    if decision["ok"] and write_class == "historical_market_data_acquisition":
+        decision["decision"] = "ALLOW_HISTORICAL_ACQUISITION"
     if decision["ok"] and policy.get("capture_token"):
         token = mint_capture_token(
             run_id,
@@ -1120,6 +1186,7 @@ def resolved_config() -> dict[str, Any]:
         "candidate_alert_ledger_path": config.CANDIDATE_ALERT_LEDGER_PATH,
         "official_t0_arming_root": config.OFFICIAL_T0_ARMING_ROOT,
         "event_bound_plan_proposal_root": config.EVENT_BOUND_PLAN_PROPOSAL_ROOT,
+        "historical_seed_path": config.HISTORICAL_SEED_PATH,
         "windows_powershell_executable": Path(config.WINDOWS_POWERSHELL_EXECUTABLE),
     }
     return {name: str(path.resolve(strict=False)) for name, path in paths.items()}

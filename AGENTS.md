@@ -24,7 +24,8 @@
 - вывод и переводы средств;
 - решения ACCEPT/REJECT по захваченным данным.
 
-`execution_replay` — чистая офлайн-модель над sealed public evidence. v40
+`execution_replay` — чистая fixed офлайн-модель; production-вход остаётся fail-closed
+до независимой проверки sealed public evidence. v42
 сохраняет fail-closed offline paper simulation, bounded official
 announcement-index discovery: без подходящего official event,
 sealed capture и полного cost model она создаёт ноль виртуальных позиций и не публикует
@@ -33,7 +34,7 @@ paper execution остаётся запрещённым. Candidate store при�
 фиксированные non-authority значения и официальный URL, связанный с listing venue.
 Первый current candidate может получить одно локальное уведомление; uncertainty после
 submission intent не ретраится автоматически. Official-t0 arming принимает только
-explicit human-attested seconds-grade crypto event, но не выдаёт capture token. v41
+explicit human-attested seconds-grade crypto event, но не выдаёт capture token. v43
 proposal является create-only черновиком и не меняет trust root. Fixture rehearsal
 использует только временные пути и запрещает сеть, toast, capture, token и ордера.
 No-model watcher просыпается локально каждые пять минут, но сеть и исследовательские
@@ -118,21 +119,33 @@ Workspace общий с `ZolotyayLopata`. Этот проект — второй
   mutation receipt, а не по текущему head.
 - Текущий human-attested producer выводит точность из дословного времени источника.
   Minute-only источник остаётся descriptive; только явный `HH:MM:SS` может дать
-  seconds-grade candidate, но v40 всё равно не авторизует capture.
+  seconds-grade candidate, но v42 всё равно не авторизует capture.
 
 ## Статус
 
 Forward capture ещё **не запускался**. PlanOnly в статусе
-`HISTORICAL_ACQUISITION_REPLAY_READY_NO_CAPTURE`; активный immutable план — v40.
+`HISTORICAL_ACQUISITION_REPLAY_TRUST_BOUND_NO_CAPTURE`; активный immutable план — v42.
 `market_data_capture` этим статусом не авторизован. Discovery сохраняет только
 `UNVERIFIED_ANNOUNCEMENT_DISCOVERY`; index publication time и ticker match не могут
-стать official `t0`. После human attestation v40 может записать no-capture arming
-receipt и создать proposal; затем нужен отдельный immutable event-bound v41 и отдельное
+стать official `t0`. После human attestation v42 может записать no-capture arming
+receipt и создать proposal; затем нужен отдельный immutable event-bound v43 и отдельное
 разрешение пользователя на видимый capture. Текущий
 paper-only launcher выполняет только проверку готовности и детерминированный offline
 тик; `NO_ELIGIBLE_EVENT` является нормальным нулевым результатом, а не сделкой.
 Post-hoc Bybit/OKX REST и exact Gate archive разрешены только через
 `historical_market_data_acquisition`, общий gate и global writer claim; они всегда
 `DESCRIPTIVE_ONLY`. Minute OHLCV не доказывает fill, spread, latency или очередь.
-v39 сохранён как неактивированный fail-closed PlanOnly после статического Gate URL
-finding; его не переписывать и не использовать как активный trust root.
+v42 принимает historical seed только по exact Plan-bound path/SHA и canonical official
+assertion hash, затем повторно сверяет seed Plan identity со свежим preflight до writer
+claim. Collision claim возвращает retry JSON без traceback. Execution replay требует
+валидированный sorted/non-crossed depth, уникальные funding settlements по actual fill
+clocks и settlement mark; отсутствующие mark/index дают missing liquidation result.
+Любой caller-supplied sealed request возвращает
+`NOT_RUN_TRUSTED_EVIDENCE_LOADER_REQUIRED`, пока независимый loader не проверяет
+manifest, terminal receipt и lineage; fixed execution model остаётся fixture-only.
+Успешный historical terminal receipt требует O_EXCL/fsync и точного readback.
+Historical acquisition под v42 ещё не запускался. v40 сохранён immutable как
+audit-defective lineage; v41 сохранён immutable как отклонённый и не активированный
+self-attested-evidence draft; v39 сохранён как неактивированный fail-closed PlanOnly
+после статического Gate URL finding. Их не переписывать и не использовать как active
+trust root.
