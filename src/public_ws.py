@@ -23,7 +23,9 @@ import ssl
 import threading
 import time
 import urllib.parse
+from collections.abc import Mapping
 from dataclasses import dataclass
+from types import MappingProxyType
 from typing import Any, Callable, Iterable
 
 
@@ -38,6 +40,7 @@ HARD_MAX_HANDSHAKE_BYTES = 64 * 1024
 HARD_MAX_FRAME_BYTES = 16 * 1024 * 1024
 HARD_MAX_MESSAGE_BYTES = 32 * 1024 * 1024
 MAX_CONTROL_FRAMES_PER_MESSAGE = 1_024
+MAX_DATA_FRAMES_PER_MESSAGE = 1_024
 
 _WEBSOCKET_GUID = "258EAFA5-E914-47DA-95CA-C5AB0DC85B11"
 _HEADER_NAME = re.compile(r"[!#$%&'*+.^_`|~0-9A-Za-z-]+")
@@ -343,7 +346,9 @@ def _recv_from_socket(
     *,
     deadline: float | None = None,
     timeout_sec: float | None = None,
-) -> bytes:
+    wall_clock: Callable[[], float] | None = None,
+    monotonic_clock_ns: Callable[[], int] | None = None,
+) -> tuple[bytes, float, int]:
     _check_stop(stop_requested)
     if deadline is not None:
         remaining = _remaining_time(deadline)
@@ -360,11 +365,15 @@ def _recv_from_socket(
         raise WebSocketTimeout("WebSocket receive timed out") from exc
     except OSError as exc:
         raise PublicWebSocketError(f"WebSocket receive failed: {exc}") from exc
+    received_ts, received_monotonic_ns = _sample_receive_clock(
+        time.time if wall_clock is None else wall_clock,
+        time.monotonic_ns if monotonic_clock_ns is None else monotonic_clock_ns,
+    )
     if not isinstance(chunk, (bytes, bytearray)):
         raise ProtocolError("socket.recv() returned a non-bytes value")
     if deadline is not None:
         _remaining_time(deadline)
-    return bytes(chunk)
+    return bytes(chunk), received_ts, received_monotonic_ns
 
 
 def _read_handshake(
@@ -374,19 +383,27 @@ def _read_handshake(
     stop_requested: Callable[[], bool],
     deadline: float,
     timeout_sec: float,
-) -> tuple[bytes, bytes]:
+) -> tuple[bytes, bytes, float | None, int | None]:
     data = bytearray()
     marker = b"\r\n\r\n"
+    last_received_ts: float | None = None
+    last_monotonic_ns: int | None = None
     while True:
         position = data.find(marker)
         if position >= 0:
             end = position + len(marker)
             if end > max_handshake_bytes:
                 raise HandshakeError("WebSocket handshake headers exceed the byte bound")
-            return bytes(data[:end]), bytes(data[end:])
+            remainder = bytes(data[end:])
+            return (
+                bytes(data[:end]),
+                remainder,
+                last_received_ts if remainder else None,
+                last_monotonic_ns if remainder else None,
+            )
         if len(data) >= max_handshake_bytes:
             raise HandshakeError("WebSocket handshake headers exceed the byte bound")
-        chunk = _recv_from_socket(
+        chunk, chunk_received_ts, chunk_monotonic_ns = _recv_from_socket(
             sock,
             max_handshake_bytes + 1 - len(data),
             stop_requested,
@@ -395,6 +412,8 @@ def _read_handshake(
         )
         if not chunk:
             raise HandshakeError("connection closed before WebSocket handshake completed")
+        last_received_ts = chunk_received_ts
+        last_monotonic_ns = chunk_monotonic_ns
         data.extend(chunk)
         if len(data) > max_handshake_bytes and marker not in data:
             raise HandshakeError("WebSocket handshake headers exceed the byte bound")
@@ -460,6 +479,89 @@ class _Frame:
     fin: bool
     opcode: int
     payload: bytes
+    received_ts: float
+    monotonic_ns: int
+
+
+def _freeze_json(value: Any) -> Any:
+    if isinstance(value, dict):
+        return MappingProxyType({key: _freeze_json(item) for key, item in value.items()})
+    if isinstance(value, list):
+        return tuple(_freeze_json(item) for item in value)
+    return value
+
+
+def _validated_receive_clock(received_ts: object, monotonic_ns: object) -> tuple[float, int]:
+    if isinstance(received_ts, bool) or not isinstance(received_ts, (int, float)):
+        raise PublicWebSocketError("WebSocket receive wall clock is invalid")
+    rendered_received_ts = float(received_ts)
+    if not math.isfinite(rendered_received_ts) or rendered_received_ts <= 0:
+        raise PublicWebSocketError("WebSocket receive wall clock is invalid")
+    if (
+        isinstance(monotonic_ns, bool)
+        or not isinstance(monotonic_ns, int)
+        or monotonic_ns <= 0
+    ):
+        raise PublicWebSocketError("WebSocket receive monotonic clock is invalid")
+    return rendered_received_ts, monotonic_ns
+
+
+def _sample_receive_clock(
+    wall_clock: Callable[[], float],
+    monotonic_clock_ns: Callable[[], int],
+) -> tuple[float, int]:
+    try:
+        received_ts = wall_clock()
+        monotonic_ns = monotonic_clock_ns()
+    except Exception as exc:
+        raise PublicWebSocketError("WebSocket receive clock failed") from exc
+    return _validated_receive_clock(received_ts, monotonic_ns)
+
+
+@dataclass(frozen=True, slots=True, init=False)
+class ReceivedJsonMessage:
+    """One byte-exact application message; provenance, never capture authority.
+
+    Construction is transport-internal.  A downstream evidence boundary must still
+    parse and validate ``raw_payload`` itself instead of trusting ``decoded`` or this
+    Python type as an authority token.
+    """
+
+    raw_payload: bytes
+    decoded: Mapping[str, Any]
+    application_ordinal: int
+    data_frame_count: int
+    control_frame_count: int
+    received_ts: float
+    monotonic_ns: int
+
+
+def _received_json_message(
+    *,
+    raw_payload: bytes,
+    decoded: Mapping[str, Any],
+    application_ordinal: int,
+    data_frame_count: int,
+    control_frame_count: int,
+    received_ts: float,
+    monotonic_ns: int,
+) -> ReceivedJsonMessage:
+    try:
+        immutable_decoded = _freeze_json(dict(decoded))
+    except RecursionError as exc:
+        raise ProtocolError("WebSocket JSON nesting exceeds the immutable result bound") from exc
+    result = object.__new__(ReceivedJsonMessage)
+    for name, value in (
+        ("raw_payload", raw_payload),
+        ("decoded", immutable_decoded),
+        ("application_ordinal", application_ordinal),
+        ("data_frame_count", data_frame_count),
+        ("control_frame_count", control_frame_count),
+        ("received_ts", received_ts),
+        ("monotonic_ns", monotonic_ns),
+    ):
+        object.__setattr__(result, name, value)
+    return result
 
 
 class PublicWebSocket:
@@ -475,6 +577,10 @@ class PublicWebSocket:
         max_message_bytes: int,
         stop_requested: Callable[[], bool],
         overall_timeout_sec: float | None = None,
+        initial_received_ts: float | None = None,
+        initial_monotonic_ns: int | None = None,
+        _wall_clock: Callable[[], float] | None = None,
+        _monotonic_clock_ns: Callable[[], int] | None = None,
     ) -> None:
         self._sock = sock
         self._buffer = bytearray(initial_bytes)
@@ -487,8 +593,27 @@ class PublicWebSocket:
         self._max_frame_bytes = max_frame_bytes
         self._max_message_bytes = max_message_bytes
         self._stop_requested = stop_requested
+        self._wall_clock = time.time if _wall_clock is None else _wall_clock
+        self._monotonic_clock_ns = (
+            time.monotonic_ns if _monotonic_clock_ns is None else _monotonic_clock_ns
+        )
+        if not callable(self._wall_clock) or not callable(self._monotonic_clock_ns):
+            raise TypeError("receive clocks must be callables")
+        if initial_bytes:
+            if initial_received_ts is None or initial_monotonic_ns is None:
+                raise PublicWebSocketError(
+                    "initial WebSocket bytes require their handshake receive clock"
+                )
+            self._initial_receive_clock: tuple[float, int] | None = (
+                _validated_receive_clock(initial_received_ts, initial_monotonic_ns)
+            )
+        else:
+            self._initial_receive_clock = None
+        self._last_exact_receive_clock: tuple[float, int] | None = None
         self._closed = False
         self._close_sent = False
+        self._application_ordinal = 0
+        self._receive_lock = threading.Lock()
 
     @property
     def closed(self) -> bool:
@@ -496,24 +621,37 @@ class PublicWebSocket:
 
     def _read_exact(self, amount: int, *, deadline: float) -> bytes:
         result = bytearray()
+        final_clock = self._last_exact_receive_clock
         while len(result) < amount:
             _check_stop(self._stop_requested)
             if self._buffer:
                 take = min(amount - len(result), len(self._buffer))
                 result.extend(self._buffer[:take])
                 del self._buffer[:take]
+                if self._initial_receive_clock is None:
+                    raise PublicWebSocketError(
+                        "handshake remainder lacks its final-byte receive clock"
+                    )
+                final_clock = self._initial_receive_clock
                 continue
-            chunk = _recv_from_socket(
+            chunk, received_ts, monotonic_ns = _recv_from_socket(
                 self._sock,
                 amount - len(result),
                 self._stop_requested,
                 deadline=deadline,
                 timeout_sec=self._timeout_sec,
+                wall_clock=self._wall_clock,
+                monotonic_clock_ns=self._monotonic_clock_ns,
             )
             if not chunk:
                 self._shutdown()
                 raise WebSocketClosed("WebSocket TCP stream ended without a close frame")
             result.extend(chunk)
+            final_clock = (received_ts, monotonic_ns)
+        if amount:
+            if final_clock is None:
+                raise PublicWebSocketError("WebSocket frame lacks a final-byte receive clock")
+            self._last_exact_receive_clock = final_clock
         return bytes(result)
 
     def _read_frame(self, *, deadline: float) -> _Frame:
@@ -549,7 +687,16 @@ class PublicWebSocket:
         payload = self._read_exact(length, deadline=deadline)
         if opcode == 0x8 and len(payload) == 1:
             raise ProtocolError("WebSocket close payload cannot contain a one-byte code")
-        return _Frame(fin=fin, opcode=opcode, payload=payload)
+        if self._last_exact_receive_clock is None:
+            raise PublicWebSocketError("WebSocket frame lacks a final-byte receive clock")
+        received_ts, monotonic_ns = self._last_exact_receive_clock
+        return _Frame(
+            fin=fin,
+            opcode=opcode,
+            payload=payload,
+            received_ts=received_ts,
+            monotonic_ns=monotonic_ns,
+        )
 
     def _send_frame(
         self,
@@ -667,11 +814,53 @@ class PublicWebSocket:
         self._shutdown()
         raise WebSocketClosed("WebSocket peer closed the connection", code=code, reason=reason)
 
-    def recv_json(self) -> Any:
+    def _complete_json_message(
+        self,
+        assembled_payload: bytes | bytearray,
+        *,
+        data_frame_count: int,
+        control_frame_count: int,
+        received_ts: float,
+        monotonic_ns: int,
+    ) -> ReceivedJsonMessage:
+        received_ts, monotonic_ns = _validated_receive_clock(received_ts, monotonic_ns)
+
+        raw_payload = bytes(assembled_payload)
+        decoded = self._decode_json(raw_payload)
+        if not isinstance(decoded, dict):
+            raise ProtocolError("WebSocket JSON application message must be an object")
+        next_ordinal = self._application_ordinal + 1
+        result = _received_json_message(
+            raw_payload=raw_payload,
+            decoded=decoded,
+            application_ordinal=next_ordinal,
+            data_frame_count=data_frame_count,
+            control_frame_count=control_frame_count,
+            received_ts=received_ts,
+            monotonic_ns=monotonic_ns,
+        )
+        self._application_ordinal = next_ordinal
+        return result
+
+    def recv_json_message(self) -> ReceivedJsonMessage:
+        """Receive one JSON object while preserving its exact application bytes."""
+
+        if self._closed:
+            raise WebSocketClosed("WebSocket is already closed")
+        if not self._receive_lock.acquire(blocking=False):
+            self._shutdown()
+            raise ProtocolError("concurrent WebSocket receive is forbidden")
+        try:
+            return self._recv_json_message_unlocked()
+        finally:
+            self._receive_lock.release()
+
+    def _recv_json_message_unlocked(self) -> ReceivedJsonMessage:
         if self._closed:
             raise WebSocketClosed("WebSocket is already closed")
         deadline = time.monotonic() + self._overall_timeout_sec
         control_frames = 0
+        data_frames = 0
         fragments: bytearray | None = None
         try:
             while True:
@@ -690,27 +879,50 @@ class PublicWebSocket:
                 if frame.opcode == 0x2:
                     raise ProtocolError("binary WebSocket messages are not accepted")
                 if frame.opcode == 0x1:
+                    data_frames += 1
+                    if data_frames > MAX_DATA_FRAMES_PER_MESSAGE:
+                        raise ProtocolError("WebSocket data-frame budget exceeded")
                     if fragments is not None:
                         raise ProtocolError("new text frame arrived before fragmented message ended")
                     if len(frame.payload) > self._max_message_bytes:
                         raise MessageTooLarge("WebSocket text message exceeds the byte bound")
                     if frame.fin:
-                        return self._decode_json(frame.payload)
+                        return self._complete_json_message(
+                            frame.payload,
+                            data_frame_count=data_frames,
+                            control_frame_count=control_frames,
+                            received_ts=frame.received_ts,
+                            monotonic_ns=frame.monotonic_ns,
+                        )
                     fragments = bytearray(frame.payload)
                     continue
                 if frame.opcode == 0x0:
+                    data_frames += 1
+                    if data_frames > MAX_DATA_FRAMES_PER_MESSAGE:
+                        raise ProtocolError("WebSocket data-frame budget exceeded")
                     if fragments is None:
                         raise ProtocolError("continuation frame arrived without a fragmented message")
                     if len(fragments) + len(frame.payload) > self._max_message_bytes:
                         raise MessageTooLarge("fragmented WebSocket message exceeds the byte bound")
                     fragments.extend(frame.payload)
                     if frame.fin:
-                        return self._decode_json(bytes(fragments))
+                        return self._complete_json_message(
+                            fragments,
+                            data_frame_count=data_frames,
+                            control_frame_count=control_frames,
+                            received_ts=frame.received_ts,
+                            monotonic_ns=frame.monotonic_ns,
+                        )
         except WebSocketClosed:
             raise
         except PublicWebSocketError:
             self._shutdown()
             raise
+
+    def recv_json(self) -> Mapping[str, Any]:
+        """Compatibility wrapper returning only the decoded JSON mapping."""
+
+        return self.recv_json_message().decoded
 
     def _shutdown(self) -> None:
         if self._closed:
@@ -821,7 +1033,7 @@ def open_public_websocket(
             raise WebSocketTimeout("WebSocket handshake send timed out") from exc
         except OSError as exc:
             raise HandshakeError(f"WebSocket handshake send failed: {exc}") from exc
-        response, remainder = _read_handshake(
+        response, remainder, remainder_received_ts, remainder_monotonic_ns = _read_handshake(
             sock,
             max_handshake_bytes=handshake_limit,
             stop_requested=stop_requested,
@@ -837,6 +1049,8 @@ def open_public_websocket(
             max_message_bytes=message_limit,
             stop_requested=stop_requested,
             overall_timeout_sec=overall_timeout,
+            initial_received_ts=remainder_received_ts,
+            initial_monotonic_ns=remainder_monotonic_ns,
         )
     except Exception:
         try:

@@ -36,7 +36,7 @@ class ProfileAndSubscriptionTests(unittest.TestCase):
         )
         self.assertEqual(
             bybit_public.channels,
-            frozenset({"orderbook.50", "publicTrade", "tickers"}),
+            frozenset({"orderbook.50", "orderbook.full", "publicTrade", "tickers"}),
         )
 
         okx = venue_ws_v43.venue_profile("okx")
@@ -115,6 +115,7 @@ class ProfileAndSubscriptionTests(unittest.TestCase):
                 "op": "subscribe",
                 "args": [
                     "orderbook.50.ABCUSDT",
+                    "orderbook.full.ABCUSDT",
                     "publicTrade.ABCUSDT",
                     "tickers.ABCUSDT",
                 ],
@@ -253,6 +254,177 @@ class BybitParserTests(unittest.TestCase):
             last_sequence=100,
         )[0]
         self.assertEqual(stale_event.gap_signal, venue_ws_v43.GAP_STALE)
+
+    def test_full_book_delta_remains_descriptive_without_specialized_bridge(self) -> None:
+        def message(update: int, *, cross: int = 900) -> dict[str, object]:
+            return {
+                "topic": "orderbook.full.ABCUSDT",
+                "type": "delta",
+                "ts": 1_700_000_000_010,
+                "cts": 1_700_000_000_005,
+                "data": {
+                    "s": "ABCUSDT",
+                    "b": [["10.0", "2"]],
+                    "a": [["10.5", "4"]],
+                    "u": update,
+                    "seq": cross,
+                },
+            }
+
+        initial = venue_ws_v43.parse_message(
+            "bybit",
+            message(100),
+            contract="ABCUSDT",
+            connection="public_linear",
+        )[0]
+        self.assertEqual((initial.kind, initial.action), ("book", "delta"))
+        self.assertEqual(initial.channel, "orderbook.full")
+        self.assertEqual(
+            (initial.exchange_ts_ms, initial.gateway_ts_ms),
+            (1_700_000_000_005, 1_700_000_000_010),
+        )
+        self.assertEqual((initial.sequence_end, initial.cross_sequence), (100, 900))
+        self.assertIsNone(initial.previous_sequence)
+        self.assertEqual(initial.gap_signal, venue_ws_v43.GAP_REST_SNAPSHOT_REQUIRED)
+        self.assertTrue(initial.rest_snapshot_required)
+        self.assertEqual(initial.bids, (("10.0", "2"),))
+        self.assertEqual(initial.asks, (("10.5", "4"),))
+
+        continuous = venue_ws_v43.parse_message(
+            "bybit",
+            message(101, cross=901),
+            contract="ABCUSDT",
+            connection="public_linear",
+            last_sequence=100,
+        )[0]
+        self.assertEqual(
+            continuous.gap_signal, venue_ws_v43.GAP_CONTINUITY_UNVERIFIABLE
+        )
+        self.assertIsNone(continuous.previous_sequence)
+        self.assertTrue(continuous.rest_snapshot_required)
+        self.assertEqual(continuous.fields["evidence_class"], "DESCRIPTIVE_ONLY")
+        self.assertEqual(
+            continuous.fields["continuity_authority"],
+            "SPECIALIZED_FULL_BOOK_SYNCHRONIZER_ONLY",
+        )
+
+        stale = venue_ws_v43.parse_message(
+            "bybit",
+            message(100),
+            contract="ABCUSDT",
+            connection="public_linear",
+            last_sequence=100,
+        )[0]
+        self.assertEqual(stale.gap_signal, venue_ws_v43.GAP_STALE)
+        self.assertTrue(stale.rest_snapshot_required)
+
+        gap = venue_ws_v43.parse_message(
+            "bybit",
+            message(102),
+            contract="ABCUSDT",
+            connection="public_linear",
+            last_sequence=100,
+        )[0]
+        self.assertEqual(gap.gap_signal, venue_ws_v43.GAP_DETECTED)
+        self.assertTrue(gap.rest_snapshot_required)
+
+        reset = venue_ws_v43.parse_message(
+            "bybit",
+            message(1),
+            contract="ABCUSDT",
+            connection="public_linear",
+            last_sequence=100,
+        )[0]
+        self.assertEqual(reset.gap_signal, venue_ws_v43.GAP_RESET)
+        self.assertTrue(reset.rest_snapshot_required)
+
+    def test_orderbook_50_integer_cannot_authorize_full_book_continuity(self) -> None:
+        legacy_snapshot = {
+            "topic": "orderbook.50.ABCUSDT",
+            "type": "snapshot",
+            "ts": 1_700_000_000_010,
+            "cts": 1_700_000_000_005,
+            "data": {
+                "s": "ABCUSDT",
+                "b": [["10", "2"]],
+                "a": [["11", "3"]],
+                "u": 100,
+                "seq": 900,
+            },
+        }
+        legacy = venue_ws_v43.parse_message(
+            "bybit",
+            legacy_snapshot,
+            contract="ABCUSDT",
+            connection="public_linear",
+        )[0]
+        full_delta = {
+            "topic": "orderbook.full.ABCUSDT",
+            "type": "delta",
+            "ts": 1_700_000_000_020,
+            "cts": 1_700_000_000_015,
+            "data": {
+                "s": "ABCUSDT",
+                "b": [["10", "2.5"]],
+                "a": [],
+                "u": 101,
+                "seq": 901,
+            },
+        }
+        event = venue_ws_v43.parse_message(
+            "bybit",
+            full_delta,
+            contract="ABCUSDT",
+            connection="public_linear",
+            last_sequence=legacy.sequence_end,
+        )[0]
+
+        self.assertEqual(event.gap_signal, venue_ws_v43.GAP_CONTINUITY_UNVERIFIABLE)
+        self.assertIsNone(event.previous_sequence)
+        self.assertTrue(event.rest_snapshot_required)
+        self.assertEqual(event.fields["evidence_class"], "DESCRIPTIVE_ONLY")
+        self.assertEqual(
+            event.fields["continuity_authority"],
+            "SPECIALIZED_FULL_BOOK_SYNCHRONIZER_ONLY",
+        )
+
+    def test_full_book_accepts_only_delta_and_exact_required_schema(self) -> None:
+        valid = {
+            "topic": "orderbook.full.ABCUSDT",
+            "type": "delta",
+            "ts": 10,
+            "cts": 9,
+            "data": {
+                "s": "ABCUSDT",
+                "b": [["10", "2"]],
+                "a": [["11", "3"]],
+                "u": 2,
+                "seq": 7,
+            },
+        }
+        snapshot = dict(valid, type="snapshot")
+        wrong_contract = dict(valid)
+        wrong_contract["data"] = dict(valid["data"], s="WRONGUSDT")
+        missing_cts = dict(valid)
+        missing_cts.pop("cts")
+        missing_asks = dict(valid)
+        missing_asks["data"] = dict(valid["data"])
+        missing_asks["data"].pop("a")
+
+        cases = (
+            (snapshot, venue_ws_v43.MalformedMessage),
+            (wrong_contract, venue_ws_v43.ContractMismatch),
+            (missing_cts, venue_ws_v43.MalformedMessage),
+            (missing_asks, venue_ws_v43.MalformedMessage),
+        )
+        for candidate, expected_error in cases:
+            with self.subTest(error=expected_error), self.assertRaises(expected_error):
+                venue_ws_v43.parse_message(
+                    "bybit",
+                    candidate,
+                    contract="ABCUSDT",
+                    connection="public_linear",
+                )
 
     def test_trades_and_ticker_are_normalized(self) -> None:
         trades = {

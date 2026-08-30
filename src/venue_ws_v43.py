@@ -23,6 +23,8 @@ GAP_STALE = "STALE_OR_OUT_OF_ORDER"
 GAP_BASE_SNAPSHOT_REQUIRED = "BASE_SNAPSHOT_REQUIRED"
 GAP_REST_SNAPSHOT_REQUIRED = "REST_SNAPSHOT_REQUIRED"
 GAP_CONTINUITY_UNVERIFIABLE = "CONTINUITY_UNVERIFIABLE"
+FULL_BOOK_GENERIC_EVIDENCE_CLASS = "DESCRIPTIVE_ONLY"
+FULL_BOOK_CONTINUITY_AUTHORITY = "SPECIALIZED_FULL_BOOK_SYNCHRONIZER_ONLY"
 
 
 class VenueSchemaError(RuntimeError):
@@ -115,7 +117,9 @@ _PROFILES = MappingProxyType(
                     host="stream.bybit.com",
                     port=443,
                     path="/v5/public/linear",
-                    channels=frozenset({"orderbook.50", "publicTrade", "tickers"}),
+                    channels=frozenset(
+                        {"orderbook.50", "orderbook.full", "publicTrade", "tickers"}
+                    ),
                 ),
             ),
             websocket_unavailable=frozenset({"price_limit"}),
@@ -244,6 +248,7 @@ def build_subscriptions(
                     "op": "subscribe",
                     "args": [
                         f"orderbook.50.{symbol}",
+                        f"orderbook.full.{symbol}",
                         f"publicTrade.{symbol}",
                         f"tickers.{symbol}",
                     ],
@@ -544,6 +549,7 @@ def _parse_bybit(
     topic = _text(_required(message, "topic", "Bybit message"), "Bybit topic")
     topic_families = (
         ("orderbook.50.", "orderbook.50"),
+        ("orderbook.full.", "orderbook.full"),
         ("publicTrade.", "publicTrade"),
         ("tickers.", "tickers"),
     )
@@ -554,6 +560,59 @@ def _parse_bybit(
     _match_contract(topic[len(prefix) :], contract, "Bybit topic instrument")
     gateway_ts = _integer(_required(message, "ts", "Bybit message"), "Bybit ts")
     data = _required(message, "data", "Bybit message")
+    if topic_family == "orderbook.full":
+        row = _mapping(data, "Bybit full book data")
+        _match_contract(_required(row, "s", "Bybit full book"), contract)
+        if _required(message, "type", "Bybit full book") != "delta":
+            raise MalformedMessage("Bybit full book type must be delta")
+        update = _integer(_required(row, "u", "Bybit full book"), "Bybit update id")
+        cross = _integer(
+            _required(row, "seq", "Bybit full book"), "Bybit cross sequence"
+        )
+        exchange_ts = _integer(
+            _required(message, "cts", "Bybit full book"), "Bybit cts"
+        )
+        if update == 1:
+            signal = GAP_RESET
+        elif last_sequence is None:
+            signal = GAP_REST_SNAPSHOT_REQUIRED
+        elif update <= last_sequence:
+            signal = GAP_STALE
+        elif update == last_sequence + 1:
+            # ``last_sequence`` is intentionally untyped: it may have come from
+            # orderbook.50, another connection epoch, or an unseeded caller.  The
+            # generic normalizer can describe the apparent +1 relationship but
+            # cannot grant REST/WS bridge authority.  Only bybit_full_book_v43
+            # owns the exact (seq,u) bridge and subsequent continuity proof.
+            signal = GAP_CONTINUITY_UNVERIFIABLE
+        else:
+            signal = GAP_DETECTED
+        previous = None
+        rest_snapshot_required = True
+        return (
+            _event(
+                venue="bybit",
+                contract=contract,
+                source_instrument=contract,
+                connection=connection.name,
+                channel="orderbook.full",
+                kind="book",
+                action="delta",
+                exchange_ts_ms=exchange_ts,
+                gateway_ts_ms=gateway_ts,
+                sequence_end=update,
+                previous_sequence=previous,
+                cross_sequence=cross,
+                gap_signal=signal,
+                rest_snapshot_required=rest_snapshot_required,
+                bids=_levels(_required(row, "b", "Bybit full book"), "Bybit bids"),
+                asks=_levels(_required(row, "a", "Bybit full book"), "Bybit asks"),
+                fields={
+                    "evidence_class": FULL_BOOK_GENERIC_EVIDENCE_CLASS,
+                    "continuity_authority": FULL_BOOK_CONTINUITY_AUTHORITY,
+                },
+            ),
+        )
     if topic_family == "orderbook.50":
         row = _mapping(data, "Bybit book data")
         _match_contract(_required(row, "s", "Bybit book"), contract)
