@@ -6,16 +6,18 @@ Research-only контур для публичных pre-market perpetual дан
 
 Проект наблюдает рынок с плечом, но никогда не берёт плечо: private API, ключи,
 подпись запросов, ордера, margin, real capital и переводы запрещены. Capture не
-запускался и активным PlanOnly v36 не разрешён. v36 сохраняет bounded-поиск
+запускался и активным PlanOnly v38 не разрешён. v38 сохраняет bounded-поиск
 официальных announcement-кандидатов, добавляет at-most-once локальное уведомление,
-no-capture arming точного official `t0` и create-only предложение event-bound v37;
+no-capture arming точного official `t0` и create-only предложение event-bound v39,
+а также fixture-only репетицию и fail-closed recovery зависшего arming-lock/прерванного
+proposal;
 локальная fail-closed paper simulation остаётся отдельным offline-контуром. Новый
 no-model scheduler делает только дешёвый пяти-минутный due-check; фактическая сеть
 работает по adaptive cadence 6ч/3ч/1ч/5мин.
 
-## Состояние v36
+## Состояние v38
 
-- immutable PlanOnly: `premarket_perp_capture_20260822_v36`;
+- immutable PlanOnly: `premarket_perp_capture_20260822_v38`;
 - status: `OFFICIAL_T0_ARMING_READY_NO_CAPTURE`;
 - разрешены только metadata registry, human official attestation и локальная
   fail-closed registry quarantine, offline paper-readiness и bounded official-index
@@ -33,8 +35,18 @@ no-model scheduler делает только дешёвый пяти-минут�
 - arming требует current `CRYPTO_TOKEN`, `OFFICIAL_ANNOUNCEMENT`, точность ровно одну
   секунду, точное contract/spot mapping и не менее полного pre-listing окна; receipt
   append-only и не содержит capture token;
-- генератор v37 создаёт только детерминированное предложение, не новый активный план:
+- генератор v39 создаёт только детерминированное предложение, не новый активный план:
   trust root, capture authority и scheduler он не меняет;
+- fixture-rehearsal проходит candidate alert, human attestation validation, arming и
+  proposal только во временном каталоге; сеть, toast, production writes, capture token,
+  capture и ордера отсутствуют; launcher и сам runtime до любой временной записи
+  независимо проверяют active Plan/SHA и capability scan;
+- conclusively dead same-host arming-lock архивируется lossless и допускает одну
+  повторную попытку; live/remote/unknown/malformed lock остаётся fail-closed;
+- proposal публикуется только после fsync временного stage через atomic no-replace;
+  interrupted stage архивируется, валидный existing final читается идемпотентно, а
+  повреждённый или конфликтующий final не изменяется; crash после создания архива
+  возобновляется только когда archive и residue являются тем же non-symlink inode;
 - тикер в заголовке — только heuristic candidate. Cross-venue связь требует
   отдельной human `SAME_UNDERLYING` аттестации с дословным названием актива;
 - точность official `t0` выводится только из дословного времени источника: minute-only
@@ -55,8 +67,8 @@ no-model scheduler делает только дешёвый пяти-минут�
   `PAPER_NOT_RUN_COST_MODEL_MISSING`; виртуальная позиция и net PnL не создаются;
 - replay descriptive-only и не поддерживает ACCEPT/REJECT стратегии.
 
-Активные v36 plan hash и file SHA-256 закреплены во внешнем trust root
-`src/frozen_plan_bindings.py`; v35 сохранён byte-identical как непосредственный
+Активные v38 plan hash и file SHA-256 закреплены во внешнем trust root
+`src/frozen_plan_bindings.py`; v37 сохранён byte-identical как непосредственный
 предшественник.
 
 ## Компоненты
@@ -74,7 +86,8 @@ no-model scheduler делает только дешёвый пяти-минут�
 | `src/announcement_watch_scheduler.py` | adaptive wake-only due-controller без модели |
 | `src/candidate_alert.py` | at-most-once alert ledger и локальный toast dispatch |
 | `src/official_t0_arming.py` | immutable official-t0 no-capture arming receipt |
-| `src/event_bound_plan_proposal.py` | deterministic create-only proposal для v37 |
+| `src/event_bound_plan_proposal.py` | deterministic create-only proposal для v39 |
+| `src/fixture_rehearsal.py` | deterministic temporary rehearsal без authority |
 | `src/registry_quarantine.py` | локальная CAS-bound quarantine повреждённого поколения |
 | `src/capture.py` | bounded collector implementation; активным планом не авторизован |
 | `src/replay.py` | строгий offline loader и causal gross BBO markout |
@@ -85,6 +98,7 @@ no-model scheduler делает только дешёвый пяти-минут�
 | `tools/install_premarket_announcement_watch_scheduler.ps1` | idempotent hidden Windows task installer |
 | `tools/show_premarket_candidate_alert.ps1` | Windows notification sidecar без сети |
 | `tools/start_premarket_official_t0_arming_visible.ps1` | visible no-capture arming/status launcher |
+| `tools/start_premarket_fixture_rehearsal.ps1` | один offline fixture-only rehearsal |
 | `src/frozen_plan_bindings.py` | внешний trust root PlanOnly lineage |
 
 ## Registry v3
@@ -366,7 +380,17 @@ $readback | ConvertTo-Json -Depth 32
 ```
 
 Каждый writer сам делает initial и commit preflight. Этот маршрут не запускает market
-capture, не выдаёт capture token и не создаёт event-bound v37 автоматически.
+capture, не выдаёт capture token и не создаёт event-bound v39 автоматически.
+
+Fixture-only репетиция всей no-authority цепочки:
+
+```powershell
+& $pwsh7 -NoProfile -ExecutionPolicy Bypass `
+  -File tools\start_premarket_fixture_rehearsal.ps1 -Json
+```
+
+Она удаляет временный workspace до успешного результата и не обращается к сети или
+production paths.
 
 ## Preflight
 
@@ -383,16 +407,17 @@ capture, не выдаёт capture token и не создаёт event-bound v37 
 
 Preflight не запускает writer автоматически. Реальные refresh, attestation,
 quarantine и discovery являются отдельными операциями. После human official
-attestation v36 может создать только no-capture arming receipt и детерминированное
-предложение. Реальный event-bound v37 должен быть отдельно проверен, выпущен и явно
+attestation v38 может создать только no-capture arming receipt и детерминированное
+предложение. Реальный event-bound v39 должен быть отдельно проверен, выпущен и явно
 одобрен пользователем до ровно одного видимого `market_data_capture`.
 
 ## Immutable lineage
 
-Опубликованы v1–v36. Все прежние планы остаются на диске и проверяются по file SHA,
+Опубликованы v1–v38. Все прежние планы остаются на диске и проверяются по file SHA,
 canonical plan hash и identity. v27 и v28 сохранены; v29 сохранён byte-identical;
-v30–v35 сохранены byte-identical. v36 supersede-ит v35, исправляя production alert
-integration и закрепляя final-clock/current-head/CAS guards без capture-authority. Ни
+v30–v37 сохранены byte-identical. v37 зафиксировал первую recovery/rehearsal редакцию,
+но полный suite выявил несовместимое расширение production action-list; v38 supersede-ит
+его, не переписывая, и отделяет temp-only rehearsal от production write-actions. Ни
 один старый PlanOnly не переписывался.
 
 См. `AGENTS.md`, `src/frozen_plan_bindings.py` и решения в `docs/decisions/`.

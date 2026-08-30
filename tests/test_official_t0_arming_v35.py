@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import importlib
 import importlib.util
+import hashlib
 import json
 import sys
 import tempfile
@@ -20,7 +21,7 @@ if str(SRC) not in sys.path:
 
 import event_registry as registry  # noqa: E402
 import frozen_plan_bindings as trust_root  # noqa: E402
-from canonical_hash import canonical_hash  # noqa: E402
+from canonical_hash import canonical_hash, canonical_json_bytes  # noqa: E402
 
 
 def _load_arming_module():
@@ -396,6 +397,120 @@ class OfficialT0ArmingTests(unittest.TestCase):
         bad_lead["receipt_hash"] = canonical_hash(bad_lead)
         with self.assertRaisesRegex(self.arming.ArmingError, "lead_sec_at_arming"):
             self.arming.validate_arming_receipt(bad_lead)
+
+    def test_dead_same_host_lock_is_archived_once_and_reacquired(self) -> None:
+        self.root.mkdir(parents=True)
+        lock_path = self.root / ".official-t0-arming.lock"
+        stale = {
+            "schema": "premarket_official_t0_arming_lock_v1",
+            "run_id": "crashed-arm-run",
+            "owner_pid": 424242,
+            "owner_host": self.arming.socket.gethostname(),
+            "nonce": "a" * 64,
+        }
+        lock_path.write_bytes(canonical_json_bytes(stale) + b"\n")
+
+        with mock.patch.object(
+            self.arming, "process_is_alive", return_value=False, create=True
+        ):
+            result = self.invoke([event(now_ts=self.NOW)])
+
+        archive_root = self.root.parent / f"{self.root.name}.lock-archive"
+        archived = sorted(archive_root.glob("*.json"))
+        self.assertEqual(result["status"], "ARMED_NO_CAPTURE_AUTHORITY")
+        self.assertEqual(len(archived), 1)
+        self.assertEqual(json.loads(archived[0].read_text(encoding="utf-8")), stale)
+        self.assertFalse(lock_path.exists())
+        self.assertEqual(len(list(self.root.rglob("*.json"))), 1)
+
+    def test_crash_after_stale_lock_archive_resumes_without_losing_evidence(self) -> None:
+        self.root.mkdir(parents=True)
+        lock_path = self.root / ".official-t0-arming.lock"
+        stale = {
+            "schema": "premarket_official_t0_arming_lock_v1",
+            "run_id": "crashed-after-archive",
+            "owner_pid": 424242,
+            "owner_host": self.arming.socket.gethostname(),
+            "nonce": "e" * 64,
+        }
+        raw = canonical_json_bytes(stale) + b"\n"
+        lock_path.write_bytes(raw)
+        archive_root = self.root.parent / f"{self.root.name}.lock-archive"
+        archive_root.mkdir(parents=True)
+        archive_path = archive_root / f"{hashlib.sha256(raw).hexdigest()}.json"
+        archive_path.hardlink_to(lock_path)
+
+        with mock.patch.object(
+            self.arming, "process_is_alive", return_value=False, create=True
+        ):
+            result = self.invoke([event(now_ts=self.NOW)])
+
+        self.assertEqual(result["status"], "ARMED_NO_CAPTURE_AUTHORITY")
+        self.assertEqual(archive_path.read_bytes(), raw)
+        self.assertFalse(lock_path.exists())
+
+    def test_uncertain_foreign_or_malformed_lock_is_never_recovered(self) -> None:
+        cases = (
+            (
+                {
+                    "schema": "premarket_official_t0_arming_lock_v1",
+                    "run_id": "unknown-owner",
+                    "owner_pid": 424242,
+                    "owner_host": self.arming.socket.gethostname(),
+                    "nonce": "b" * 64,
+                },
+                None,
+            ),
+            (
+                {
+                    "schema": "premarket_official_t0_arming_lock_v1",
+                    "run_id": "foreign-owner",
+                    "owner_pid": 424242,
+                    "owner_host": "different-host.invalid",
+                    "nonce": "c" * 64,
+                },
+                False,
+            ),
+        )
+        for index, (payload, liveness) in enumerate(cases):
+            with self.subTest(index=index):
+                root = Path(tempfile.mkdtemp()) / "official-t0-v1"
+                root.mkdir(parents=True)
+                lock_path = root / ".official-t0-arming.lock"
+                lock_path.write_bytes(canonical_json_bytes(payload) + b"\n")
+                with mock.patch.object(
+                    self.arming, "process_is_alive", return_value=liveness, create=True
+                ):
+                    with self.assertRaisesRegex(self.arming.ArmingError, "LOCKED"):
+                        with self.arming._arming_lock(root, run_id="new-run"):
+                            self.fail("an uncertain or foreign lock must not be acquired")
+                self.assertTrue(lock_path.exists())
+
+        malformed_root = Path(tempfile.mkdtemp()) / "official-t0-v1"
+        malformed_root.mkdir(parents=True)
+        malformed_lock = malformed_root / ".official-t0-arming.lock"
+        malformed_lock.write_bytes(b'{"schema":"wrong"}\n')
+        with self.assertRaisesRegex(self.arming.ArmingError, "LOCKED"):
+            with self.arming._arming_lock(malformed_root, run_id="new-run"):
+                self.fail("a malformed lock must not be acquired")
+        self.assertEqual(malformed_lock.read_bytes(), b'{"schema":"wrong"}\n')
+
+    def test_release_never_deletes_a_replacement_lock(self) -> None:
+        replacement = {
+            "schema": "premarket_official_t0_arming_lock_v1",
+            "run_id": "replacement-run",
+            "owner_pid": 31337,
+            "owner_host": self.arming.socket.gethostname(),
+            "nonce": "d" * 64,
+        }
+        lock_path = self.root / ".official-t0-arming.lock"
+
+        with self.assertRaisesRegex(self.arming.ArmingError, "ownership"):
+            with self.arming._arming_lock(self.root, run_id="original-run"):
+                lock_path.write_bytes(canonical_json_bytes(replacement) + b"\n")
+
+        self.assertTrue(lock_path.exists())
+        self.assertEqual(json.loads(lock_path.read_text(encoding="utf-8")), replacement)
 
 
 class ArmingSelectorSurfaceTests(unittest.TestCase):

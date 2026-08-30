@@ -13,6 +13,7 @@ import argparse
 import hashlib
 import json
 import os
+import re
 import secrets
 import socket
 import time
@@ -23,6 +24,7 @@ from pathlib import Path
 from typing import Any, Callable, Iterator, Mapping, Sequence
 
 from canonical_hash import canonical_hash, canonical_json_bytes
+from announcement_watch_state import process_is_alive
 import event_registry as registry
 import frozen_plan_bindings as trust_root
 import project_config as config
@@ -468,32 +470,131 @@ def guard_current_arming_head(
         yield current
 
 
+_LOCK_FIELDS = frozenset({"schema", "run_id", "owner_pid", "owner_host", "nonce"})
+_LOCK_SCHEMA = "premarket_official_t0_arming_lock_v1"
+_HEX_64 = re.compile(r"^[0-9a-f]{64}$")
+
+
+def _validated_lock_payload(raw: bytes) -> dict[str, Any]:
+    try:
+        decoded = raw.decode("utf-8")
+        parsed = json.loads(decoded)
+    except (UnicodeDecodeError, ValueError) as exc:
+        raise ArmingError("OFFICIAL_T0_ARMING_LOCKED: lock is unreadable") from exc
+    if not isinstance(parsed, dict) or frozenset(parsed) != _LOCK_FIELDS:
+        raise ArmingError("OFFICIAL_T0_ARMING_LOCKED: lock identity is invalid")
+    if canonical_json_bytes(parsed) + b"\n" != raw:
+        raise ArmingError("OFFICIAL_T0_ARMING_LOCKED: lock is not canonical")
+    if parsed.get("schema") != _LOCK_SCHEMA:
+        raise ArmingError("OFFICIAL_T0_ARMING_LOCKED: lock schema is invalid")
+    if not _is_canonical_text(parsed.get("run_id")):
+        raise ArmingError("OFFICIAL_T0_ARMING_LOCKED: lock run_id is invalid")
+    owner_pid = parsed.get("owner_pid")
+    if isinstance(owner_pid, bool) or not isinstance(owner_pid, int) or owner_pid <= 0:
+        raise ArmingError("OFFICIAL_T0_ARMING_LOCKED: lock owner_pid is invalid")
+    if not _is_canonical_text(parsed.get("owner_host")):
+        raise ArmingError("OFFICIAL_T0_ARMING_LOCKED: lock owner_host is invalid")
+    nonce = parsed.get("nonce")
+    if not isinstance(nonce, str) or _HEX_64.fullmatch(nonce) is None:
+        raise ArmingError("OFFICIAL_T0_ARMING_LOCKED: lock nonce is invalid")
+    return dict(parsed)
+
+
+def _recover_dead_same_host_lock(root: Path, lock_path: Path) -> None:
+    """Losslessly archive one conclusively dead local lock, or fail closed."""
+    try:
+        raw = lock_path.read_bytes()
+    except FileNotFoundError:
+        return
+    except OSError as exc:
+        raise ArmingError(
+            f"OFFICIAL_T0_ARMING_LOCKED: cannot read lock: {exc}"
+        ) from exc
+    payload = _validated_lock_payload(raw)
+    if payload["owner_host"] != socket.gethostname():
+        raise ArmingError("OFFICIAL_T0_ARMING_LOCKED: lock belongs to another host")
+    if process_is_alive(payload["owner_pid"]) is not False:
+        raise ArmingError("OFFICIAL_T0_ARMING_LOCKED: lock owner is live or uncertain")
+
+    archive_root = root.parent / f"{root.name}.lock-archive"
+    archive_root.mkdir(parents=True, exist_ok=True)
+    archive_path = archive_root / f"{hashlib.sha256(raw).hexdigest()}.json"
+    try:
+        # A hard link is the recovery CAS: only one contender can reserve this exact
+        # stale inode.  A second contender fails before it can touch a replacement.
+        os.link(lock_path, archive_path)
+    except FileExistsError:
+        try:
+            same_archived_inode = (
+                not archive_path.is_symlink()
+                and os.path.samefile(lock_path, archive_path)
+            )
+        except OSError as exc:
+            raise ArmingError(
+                "OFFICIAL_T0_ARMING_LOCKED: stale-lock archive cannot be verified"
+            ) from exc
+        if not same_archived_inode:
+            raise ArmingError(
+                "OFFICIAL_T0_ARMING_LOCKED: stale-lock archive conflicts"
+            )
+    except OSError as exc:
+        raise ArmingError(
+            f"OFFICIAL_T0_ARMING_LOCKED: stale-lock archive failed: {exc}"
+        ) from exc
+    try:
+        if lock_path.read_bytes() != raw or archive_path.read_bytes() != raw:
+            raise ArmingError(
+                "OFFICIAL_T0_ARMING_LOCKED: lock changed during recovery"
+            )
+        lock_path.unlink()
+    except BaseException:
+        # The archive is immutable recovery evidence.  Never remove it on an
+        # uncertain race; the remaining lock continues to fail closed.
+        raise
+
+
 @contextmanager
 def _arming_lock(root: Path, *, run_id: str) -> Iterator[None]:
     root.mkdir(parents=True, exist_ok=True)
     lock_path = root / ".official-t0-arming.lock"
     lock_payload = {
-        "schema": "premarket_official_t0_arming_lock_v1",
+        "schema": _LOCK_SCHEMA,
         "run_id": run_id,
         "owner_pid": os.getpid(),
         "owner_host": socket.gethostname(),
         "nonce": secrets.token_hex(32),
     }
+    lock_bytes = canonical_json_bytes(lock_payload) + b"\n"
     try:
         descriptor = os.open(lock_path, os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o600)
-    except FileExistsError as exc:
-        raise ArmingError(f"OFFICIAL_T0_ARMING_LOCKED: {lock_path}") from exc
+    except FileExistsError:
+        _recover_dead_same_host_lock(root, lock_path)
+        try:
+            descriptor = os.open(
+                lock_path, os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o600
+            )
+        except FileExistsError as exc:
+            raise ArmingError(
+                f"OFFICIAL_T0_ARMING_LOCKED: lock was reacquired: {lock_path}"
+            ) from exc
     try:
         with os.fdopen(descriptor, "wb") as handle:
-            handle.write(canonical_json_bytes(lock_payload) + b"\n")
+            handle.write(lock_bytes)
             handle.flush()
             os.fsync(handle.fileno())
         yield
     finally:
         try:
-            lock_path.unlink()
-        except FileNotFoundError:
-            pass
+            current = lock_path.read_bytes()
+        except FileNotFoundError as exc:
+            raise ArmingError("official t0 arming lock ownership was lost") from exc
+        except OSError as exc:
+            raise ArmingError(
+                f"official t0 arming lock ownership cannot be verified: {exc}"
+            ) from exc
+        if current != lock_bytes:
+            raise ArmingError("official t0 arming lock ownership changed")
+        lock_path.unlink()
 
 
 def _write_receipt(path: Path, record: Mapping[str, Any]) -> None:

@@ -78,7 +78,12 @@ def process_is_alive(pid: object) -> bool | None:
             kernel32 = ctypes.windll.kernel32  # type: ignore[attr-defined]
             handle = kernel32.OpenProcess(0x1000, False, numeric)
             if not handle:
-                return kernel32.GetLastError() == 5
+                error = int(kernel32.GetLastError())
+                if error == 5:  # ERROR_ACCESS_DENIED still proves a live process.
+                    return True
+                if error == 87:  # ERROR_INVALID_PARAMETER: the PID does not exist.
+                    return False
+                return None
             try:
                 code = ctypes.c_ulong()
                 if not kernel32.GetExitCodeProcess(handle, ctypes.byref(code)):

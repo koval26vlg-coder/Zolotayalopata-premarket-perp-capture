@@ -75,9 +75,11 @@ V32_PLAN_PATH = PROJECT_ROOT / "docs/plans/premarket-perp-capture-planonly-20260
 V33_PLAN_PATH = PROJECT_ROOT / "docs/plans/premarket-perp-capture-planonly-20260822-v33.json"
 V34_PLAN_PATH = PROJECT_ROOT / "docs/plans/premarket-perp-capture-planonly-20260822-v34.json"
 V35_PLAN_PATH = PROJECT_ROOT / "docs/plans/premarket-perp-capture-planonly-20260822-v35.json"
-PLAN_PATH = PROJECT_ROOT / "docs/plans/premarket-perp-capture-planonly-20260822-v36.json"
+V36_PLAN_PATH = PROJECT_ROOT / "docs/plans/premarket-perp-capture-planonly-20260822-v36.json"
+V37_PLAN_PATH = PROJECT_ROOT / "docs/plans/premarket-perp-capture-planonly-20260822-v37.json"
+PLAN_PATH = PROJECT_ROOT / "docs/plans/premarket-perp-capture-planonly-20260822-v38.json"
 NEXT_EVENT_BOUND_PLAN_PATH = (
-    PROJECT_ROOT / "docs/plans/premarket-perp-capture-planonly-20260822-v37.json"
+    PROJECT_ROOT / "docs/plans/premarket-perp-capture-planonly-20260822-v39.json"
 )
 RUN_RECORD_PATH = PROJECT_ROOT / "docs/run/capture-run.json"
 STOP_REQUEST_PATH = PROJECT_ROOT / "docs/run/stop-request.json"
@@ -89,16 +91,16 @@ ANNOUNCEMENT_CANDIDATE_PATH = (
     PROJECT_ROOT / "docs/announcements/official-listing-candidates-v1.jsonl"
 )
 ANNOUNCEMENT_ATTEMPTS_PATH = (
-    PROJECT_ROOT / "docs/announcements/official-listing-discovery-attempts-v36.jsonl"
+    PROJECT_ROOT / "docs/announcements/official-listing-discovery-attempts-v38.jsonl"
 )
 ANNOUNCEMENT_STATE_PATH = (
-    PROJECT_ROOT / "docs/announcements/official-listing-discovery-state-v36.json"
+    PROJECT_ROOT / "docs/announcements/official-listing-discovery-state-v38.json"
 )
 ANNOUNCEMENT_WATCH_CLAIM_PATH = (
-    PROJECT_ROOT / "docs/announcements/official-listing-watch-claim-v36.json"
+    PROJECT_ROOT / "docs/announcements/official-listing-watch-claim-v38.json"
 )
 ANNOUNCEMENT_WATCH_CLAIM_ARCHIVE = (
-    PROJECT_ROOT / "docs/announcements/official-listing-watch-claim-archive-v36"
+    PROJECT_ROOT / "docs/announcements/official-listing-watch-claim-archive-v38"
 )
 CANDIDATE_ALERT_LEDGER_PATH = (
     PROJECT_ROOT / "docs/announcements/official-listing-candidate-alerts-v1.jsonl"
@@ -179,6 +181,11 @@ BOUND_RUNTIME_FILES: tuple[tuple[str, str], ...] = (
         "tools/start_premarket_official_t0_arming_visible.ps1",
     ),
     ("event_bound_plan_proposal", "src/event_bound_plan_proposal.py"),
+    ("fixture_rehearsal", "src/fixture_rehearsal.py"),
+    (
+        "fixture_rehearsal_launcher",
+        "tools/start_premarket_fixture_rehearsal.ps1",
+    ),
     # The forbidden-capability vocabulary is part of the contract, not a note:
     # widening it must require reissuing the plan like any runtime change.
     ("forbidden_capabilities", "docs/risk/forbidden-capabilities.txt"),

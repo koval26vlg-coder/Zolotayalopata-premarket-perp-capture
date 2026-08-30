@@ -1,4 +1,4 @@
-"""Contract for a non-authorizing event-bound v37 plan proposal."""
+"""Contract for a non-authorizing event-bound v39 plan proposal."""
 
 from __future__ import annotations
 
@@ -102,17 +102,17 @@ class EventBoundProposalTests(unittest.TestCase):
     def setUp(self) -> None:
         self.module = _load_module()
 
-    def test_proposal_is_fixed_to_v37_but_cannot_activate_or_capture(self) -> None:
+    def test_proposal_is_fixed_to_v39_but_cannot_activate_or_capture(self) -> None:
         proposal = self.module.build_event_bound_plan_proposal(
             arming_record(), generated_at_utc="2033-05-18T03:34:00Z"
         )
 
         self.assertEqual(proposal["schema"], "premarket_perp_event_bound_plan_proposal_v1")
-        self.assertEqual(proposal["proposed_plan_schema"], "premarket_perp_capture_planonly_v37")
-        self.assertEqual(proposal["proposed_plan_id"], "premarket_perp_capture_20260822_v37")
+        self.assertEqual(proposal["proposed_plan_schema"], "premarket_perp_capture_planonly_v39")
+        self.assertEqual(proposal["proposed_plan_id"], "premarket_perp_capture_20260822_v39")
         self.assertEqual(
             proposal["proposed_plan_path"],
-            "docs/plans/premarket-perp-capture-planonly-20260822-v37.json",
+            "docs/plans/premarket-perp-capture-planonly-20260822-v39.json",
         )
         self.assertEqual(proposal["supersedes_plan_id"], trust_root.PLAN_ID)
         self.assertEqual(proposal["supersedes_plan_hash"], trust_root.PLAN_HASH)
@@ -140,7 +140,7 @@ class EventBoundProposalTests(unittest.TestCase):
                 bad, generated_at_utc="2033-05-18T03:34:00Z"
             )
 
-    def test_write_is_create_only_and_never_overwrites_a_proposal(self) -> None:
+    def test_write_is_create_only_and_valid_duplicate_never_overwrites(self) -> None:
         root = Path(tempfile.mkdtemp()) / "proposals"
         arming_root = Path(tempfile.mkdtemp()) / "arming"
         record = arming_record()
@@ -166,13 +166,15 @@ class EventBoundProposalTests(unittest.TestCase):
                 record, run_id="proposal-run", preflight=allow,
                 clock=lambda: 2_000_000_040,
             )
-            with self.assertRaisesRegex(self.module.ProposalError, "already exists"):
-                self.module.write_event_bound_plan_proposal(
-                    record, run_id="proposal-run", preflight=allow,
-                    clock=lambda: 2_000_000_040,
-                )
+            first_bytes = first.read_bytes()
+            second = self.module.write_event_bound_plan_proposal(
+                record, run_id="proposal-run", preflight=allow,
+                clock=lambda: 2_000_000_040,
+            )
 
         self.assertTrue(first.is_relative_to(root))
+        self.assertEqual(second, first)
+        self.assertEqual(first.read_bytes(), first_bytes)
         payload = json.loads(first.read_text(encoding="utf-8"))
         self.assertIs(payload["capture_authorized"], False)
         self.assertEqual(payload["proposal_write_authority"]["run_id"], "proposal-run")
@@ -301,6 +303,159 @@ class EventBoundProposalTests(unittest.TestCase):
                 )
 
         self.assertFalse(root.exists())
+
+    def test_interrupted_staging_write_is_archived_and_retry_commits(self) -> None:
+        root = Path(tempfile.mkdtemp()) / "proposals"
+        arming_root = Path(tempfile.mkdtemp()) / "arming"
+        record = arming_record()
+        persist_arming(record, arming_root)
+
+        def allow(**kwargs: object) -> dict[str, object]:
+            return {
+                "schema": "premarket_write_preflight_v2",
+                "ok": True,
+                "verified": True,
+                "decision": "ALLOW_EVENT_BOUND_PLAN_PROPOSAL",
+                "write_class": "event_bound_plan_proposal",
+                "run_id": kwargs["run_id"],
+                "action": "write one deterministic event-bound plan proposal from an arming receipt",
+                "plan_id": trust_root.PLAN_ID,
+                "plan_hash": trust_root.PLAN_HASH,
+                "resolved_paths_hash": "9" * 64,
+            }
+
+        with mock.patch.object(
+            self.module.config, "EVENT_BOUND_PLAN_PROPOSAL_ROOT", root
+        ), mock.patch.object(
+            self.module.config, "OFFICIAL_T0_ARMING_ROOT", arming_root
+        ):
+            with mock.patch.object(
+                self.module.os,
+                "link",
+                side_effect=OSError("simulated interruption before atomic commit"),
+                create=True,
+            ):
+                with self.assertRaisesRegex(self.module.ProposalError, "atomic commit"):
+                    self.module.write_event_bound_plan_proposal(
+                        record,
+                        run_id="proposal-crashed",
+                        preflight=allow,
+                        clock=lambda: 2_000_000_040,
+                    )
+
+            final_files = sorted(root.rglob("*-proposal.json"))
+            pending_files = sorted(root.rglob("*.pending"))
+            self.assertEqual(final_files, [])
+            self.assertEqual(len(pending_files), 1)
+
+            committed = self.module.write_event_bound_plan_proposal(
+                record,
+                run_id="proposal-retry",
+                preflight=allow,
+                clock=lambda: 2_000_000_041,
+            )
+
+        payload = json.loads(committed.read_text(encoding="utf-8"))
+        recovery_root = root.parent / f"{root.name}.incomplete-archive"
+        recovered = sorted(recovery_root.glob("*.pending"))
+        self.assertEqual(payload["proposal_write_authority"]["run_id"], "proposal-retry")
+        self.assertEqual(len(recovered), 1)
+        self.assertFalse(any(root.rglob("*.pending")))
+        self.assertIs(payload["capture_authorized"], False)
+
+    def test_crash_after_stage_archive_resumes_and_keeps_exact_archive(self) -> None:
+        root = Path(tempfile.mkdtemp()) / "proposals"
+        arming_root = Path(tempfile.mkdtemp()) / "arming"
+        record = arming_record()
+        persist_arming(record, arming_root)
+        final = root / record["arming_id"] / (
+            f"{record['revision']:020d}-{record['receipt_hash']}-v39-proposal.json"
+        )
+        stage = final.with_name(f".{final.name}.pending")
+        stage.parent.mkdir(parents=True)
+        raw = b'{"partial":true}\n'
+        stage.write_bytes(raw)
+        archive_root = root.parent / f"{root.name}.incomplete-archive"
+        archive_root.mkdir(parents=True)
+        archive = archive_root / (
+            f"{hashlib.sha256(raw).hexdigest()}-{stage.name}.pending"
+        )
+        archive.hardlink_to(stage)
+
+        def allow(**kwargs: object) -> dict[str, object]:
+            return {
+                "schema": "premarket_write_preflight_v2",
+                "ok": True,
+                "verified": True,
+                "decision": "ALLOW_EVENT_BOUND_PLAN_PROPOSAL",
+                "write_class": "event_bound_plan_proposal",
+                "run_id": kwargs["run_id"],
+                "action": "write one deterministic event-bound plan proposal from an arming receipt",
+                "plan_id": trust_root.PLAN_ID,
+                "plan_hash": trust_root.PLAN_HASH,
+                "resolved_paths_hash": "9" * 64,
+            }
+
+        with mock.patch.object(
+            self.module.config, "EVENT_BOUND_PLAN_PROPOSAL_ROOT", root
+        ), mock.patch.object(
+            self.module.config, "OFFICIAL_T0_ARMING_ROOT", arming_root
+        ):
+            committed = self.module.write_event_bound_plan_proposal(
+                record,
+                run_id="proposal-retry-after-archive",
+                preflight=allow,
+                clock=lambda: 2_000_000_041,
+            )
+
+        self.assertTrue(committed.is_file())
+        self.assertEqual(archive.read_bytes(), raw)
+        self.assertFalse(stage.exists())
+
+    def test_valid_existing_final_is_an_idempotent_readback_without_rewrite(self) -> None:
+        root = Path(tempfile.mkdtemp()) / "proposals"
+        arming_root = Path(tempfile.mkdtemp()) / "arming"
+        record = arming_record()
+        persist_arming(record, arming_root)
+
+        def allow(**kwargs: object) -> dict[str, object]:
+            return {
+                "schema": "premarket_write_preflight_v2",
+                "ok": True,
+                "verified": True,
+                "decision": "ALLOW_EVENT_BOUND_PLAN_PROPOSAL",
+                "write_class": "event_bound_plan_proposal",
+                "run_id": kwargs["run_id"],
+                "action": "write one deterministic event-bound plan proposal from an arming receipt",
+                "plan_id": trust_root.PLAN_ID,
+                "plan_hash": trust_root.PLAN_HASH,
+                "resolved_paths_hash": "9" * 64,
+            }
+
+        with mock.patch.object(
+            self.module.config, "EVENT_BOUND_PLAN_PROPOSAL_ROOT", root
+        ), mock.patch.object(
+            self.module.config, "OFFICIAL_T0_ARMING_ROOT", arming_root
+        ):
+            first = self.module.write_event_bound_plan_proposal(
+                record,
+                run_id="proposal-first",
+                preflight=allow,
+                clock=lambda: 2_000_000_040,
+            )
+            first_bytes = first.read_bytes()
+            first_mtime = first.stat().st_mtime_ns
+            second = self.module.write_event_bound_plan_proposal(
+                record,
+                run_id="proposal-retry-after-publish",
+                preflight=allow,
+                clock=lambda: 2_000_000_041,
+            )
+
+        self.assertEqual(second, first)
+        self.assertEqual(first.read_bytes(), first_bytes)
+        self.assertEqual(first.stat().st_mtime_ns, first_mtime)
+        self.assertEqual(len(list(root.rglob("*-proposal.json"))), 1)
 
 
 if __name__ == "__main__":

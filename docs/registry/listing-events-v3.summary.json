@@ -2,14 +2,14 @@
   "schema": "premarket_perp_event_registry_v3",
   "status": "REFRESH_COMPLETE",
   "mutation_type": "metadata_refresh",
-  "mutation_run_id": "announcement_watch_20260829T215726Z_9e34026d",
-  "refresh_run_id": "announcement_watch_20260829T215726Z_9e34026d",
-  "plan_id": "premarket_perp_capture_20260822_v36",
-  "plan_hash": "5a8a2a870a387f15dfbc47e2561832d2dc7b9e8c1ab3a814065e47fef35e462c",
+  "mutation_run_id": "announcement_watch_20260830T002048Z_9c41c47e",
+  "refresh_run_id": "announcement_watch_20260830T002048Z_9c41c47e",
+  "plan_id": "premarket_perp_capture_20260822_v38",
+  "plan_hash": "f2132603e3a3e8403a20cbceeb273cbb9f8c6804b7e5d81aaacac3b97626095b",
   "registry_contract_hash": "a6c0db8ddf6aa344980ca9dcd3aac218220a80de2d0116402a86cd272e2bd4c0",
-  "resolved_paths_hash": "ec7d56eaa75f87cf79777aecf35d11babb2831a4068da5caa72ed966647ea4a9",
-  "refreshed_at_utc": "2026-08-29T21:57:39Z",
-  "last_complete_metadata_refresh_received_at_utc": "2026-08-29T21:57:39Z",
+  "resolved_paths_hash": "5c447a6347a0591efc8404b05a8d08db6f2cd396d6e020f8529a2ccb9db4be5a",
+  "refreshed_at_utc": "2026-08-30T00:21:03Z",
+  "last_complete_metadata_refresh_received_at_utc": "2026-08-30T00:21:03Z",
   "observed_events": 18,
   "observed_by_venue": {
     "bybit": 5,
@@ -184,7 +184,7 @@
     }
   },
   "mutation_receipt_schema": "premarket_perp_registry_mutation_receipt_v1",
-  "mutation_seq": 5,
-  "previous_mutation_receipt_hash": "fbdd3c63df5467891ebfff796f03e8bc0706d511c6afd95aa48cbf749bfc4822",
-  "mutation_receipt_hash": "be9d82d867506403618c76da56855106263bd62412cd4a1a2e4ea18cb1c757de"
+  "mutation_seq": 6,
+  "previous_mutation_receipt_hash": "be9d82d867506403618c76da56855106263bd62412cd4a1a2e4ea18cb1c757de",
+  "mutation_receipt_hash": "bec939e560833a9052dcf509a847569277c23dab5af8bc611d6bda3b749df62f"
 }

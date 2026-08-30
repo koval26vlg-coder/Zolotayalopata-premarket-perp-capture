@@ -1,14 +1,15 @@
-"""Build a sealed *proposal* for a future event-bound v37 PlanOnly.
+"""Build a sealed *proposal* for a future event-bound v39 PlanOnly.
 
 This module intentionally cannot activate a plan, rebind the external trust root, mint
 a capture token, or contact an exchange.  Its only output is a deterministic JSON
 proposal derived from one already-sealed no-capture official-t0 arming receipt.
-Publishing and authorising the real v37 PlanOnly remains a separate, explicit user
-checkpoint.  v36 is the no-capture integration patch that fixed alert dispatch.
+Publishing and authorising the real v39 PlanOnly remains a separate, explicit user
+checkpoint.  v38 is the no-capture rehearsal and recovery hardening release.
 """
 
 from __future__ import annotations
 
+import hashlib
 import json
 import os
 import re
@@ -29,10 +30,10 @@ import risk_gate
 
 
 PROPOSAL_SCHEMA = "premarket_perp_event_bound_plan_proposal_v1"
-PROPOSED_PLAN_SCHEMA = "premarket_perp_capture_planonly_v37"
-PROPOSED_PLAN_ID = "premarket_perp_capture_20260822_v37"
+PROPOSED_PLAN_SCHEMA = "premarket_perp_capture_planonly_v39"
+PROPOSED_PLAN_ID = "premarket_perp_capture_20260822_v39"
 PROPOSED_PLAN_PATH = (
-    "docs/plans/premarket-perp-capture-planonly-20260822-v37.json"
+    "docs/plans/premarket-perp-capture-planonly-20260822-v39.json"
 )
 ARMING_RECEIPT_SCHEMA = "premarket_official_t0_arming_receipt_v1"
 ARMING_RECEIPT_TYPE = "official_t0_arming_receipt"
@@ -52,7 +53,7 @@ class ProposalError(RuntimeError):
 
 @contextmanager
 def _current_arming_head_guard(
-    receipt: Mapping[str, Any], *, run_id: str
+    receipt: Mapping[str, Any], *, run_id: str, arming_root: Path
 ):
     anchor = receipt.get("event_anchor")
     if not isinstance(anchor, Mapping):
@@ -64,7 +65,7 @@ def _current_arming_head_guard(
             episode_id=episode_id,
             expected_receipt_hash=receipt_hash,
             run_id=f"proposal-{run_id}",
-            arming_root=config.OFFICIAL_T0_ARMING_ROOT,
+            arming_root=arming_root,
         ) as current:
             yield current
     except arming.ArmingError as exc:
@@ -323,7 +324,7 @@ def build_event_bound_plan_proposal(
             "anchor_plan_id": anchor["plan_id"],
             "anchor_plan_hash": anchor["plan_hash"],
         },
-        "current_lifecycle_snapshot": "REQUIRED_UNDER_V37_BEFORE_CAPTURE",
+        "current_lifecycle_snapshot": "REQUIRED_UNDER_V39_BEFORE_CAPTURE",
         "capture_bounds": {
             "official_spot_t0": t0,
             "capture_start_ts": capture_start,
@@ -341,12 +342,12 @@ def build_event_bound_plan_proposal(
             "selected_market_data_endpoints": _selected_market_endpoints(venue),
             "authenticated_endpoints_allowed": False,
             "order_endpoints_allowed": False,
-            "requires_exact_v37_capability_scan": True,
+            "requires_exact_v39_capability_scan": True,
         },
         "implementation_binding": {
-            "mode": "RECOMPUTE_AND_FREEZE_ALL_CODE_SHA256_AT_V37_ISSUE",
+            "mode": "RECOMPUTE_AND_FREEZE_ALL_CODE_SHA256_AT_V39_ISSUE",
             "active_plan_file_sha256": trust_root.PLAN_FILE_SHA256,
-            "v37_plan_hash_assigned": False,
+            "v39_plan_hash_assigned": False,
         },
         "execution_prohibitions": {
             "private_api": True,
@@ -361,7 +362,7 @@ def build_event_bound_plan_proposal(
         "capture_token_issued": False,
         "trust_root_rebound": False,
         "requires_explicit_user_capture_approval": True,
-        "requires_new_immutable_v37_plan": True,
+        "requires_new_immutable_v39_plan": True,
         "acceptance_capable": False,
     }
     proposal["event_binding_hash"] = canonical_hash({
@@ -372,14 +373,137 @@ def build_event_bound_plan_proposal(
     return proposal
 
 
-def write_event_bound_plan_proposal(
+def _archive_incomplete_stage(*, stage: Path, proposal_root: Path) -> None:
+    """Losslessly move a non-authoritative interrupted stage out of the write path."""
+    try:
+        raw = stage.read_bytes()
+    except FileNotFoundError:
+        return
+    except OSError as exc:
+        raise ProposalError(f"cannot inspect incomplete proposal stage: {exc}") from exc
+    archive_root = proposal_root.parent / f"{proposal_root.name}.incomplete-archive"
+    archive_root.mkdir(parents=True, exist_ok=True)
+    archive = archive_root / f"{hashlib.sha256(raw).hexdigest()}-{stage.name}.pending"
+    try:
+        os.link(stage, archive)
+    except FileExistsError:
+        try:
+            same_archived_inode = (
+                not archive.is_symlink() and os.path.samefile(stage, archive)
+            )
+        except OSError as exc:
+            raise ProposalError(
+                "incomplete proposal stage archive cannot be verified"
+            ) from exc
+        if not same_archived_inode:
+            raise ProposalError("incomplete proposal stage archive conflicts")
+    except OSError as exc:
+        raise ProposalError(f"cannot archive incomplete proposal stage: {exc}") from exc
+    if stage.read_bytes() != raw or archive.read_bytes() != raw:
+        raise ProposalError("incomplete proposal stage changed during recovery")
+    stage.unlink()
+
+
+def _write_proposal_atomically(
+    *, path: Path, payload: bytes, proposal_root: Path
+) -> None:
+    """Publish complete bytes under the authoritative name only after stage fsync."""
+    if path.exists():
+        raise ProposalError(f"proposal already exists: {path}")
+    stage = path.with_name(f".{path.name}.pending")
+    if stage.exists():
+        _archive_incomplete_stage(stage=stage, proposal_root=proposal_root)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    try:
+        descriptor = os.open(stage, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+    except FileExistsError as exc:
+        raise ProposalError(f"proposal stage already exists: {stage}") from exc
+    except OSError as exc:
+        raise ProposalError(f"cannot create proposal stage {stage}: {exc}") from exc
+    try:
+        with os.fdopen(descriptor, "wb") as handle:
+            handle.write(payload)
+            handle.flush()
+            os.fsync(handle.fileno())
+    except BaseException:
+        # A stage is explicitly non-authoritative.  Retain it so the next guarded
+        # attempt can archive the exact crash residue before retrying.
+        raise
+    try:
+        if stage.read_bytes() != payload:
+            raise ProposalError("proposal stage readback does not match payload")
+        # Hard-link publication is no-replace and atomic: final can never name a
+        # partially written inode.  The arming head lock serializes proposal writers.
+        os.link(stage, path)
+    except FileExistsError as exc:
+        raise ProposalError(f"proposal already exists: {path}") from exc
+    except OSError as exc:
+        raise ProposalError(f"proposal atomic commit failed: {exc}") from exc
+    if path.read_bytes() != payload:
+        raise ProposalError("proposal final readback does not match staged payload")
+    try:
+        stage.unlink()
+    except OSError:
+        # A complete duplicate stage is non-authoritative and cannot invalidate an
+        # already atomically published, byte-verified final proposal.
+        pass
+
+
+def _validate_existing_proposal(
+    *,
+    path: Path,
+    arming_receipt: Mapping[str, Any],
+    commit_preflight: Mapping[str, Any],
+) -> None:
+    """Accept only an exact, already-published proposal for the same authority."""
+    if path.is_symlink():
+        raise ProposalError("existing proposal must not be a symlink")
+    try:
+        raw = path.read_bytes()
+        existing = json.loads(raw.decode("utf-8"))
+    except (OSError, UnicodeDecodeError, ValueError) as exc:
+        raise ProposalError(f"existing proposal is unreadable or partial: {exc}") from exc
+    if not isinstance(existing, dict):
+        raise ProposalError("existing proposal is not a JSON object")
+    canonical_pretty = (
+        json.dumps(existing, ensure_ascii=False, indent=2, sort_keys=True) + "\n"
+    ).encode("utf-8")
+    if raw != canonical_pretty:
+        raise ProposalError("existing proposal bytes are not canonical")
+    generated_at = _require_text(existing.get("generated_at_utc"), "generated_at_utc")
+    authority = existing.get("proposal_write_authority")
+    if not isinstance(authority, Mapping):
+        raise ProposalError("existing proposal write authority is missing")
+    existing_run_id = _require_text(authority.get("run_id"), "proposal run_id")
+    expected_authority = {
+        "run_id": existing_run_id,
+        "decision": commit_preflight["decision"],
+        "plan_id": commit_preflight["plan_id"],
+        "plan_hash": commit_preflight["plan_hash"],
+        "resolved_paths_hash": commit_preflight["resolved_paths_hash"],
+    }
+    expected = build_event_bound_plan_proposal(
+        arming_receipt, generated_at_utc=generated_at
+    )
+    expected.pop("proposal_hash", None)
+    expected["proposal_write_authority"] = expected_authority
+    expected["proposal_hash"] = canonical_hash(expected)
+    if existing != expected:
+        raise ProposalError(
+            "existing proposal conflicts with the current arming or write authority"
+        )
+
+
+def _write_event_bound_plan_proposal_to_roots(
     arming_receipt: Mapping[str, Any],
     *,
     run_id: str,
+    proposal_root: Path,
+    arming_root: Path,
     preflight: Any | None = None,
     clock: Any | None = None,
 ) -> Path:
-    """Preflight twice and create one root-confined proposal with fresh wall time."""
+    """Shared writer core; callers must supply fixed production or temporary roots."""
     run_id = _require_text(run_id, "run_id")
     clock_fn = clock or time.time
     initial_ts = int(clock_fn())
@@ -405,7 +529,9 @@ def write_event_bound_plan_proposal(
         raise ProposalError("arming_id is not path-safe")
     revision = _require_nonnegative_int(validated.get("revision"), "revision")
     receipt_hash = _require_sha256(validated.get("receipt_hash"), "receipt_hash")
-    with _current_arming_head_guard(validated, run_id=run_id):
+    with _current_arming_head_guard(
+        validated, run_id=run_id, arming_root=arming_root
+    ):
         try:
             commit_raw = preflight_call(
                 write_class="event_bound_plan_proposal", run_id=run_id
@@ -438,27 +564,37 @@ def write_event_bound_plan_proposal(
         }
         proposal["proposal_hash"] = canonical_hash(proposal)
 
-        root = Path(config.EVENT_BOUND_PLAN_PROPOSAL_ROOT)
+        root = Path(proposal_root)
         path = root / arming_id / (
-            f"{revision:020d}-{receipt_hash}-v37-proposal.json"
+            f"{revision:020d}-{receipt_hash}-v39-proposal.json"
         )
         payload = (
             json.dumps(proposal, ensure_ascii=False, indent=2, sort_keys=True) + "\n"
         ).encode("utf-8")
-        path.parent.mkdir(parents=True, exist_ok=True)
-        try:
-            descriptor = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
-        except FileExistsError as exc:
-            raise ProposalError(f"proposal already exists: {path}") from exc
-        except OSError as exc:
-            raise ProposalError(f"cannot create proposal {path}: {exc}") from exc
-        try:
-            with os.fdopen(descriptor, "wb") as handle:
-                handle.write(payload)
-                handle.flush()
-                os.fsync(handle.fileno())
-        except BaseException:
-            # The path was created with O_EXCL. Never delete or replace a possibly
-            # partial evidence artifact automatically; inspect it explicitly.
-            raise
+        if path.exists():
+            _validate_existing_proposal(
+                path=path,
+                arming_receipt=validated,
+                commit_preflight=commit_preflight,
+            )
+            return path
+        _write_proposal_atomically(path=path, payload=payload, proposal_root=root)
         return path
+
+
+def write_event_bound_plan_proposal(
+    arming_receipt: Mapping[str, Any],
+    *,
+    run_id: str,
+    preflight: Any | None = None,
+    clock: Any | None = None,
+) -> Path:
+    """Preflight twice and create one production-root proposal with fresh wall time."""
+    return _write_event_bound_plan_proposal_to_roots(
+        arming_receipt,
+        run_id=run_id,
+        proposal_root=Path(config.EVENT_BOUND_PLAN_PROPOSAL_ROOT),
+        arming_root=Path(config.OFFICIAL_T0_ARMING_ROOT),
+        preflight=preflight,
+        clock=clock,
+    )

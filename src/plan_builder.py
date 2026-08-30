@@ -20,11 +20,11 @@ import project_config as config
 from canonical_hash import canonical_hash
 
 
-SCHEMA = "premarket_perp_capture_planonly_v36"
-PLAN_ID = "premarket_perp_capture_20260822_v36"
-SUPERSEDES_PLAN_ID = "premarket_perp_capture_20260822_v35"
-SUPERSEDES_PLAN_HASH = "51956bf5e041f4df2424f1647c52bde438232b3f2e9303de3456e7fa98dd2950"
-SUPERSEDES_PLAN_PATH = "docs/plans/premarket-perp-capture-planonly-20260822-v35.json"
+SCHEMA = "premarket_perp_capture_planonly_v38"
+PLAN_ID = "premarket_perp_capture_20260822_v38"
+SUPERSEDES_PLAN_ID = "premarket_perp_capture_20260822_v37"
+SUPERSEDES_PLAN_HASH = "9671b54040a3eabb21a4a5a3bf455ed5837fe13d82f51b5ca22dc5bbc6f6ffcf"
+SUPERSEDES_PLAN_PATH = "docs/plans/premarket-perp-capture-planonly-20260822-v37.json"
 HASH_METHOD = "sha256_canonical_json_excluding_plan_hash"
 PLAN_STATUS = "OFFICIAL_T0_ARMING_READY_NO_CAPTURE"
 
@@ -561,13 +561,13 @@ def _announcement_watch_scheduler_contract() -> dict[str, Any]:
         "control_preflight_failure": (
             "FAIL_CLOSED_NO_WRITE_RECHECK_ON_NEXT_FIVE_MINUTE_WAKE"
         ),
-        "state_path": "docs/announcements/official-listing-discovery-state-v36.json",
+        "state_path": "docs/announcements/official-listing-discovery-state-v38.json",
         "attempt_ledger_path": (
-            "docs/announcements/official-listing-discovery-attempts-v36.jsonl"
+            "docs/announcements/official-listing-discovery-attempts-v38.jsonl"
         ),
-        "claim_path": "docs/announcements/official-listing-watch-claim-v36.json",
+        "claim_path": "docs/announcements/official-listing-watch-claim-v38.json",
         "claim_archive": (
-            "docs/announcements/official-listing-watch-claim-archive-v36"
+            "docs/announcements/official-listing-watch-claim-archive-v38"
         ),
         "control_write_class": "announcement_watch_control",
         "shared_gate_required_for_research_writes": True,
@@ -647,6 +647,15 @@ def _official_t0_arming_contract() -> dict[str, Any]:
         ),
         "write": "O_EXCL_ONE_IMMUTABLE_RECEIPT_PER_EVENT_REVISION",
         "duplicate": "ALREADY_ARMED_NO_WRITE",
+        "stale_lock_recovery": (
+            "LOSSLESS_ARCHIVE_AND_SINGLE_REACQUIRE_ONLY_FOR_CONCLUSIVELY_"
+            "DEAD_SAME_HOST_PID"
+        ),
+        "post_archive_crash_resume": (
+            "EXISTING_ARCHIVE_ACCEPTED_ONLY_IF_SAME_NON_SYMLINK_INODE"
+        ),
+        "uncertain_remote_or_invalid_lock": "FAIL_CLOSED_NO_MUTATION",
+        "release_ownership": "EXACT_LOCK_BYTES_REQUIRED_BEFORE_UNLINK",
         "requires_explicit_no_capture_acknowledgement": True,
         "shared_gate_required": True,
         "exclusive_market_data_writer_claim": False,
@@ -662,19 +671,28 @@ def _event_bound_plan_proposal_contract() -> dict[str, Any]:
     return {
         "schema": "premarket_perp_event_bound_plan_proposal_v1",
         "runtime": "src/event_bound_plan_proposal.py",
-        "proposed_plan_schema": "premarket_perp_capture_planonly_v37",
-        "proposed_plan_id": "premarket_perp_capture_20260822_v37",
+        "proposed_plan_schema": "premarket_perp_capture_planonly_v39",
+        "proposed_plan_id": "premarket_perp_capture_20260822_v39",
         "proposed_plan_path": (
-            "docs/plans/premarket-perp-capture-planonly-20260822-v37.json"
+            "docs/plans/premarket-perp-capture-planonly-20260822-v39.json"
         ),
         "mode": "CREATE_ONLY_PROPOSAL_NO_TRUST_ROOT_REBIND",
-        "event_anchor": "FROZEN_V36_ARMING_RECEIPT",
-        "current_lifecycle_snapshot": "REQUIRED_UNDER_V37_BEFORE_CAPTURE",
+        "event_anchor": "FROZEN_V38_ARMING_RECEIPT",
+        "current_lifecycle_snapshot": "REQUIRED_UNDER_V39_BEFORE_CAPTURE",
         "receipt_validation": "EXACT_SCHEMA_FIELD_SET_AND_CANONICAL_RECEIPT_HASH",
         "current_arming_head": (
             "SUPPLIED_RECEIPT_MUST_REMAIN_DURABLE_HEAD_UNDER_ARMING_WRITER_LOCK"
         ),
-        "write": "O_EXCL_ROOT_CONFINED_DETERMINISTIC_PROPOSAL",
+        "write": "ROOT_CONFINED_DETERMINISTIC_PROPOSAL",
+        "publication": "FSYNC_NONAUTHORITATIVE_STAGE_THEN_ATOMIC_NO_REPLACE_LINK",
+        "interrupted_stage_recovery": (
+            "LOSSLESS_ARCHIVE_THEN_RETRY_UNDER_CURRENT_ARMING_HEAD_LOCK"
+        ),
+        "post_archive_crash_resume": (
+            "EXISTING_ARCHIVE_ACCEPTED_ONLY_IF_SAME_NON_SYMLINK_INODE"
+        ),
+        "invalid_existing_final": "FAIL_CLOSED_NO_MUTATION",
+        "valid_existing_final": "STRICT_IDEMPOTENT_READBACK_NO_REWRITE",
         "output_root": "docs/arming/event-bound-plan-proposals-v1",
         "clock": "FINAL_UTC_SECONDS_SAMPLED_AFTER_COMMIT_PREFLIGHT",
         "preflight": "EXACT_INITIAL_AND_COMMIT_RECEIPTS_MUST_MATCH",
@@ -683,6 +701,34 @@ def _event_bound_plan_proposal_contract() -> dict[str, Any]:
         "capture_token_issued": False,
         "trust_root_rebound": False,
         "orders": False,
+    }
+
+
+def _fixture_rehearsal_contract() -> dict[str, Any]:
+    return {
+        "schema": "premarket_fixture_rehearsal_v1",
+        "runtime": "src/fixture_rehearsal.py",
+        "launcher": "tools/start_premarket_fixture_rehearsal.ps1",
+        "mode": "FIXED_DETERMINISTIC_TEMPORARY_WORKSPACE_ONLY",
+        "preflight": (
+            "LAUNCHER_AND_RUNTIME_ACTIVE_PLAN_SHA_AND_CAPABILITY_SCAN_BEFORE_"
+            "TEMPORARY_WRITE"
+        ),
+        "stages": [
+            "candidate_alert_contract",
+            "human_official_attestation_validation",
+            "official_t0_arming",
+            "event_bound_plan_proposal",
+        ],
+        "temporary_writes": True,
+        "production_writes": False,
+        "network": False,
+        "toast": False,
+        "capture_authorized": False,
+        "capture_token_issued": False,
+        "trust_root_rebound": False,
+        "orders": False,
+        "cleanup": "TEMPORARY_DIRECTORY_REMOVED_BEFORE_SUCCESS_RESULT",
     }
 
 
@@ -710,7 +756,7 @@ def build_plan(generated_at_utc: str) -> dict[str, Any]:
         "objective": (
             "Run low-cost bounded discovery, alert once on a current official-listing "
             "candidate, and allow an explicitly reviewed seconds-grade official t0 to "
-            "be sealed as no-capture arming evidence. A deterministic v37 proposal may "
+            "be sealed as no-capture arming evidence. A deterministic v39 proposal may "
             "then be prepared, but cannot activate a plan or start capture. Index "
             "timestamps remain publication metadata only. This plan does not authorize "
             "automatic t0 attestation, market-data capture, venue paper/testnet "
@@ -1205,6 +1251,7 @@ def build_plan(generated_at_utc: str) -> dict[str, Any]:
         "candidate_alert": _candidate_alert_contract(),
         "official_t0_arming": _official_t0_arming_contract(),
         "event_bound_plan_proposal": _event_bound_plan_proposal_contract(),
+        "fixture_rehearsal": _fixture_rehearsal_contract(),
         "capture_bounds": {
             "window_before_t0_sec": config.CAPTURE_WINDOW_BEFORE_SEC,
             "window_after_t0_sec": config.CAPTURE_WINDOW_AFTER_SEC,
@@ -1451,11 +1498,12 @@ def build_plan(generated_at_utc: str) -> dict[str, Any]:
         "activation_gate": {
             "capture_authorized": False,
             "reason": (
-                "v36 preserves the v35 no-model watcher, at-most-once candidate alert, "
-                "official seconds-grade t0 arming receipt and deterministic create-only "
-                "event proposal, while binding the production scheduler to every alert "
-                "dependency after the first v35 tick exposed an incomplete call. "
-                "Candidate metadata and "
+                "v38 preserves the v37 no-model watcher, at-most-once candidate alert, "
+                "official seconds-grade t0 arming receipt, deterministic create-only "
+                "event proposal, lock/proposal recovery and temporary fixture rehearsal. "
+                "It removes the temp-only rehearsal from the production write-action "
+                "matrix and keeps it solely under its separate no-authority fixture "
+                "contract. Candidate metadata and "
                 "proxy timestamps cannot arm. Even a valid arming receipt has no "
                 "capture token or capture authority, and the proposal cannot rebind the "
                 "trust root, execute venue paper/live orders, or start market data work"
@@ -1464,7 +1512,7 @@ def build_plan(generated_at_utc: str) -> dict[str, Any]:
                 "after human review creates and arms one current-generation CRYPTO_TOKEN "
                 "official seconds-grade t0 with enough lead, inspect the deterministic "
                 "proposal, collect a fresh lifecycle snapshot, and explicitly issue a "
-                "separate immutable event-bound v37 before exactly one visible capture"
+                "separate immutable event-bound v39 before exactly one visible capture"
             ),
         },
         "acceptance_policy": {
@@ -1578,6 +1626,10 @@ def validate_plan(plan: dict[str, Any]) -> None:
         plan.get("event_bound_plan_proposal")
         == _event_bound_plan_proposal_contract(),
         "event-bound proposal contract mismatch",
+    )
+    require(
+        plan.get("fixture_rehearsal") == _fixture_rehearsal_contract(),
+        "fixture rehearsal contract mismatch",
     )
     require(bool(plan.get("allowed_endpoints")), "plan must declare its endpoint allow-list")
     require(

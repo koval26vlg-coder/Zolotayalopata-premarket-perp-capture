@@ -13,7 +13,9 @@ import io
 import subprocess
 import hashlib
 import ast
+import ctypes
 from datetime import datetime, timezone
+from types import SimpleNamespace
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -28,6 +30,17 @@ import project_config as config  # noqa: E402
 import risk_gate  # noqa: E402
 import plan_builder  # noqa: E402
 from canonical_hash import canonical_hash  # noqa: E402
+
+
+class ProcessLivenessTests(unittest.TestCase):
+    def test_unknown_windows_open_process_error_is_uncertain_not_dead(self) -> None:
+        kernel32 = mock.Mock()
+        kernel32.OpenProcess.return_value = 0
+        kernel32.GetLastError.return_value = 1234
+        with mock.patch.object(
+            ctypes, "windll", SimpleNamespace(kernel32=kernel32)
+        ):
+            self.assertIsNone(watch_state.process_is_alive(424242))
 
 
 class SchedulerSurfaceTests(unittest.TestCase):
@@ -927,7 +940,7 @@ class ControlPlaneAuthorizationTests(unittest.TestCase):
             config.ANNOUNCEMENT_WATCH_CLAIM_PATH,
             config.ANNOUNCEMENT_WATCH_CLAIM_ARCHIVE,
         ):
-            self.assertIn("v36", path.name)
+            self.assertIn("v38", path.name)
 
 
 class V33ImmutablePlanTests(unittest.TestCase):
